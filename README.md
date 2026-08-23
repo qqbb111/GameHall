@@ -20,7 +20,7 @@ apps/web                 React + Vite 响应式中文界面
 apps/server              Express + Socket.IO + node:sqlite 权威服务
 packages/game-core       三款游戏的纯函数规则引擎
 packages/protocol        Zod 协议校验、事件和共享类型
-render.yaml              单实例付费 Render Web Service + 持久磁盘
+render.yaml              单实例免费 Render Web Service（临时试玩）
 apps/web/public/og.png    GameHall 分享预览图与页面社交元数据
 ```
 
@@ -68,12 +68,12 @@ pnpm smoke:load
 ## Render 部署
 
 1. 将本项目放入由你控制的 GitHub/GitLab 仓库；不要提交 `.env`、SQLite 文件或 `storage/`。
-2. 在 Render 创建 [Blueprint](https://render.com/docs/blueprint-spec) 并选择根目录的 `render.yaml`。它固定为一个 Starter Node Web Service、一个实例和 1 GB [持久磁盘](https://render.com/docs/disks)。
-3. Blueprint 将 SQLite 写入 `/opt/render/project/src/storage/gamehall.sqlite`。迁移在服务启动、打开数据库时以事务自动执行。不要把 SQLite 迁移放入 Render 的 pre-deploy command：该阶段无法访问挂载磁盘。
+2. 在 Render 创建 [Blueprint](https://render.com/docs/blueprint-spec) 并选择根目录的 `render.yaml`。试玩配置使用新加坡区域的单实例免费 Node Web Service，不需要付费资源。
+3. Blueprint 将 SQLite 写入 `/opt/render/project/src/storage/gamehall.sqlite`。免费实例没有持久磁盘：每次休眠、重启或重新部署后，游客、房间和对局数据都会清空；迁移会在服务启动时自动重建数据库。
 4. 首次上线后检查 `/healthz` 返回 `{"ok":true}`，再用两个独立浏览器分别验收建房、加入、三款游戏与断线重连。
 5. 如使用自定义域名，设置 `PUBLIC_ORIGIN=https://你的域名`，并把该源加入 `ALLOWED_ORIGINS` 后重新部署。
 
-SQLite 持久磁盘决定了此版本只能运行单实例；如果未来要横向扩容，应先把房间状态和动作回执迁移到可共享的数据服务。
+免费实例适合临时发给朋友试玩，但闲置 15 分钟后会休眠，唤醒、重启或重新部署时本地 SQLite 会清空。需要稳定保存数据时，应将 `plan` 升级为付费实例并挂载 1 GB [持久磁盘](https://render.com/docs/disks)；SQLite 模式仍只能运行单实例。如果未来要横向扩容，应先把房间状态和动作回执迁移到可共享的数据服务。
 实时连接使用 Render 公网支持的 [WebSocket](https://render.com/docs/websocket)，生产环境由同一 Node 服务同源提供网页、HTTPS/WSS 与健康检查。
 
 ## 已实现规则边界
