@@ -1,0 +1,39 @@
+{
+  "name": "@gamehall/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsup --config tsup.config.ts",
+    "start": "node dist/index.js",
+    "migrate": "tsx src/migrate.ts",
+    "lint": "eslint src test --max-warnings 0",
+    "typecheck": "tsc --noEmit --pretty false",
+    "test": "vitest run --passWithNoTests",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "smoke:load": "tsx test/load-smoke.ts"
+  },
+  "dependencies": {
+    "@gamehall/game-core": "workspace:*",
+    "@gamehall/protocol": "workspace:*",
+    "cookie": "1.1.1",
+    "express": "5.2.1",
+    "helmet": "8.1.0",
+    "socket.io": "4.8.3",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.4",
+    "@types/express": "5.0.6",
+    "@types/node": "24.10.1",
+    "eslint": "9.39.4",
+    "globals": "17.11.0",
+    "socket.io-client": "4.8.3",
+    "tsup": "8.5.1",
+    "tsx": "4.21.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.67.0",
+    "vitest": "4.1.11"
+  }
+}

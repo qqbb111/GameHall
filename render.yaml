@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: gamehall-web
+    runtime: node
+    plan: starter
+    numInstances: 1
+    buildCommand: corepack enable && pnpm install --frozen-lockfile --prod=false && pnpm build
+    startCommand: pnpm --filter @gamehall/server start
+    healthCheckPath: /healthz
+    maxShutdownDelaySeconds: 30
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 24.15.0
+      - key: DATABASE_PATH
+        value: /opt/render/project/src/storage/gamehall.sqlite
+    disk:
+      name: gamehall-data
+      mountPath: /opt/render/project/src/storage
+      sizeGB: 1
