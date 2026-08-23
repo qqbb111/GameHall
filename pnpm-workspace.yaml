@@ -7,5 +7,5 @@ minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
   - "@types/*"
 
-onlyBuiltDependencies:
-  - esbuild
+allowBuilds:
+  esbuild: true
