@@ -8,7 +8,7 @@ import {
   Timer,
   Users,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { GameId } from '@gamehall/protocol';
 import { readRememberedNickname } from './client-preferences';
 import type { GameHallClient } from './gamehall-client';
@@ -19,18 +19,39 @@ import { parseRoomCodeInput, removeRoomQueryFromAddress } from './room-code';
 
 function GameGlyph({ kind }: { kind: GameCardInfo['icon'] }) {
   if (kind === 'gomoku') {
-    return <div className="mini-board" aria-hidden="true"><i className="mini-stone black" /><i className="mini-stone white" /><i className="mini-stone black second" /></div>;
+    return (
+      <div className="gameplay-effect effect-gomoku" aria-hidden="true">
+        <div className="mini-board">
+          <span className="gomoku-win-guide" />
+          {Array.from({ length: 5 }, (_, index) => <i className={`winning-stone stone-${index + 1}`} key={index} />)}
+          <span className="gomoku-win-pulse" />
+        </div>
+      </div>
+    );
   }
   if (kind === 'twenty-four') {
-    return <div className="mini-card" aria-hidden="true"><strong>24</strong><span>♠</span></div>;
+    return (
+      <div className="gameplay-effect effect-twenty-four" aria-hidden="true">
+        <span className="calculation-ring" />
+        <div className="calculation-cards">
+          {Array.from({ length: 4 }, (_, index) => <i className={`calculation-card card-${index + 1}`} key={index}>6</i>)}
+          <strong className="calculation-result">24</strong>
+        </div>
+      </div>
+    );
   }
   if (kind === 'quoridor') {
     return (
-      <div className="mini-quoridor" aria-hidden="true">
-        {Array.from({ length: 9 }, (_, index) => <i key={index} />)}
-        <span className="mini-quoridor-pawn is-dark" />
-        <span className="mini-quoridor-pawn is-light" />
-        <b />
+      <div className="gameplay-effect effect-quoridor" aria-hidden="true">
+        <div className="mini-quoridor">
+          {Array.from({ length: 16 }, (_, index) => <i key={index} />)}
+          <span className="quoridor-route route-one" />
+          <span className="quoridor-route route-two" />
+          <span className="quoridor-route route-three" />
+          <span className="mini-quoridor-pawn is-dark" />
+          <span className="mini-quoridor-pawn is-light" />
+          <b className="quoridor-wall" />
+        </div>
       </div>
     );
   }
@@ -42,14 +63,53 @@ function HeroEditorial() {
   return (
     <div className="editorial-art" aria-hidden="true">
       <span className="editorial-aurora" />
-      <span className="editorial-horizon" />
-      <div className="grand-board">
+      <span className="cinematic-beam beam-one" />
+      <span className="cinematic-beam beam-two" />
+      <div className="cinematic-particles">
+        {Array.from({ length: 7 }, (_, index) => <i className={`particle-${index + 1}`} key={index} />)}
+      </div>
+      <div className="grand-board cinematic-board">
+        <span className="grand-board-depth" />
+        <span className="grand-board-edge" />
         <span className="grand-board-glow" />
+        <span className="grand-board-trail trail-one" />
+        <span className="grand-board-trail trail-two" />
         <i className="grand-stone is-dark is-first" />
         <i className="grand-stone is-dark is-second" />
         <i className="grand-stone is-light" />
       </div>
     </div>
+  );
+}
+
+const HERO_TITLE = '棋逢对手，刚好有空。';
+const HERO_TITLE_LINES = ['棋逢对手，', '刚好有空。'] as const;
+
+type HeroTitleStyle = CSSProperties & {
+  '--char-delay': string;
+  '--char-origin': string;
+};
+
+function CinematicHeroTitle() {
+  let characterIndex = 0;
+  const center = (HERO_TITLE.length - 1) / 2;
+
+  return (
+    <h1 className="cinematic-title" aria-label={HERO_TITLE}>
+      {HERO_TITLE_LINES.map((line, lineIndex) => (
+        <span className={`hero-title-line${lineIndex === 1 ? ' is-gold' : ''}`} aria-hidden="true" key={line}>
+          {Array.from(line, (character) => {
+            const index = characterIndex++;
+            const distanceFromCenter = Math.abs(index - center);
+            const style: HeroTitleStyle = {
+              '--char-delay': `${330 + distanceFromCenter * 82}ms`,
+              '--char-origin': index < center ? '42px' : '-42px',
+            };
+            return <span className="hero-title-char" style={style} key={`${character}-${index}`}>{character}</span>;
+          })}
+        </span>
+      ))}
+    </h1>
   );
 }
 
@@ -136,16 +196,14 @@ export function HomePage({ client }: { client: GameHallClient }) {
       <main id="top">
         <section className="hero">
           <div className="hero-copy">
-            <Reveal className="hero-kicker" delayMs={30} distance={16}>
+            <Reveal className="hero-kicker" delayMs={1_050} distance={16}>
               <div className="eyebrow">今晚，和朋友开一局</div>
             </Reveal>
-            <Reveal delayMs={90} distance={34}>
-              <h1><span>棋逢对手，</span><br /><em>刚好有空。</em></h1>
-            </Reveal>
-            <Reveal delayMs={170} distance={26}>
+            <CinematicHeroTitle />
+            <Reveal delayMs={1_180} distance={26}>
               <p className="hero-description">无需注册，一个邀请码就能坐上牌桌。规则清楚、操作顺手，让胜负留在棋盘上。</p>
             </Reveal>
-            <Reveal delayMs={250} distance={20}>
+            <Reveal delayMs={1_310} distance={20}>
               <div className="trust-row">
                 <span><Users size={16} /> 双人好友房</span>
                 <span><Timer size={16} /> 断线 60 秒重连</span>

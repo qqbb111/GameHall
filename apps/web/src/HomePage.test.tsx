@@ -56,7 +56,33 @@ describe('HomePage', () => {
     expect(screen.getByText('新玩法即将入席')).toBeInTheDocument();
     expect(container.querySelector('.editorial-path')).not.toBeInTheDocument();
     expect(container.querySelector('.editorial-numbers')).not.toBeInTheDocument();
-    expect(container.querySelector('.grand-board')).toBeInTheDocument();
+    expect(container.querySelector('.editorial-horizon')).not.toBeInTheDocument();
+    expect(container.querySelector('.grand-board.cinematic-board')).toBeInTheDocument();
+    expect(container.querySelector('.cinematic-particles')?.closest('[aria-hidden="true"]')).toBeInTheDocument();
+  });
+
+  it('电影级标题保持完整可访问名称，视觉字符不会被重复朗读', () => {
+    const { container } = render(<HomePage client={clientStub()} />);
+    const heading = screen.getByRole('heading', { level: 1, name: '棋逢对手，刚好有空。' });
+    expect(heading).toHaveClass('cinematic-title');
+    const characters = Array.from(container.querySelectorAll<HTMLElement>('.hero-title-char'));
+    expect(characters).toHaveLength(10);
+    expect(container.querySelectorAll('.hero-title-line[aria-hidden="true"]')).toHaveLength(2);
+    expect(characters[0]?.style.getPropertyValue('--char-delay')).toBe(characters[9]?.style.getPropertyValue('--char-delay'));
+    expect(characters[4]?.style.getPropertyValue('--char-delay')).toBe(characters[5]?.style.getPropertyValue('--char-delay'));
+    expect(Number.parseFloat(characters[4]?.style.getPropertyValue('--char-delay') ?? '')).toBeLessThan(Number.parseFloat(characters[0]?.style.getPropertyValue('--char-delay') ?? ''));
+  });
+
+  it('三款在线游戏渲染各自的玩法动效结构', () => {
+    const { container } = render(<HomePage client={clientStub()} />);
+    expect(container.querySelector('.effect-gomoku')).toBeInTheDocument();
+    expect(container.querySelectorAll('.effect-gomoku .winning-stone')).toHaveLength(5);
+    expect(container.querySelector('.effect-gomoku .gomoku-win-guide')).toBeInTheDocument();
+    expect(container.querySelector('.effect-quoridor .quoridor-wall')).toBeInTheDocument();
+    expect(container.querySelectorAll('.effect-quoridor .quoridor-route')).toHaveLength(3);
+    expect(container.querySelector('.effect-twenty-four .calculation-ring')).toBeInTheDocument();
+    expect(container.querySelectorAll('.effect-twenty-four .calculation-card')).toHaveLength(4);
+    expect(container.querySelector('.effect-twenty-four .calculation-result')).toHaveTextContent('24');
   });
 
   it('连接中的提示延迟显示且没有无效重连按钮', () => {
