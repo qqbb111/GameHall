@@ -85,6 +85,15 @@ describe('HomePage', () => {
     expect(container.querySelector('.effect-twenty-four .calculation-result')).toHaveTextContent('24');
   });
 
+  it('主页显现与卡片交互明确忽略系统减少动态效果', () => {
+    const { container } = render(<HomePage client={clientStub()} />);
+    const reveals = container.querySelectorAll('.reveal');
+    expect(reveals.length).toBeGreaterThan(0);
+    expect(container.querySelectorAll('.reveal[data-reduced-motion="ignore"]')).toHaveLength(reveals.length);
+    expect(container.querySelectorAll('.game-card-surface[data-reduced-motion="ignore"]')).toHaveLength(3);
+    expect(container.querySelectorAll('.featured-spark[data-reduced-motion="ignore"]')).toHaveLength(3);
+  });
+
   it('连接中的提示延迟显示且没有无效重连按钮', () => {
     vi.useFakeTimers();
     render(<HomePage client={clientStub({ connection: 'connecting' })} />);

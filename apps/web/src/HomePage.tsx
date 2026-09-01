@@ -143,8 +143,7 @@ export function HomePage({ client }: { client: GameHallClient }) {
 
   function requestNickname() {
     setNicknameError('先留下昵称，再选择一张桌开局');
-    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
-    identityPanel.current?.scrollIntoView?.({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' });
+    identityPanel.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
     nicknameInput.current?.focus();
   }
 
@@ -196,14 +195,14 @@ export function HomePage({ client }: { client: GameHallClient }) {
       <main id="top">
         <section className="hero">
           <div className="hero-copy">
-            <Reveal className="hero-kicker" delayMs={1_050} distance={16}>
+            <Reveal className="hero-kicker" delayMs={1_050} distance={16} respectReducedMotion={false}>
               <div className="eyebrow">今晚，和朋友开一局</div>
             </Reveal>
             <CinematicHeroTitle />
-            <Reveal delayMs={1_180} distance={26}>
+            <Reveal delayMs={1_180} distance={26} respectReducedMotion={false}>
               <p className="hero-description">无需注册，一个邀请码就能坐上牌桌。规则清楚、操作顺手，让胜负留在棋盘上。</p>
             </Reveal>
-            <Reveal delayMs={1_310} distance={20}>
+            <Reveal delayMs={1_310} distance={20} respectReducedMotion={false}>
               <div className="trust-row">
                 <span><Users size={16} /> 双人好友房</span>
                 <span><Timer size={16} /> 断线 60 秒重连</span>
@@ -212,7 +211,7 @@ export function HomePage({ client }: { client: GameHallClient }) {
             </Reveal>
           </div>
 
-          <Reveal className="hero-editorial-reveal" delayMs={150} distance={34}>
+          <Reveal className="hero-editorial-reveal" delayMs={150} distance={34} respectReducedMotion={false}>
             <div className="hero-editorial">
               <HeroEditorial />
               <div className="identity-panel" ref={identityPanel}>
@@ -231,7 +230,7 @@ export function HomePage({ client }: { client: GameHallClient }) {
         </section>
 
         <section className="catalog" aria-labelledby="catalog-title">
-          <Reveal distance={22}>
+          <Reveal distance={22} respectReducedMotion={false}>
             <div className="section-heading">
               <div><span>FEATURED TABLES</span><h2 id="catalog-title">今晚玩什么？</h2></div>
               <p>三张桌已经亮灯。选一局，把邀请码发给你的对手。</p>
@@ -246,7 +245,7 @@ export function HomePage({ client }: { client: GameHallClient }) {
             </div>
           )}
 
-          <Reveal className="invite-strip-reveal" delayMs={50} distance={20}>
+          <Reveal className="invite-strip-reveal" delayMs={50} distance={20} respectReducedMotion={false}>
             <form className="invite-strip" aria-label="加入好友房" onSubmit={(event) => { event.preventDefault(); void joinRoom(); }}>
               <div className="invite-copy"><DoorOpen size={19} /><span><strong>已有房间？</strong><small>带上邀请码入席</small></span></div>
               <div className="invite-entry">
@@ -260,9 +259,9 @@ export function HomePage({ client }: { client: GameHallClient }) {
           {createError && <p className="catalog-error" role="alert">{createError}</p>}
           <div className="featured-grid">
             {onlineGames.map((game, index) => (
-              <Reveal className="game-card-reveal" delayMs={index * 85} distance={36} key={game.id}>
-                <ClickSpark className="featured-spark">
-                  <SpotlightSurface className="game-card-surface" color="rgba(240, 206, 139, 0.28)" tilt>
+              <Reveal className="game-card-reveal" delayMs={index * 85} distance={36} key={game.id} respectReducedMotion={false}>
+                <ClickSpark className="featured-spark" respectReducedMotion={false}>
+                  <SpotlightSurface className="game-card-surface" color="rgba(240, 206, 139, 0.28)" tilt respectReducedMotion={false}>
                     <article className="game-card featured-card">
                       <div className="game-number">0{index + 1}</div>
                       <div className={`game-art accent-${game.accent}`}><span className="game-art-orbit" aria-hidden="true" /><GameGlyph kind={game.icon} /></div>
@@ -280,7 +279,7 @@ export function HomePage({ client }: { client: GameHallClient }) {
             ))}
           </div>
 
-          <Reveal className="coming-reveal" delayMs={120} distance={22}>
+          <Reveal className="coming-reveal" delayMs={120} distance={22} respectReducedMotion={false}>
             <div className="coming-heading"><div><span>COMING SOON</span><h3>新玩法即将入席</h3></div><p>规则确认后逐一开放</p></div>
             <div className="coming-grid">
               {comingGames.map((game) => (

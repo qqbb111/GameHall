@@ -33,20 +33,23 @@ export function Reveal({
   className = '',
   delayMs = 0,
   distance = 24,
+  respectReducedMotion = true,
 }: {
   children: ReactNode;
   className?: string;
   delayMs?: number;
   distance?: number;
+  respectReducedMotion?: boolean;
 }) {
   const elementRef = useRef<HTMLDivElement>(null);
   const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
-  const [visible, setVisible] = useState(() => reducedMotion || typeof IntersectionObserver === 'undefined');
+  const shouldReduceMotion = respectReducedMotion && reducedMotion;
+  const [visible, setVisible] = useState(() => shouldReduceMotion || typeof IntersectionObserver === 'undefined');
 
   useEffect(() => {
     const element = elementRef.current;
     if (!element) return undefined;
-    if (reducedMotion || typeof IntersectionObserver === 'undefined') {
+    if (shouldReduceMotion || typeof IntersectionObserver === 'undefined') {
       const frame = requestAnimationFrame(() => setVisible(true));
       return () => cancelAnimationFrame(frame);
     }
@@ -58,7 +61,7 @@ export function Reveal({
     }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
     observer.observe(element);
     return () => observer.disconnect();
-  }, [reducedMotion]);
+  }, [shouldReduceMotion]);
 
   const style: MotionStyle = {
     '--reveal-delay': `${Math.max(0, delayMs)}ms`,
@@ -69,6 +72,7 @@ export function Reveal({
     <div
       ref={elementRef}
       className={`reveal ${visible ? 'is-visible' : ''} ${className}`.trim()}
+      data-reduced-motion={respectReducedMotion ? 'respect' : 'ignore'}
       style={style}
     >
       {children}
@@ -81,17 +85,19 @@ export function SpotlightSurface({
   className = '',
   color = 'rgba(240, 206, 139, 0.22)',
   tilt = true,
+  respectReducedMotion = true,
 }: {
   children: ReactNode;
   className?: string;
   color?: string;
   tilt?: boolean;
+  respectReducedMotion?: boolean;
 }) {
   const surfaceRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<number | null>(null);
   const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
   const coarsePointer = useMediaQuery('(pointer: coarse)');
-  const interactive = !reducedMotion && !coarsePointer;
+  const interactive = !(respectReducedMotion && reducedMotion) && !coarsePointer;
 
   useEffect(() => () => {
     if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
@@ -141,6 +147,7 @@ export function SpotlightSurface({
       ref={surfaceRef}
       className={`spotlight-surface ${className}`.trim()}
       data-motion={interactive ? 'interactive' : 'static'}
+      data-reduced-motion={respectReducedMotion ? 'respect' : 'ignore'}
       onPointerMove={trackPointer}
       onPointerLeave={resetSurface}
       style={style}
@@ -160,9 +167,11 @@ type Spark = {
 export function ClickSpark({
   children,
   className = '',
+  respectReducedMotion = true,
 }: {
   children: ReactNode;
   className?: string;
+  respectReducedMotion?: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameRef = useRef<number | null>(null);
@@ -170,7 +179,7 @@ export function ClickSpark({
   const sparksRef = useRef<Spark[]>([]);
   const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
   const coarsePointer = useMediaQuery('(pointer: coarse)');
-  const disabled = reducedMotion || coarsePointer;
+  const disabled = (respectReducedMotion && reducedMotion) || coarsePointer;
 
   useEffect(() => () => {
     if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
@@ -267,6 +276,7 @@ export function ClickSpark({
     <span
       className={`click-spark ${className}`.trim()}
       data-motion={disabled ? 'static' : 'interactive'}
+      data-reduced-motion={respectReducedMotion ? 'respect' : 'ignore'}
       onPointerDown={spark}
       onPointerMove={magnet}
       onPointerLeave={resetMagnet}

@@ -78,22 +78,22 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .reveal,
-  .reveal.is-visible {
+  .reveal:not([data-reduced-motion='ignore']),
+  .reveal.is-visible:not([data-reduced-motion='ignore']) {
     opacity: 1 !important;
     transform: none !important;
     filter: none !important;
     transition: none !important;
   }
 
-  .spotlight-surface {
+  .spotlight-surface:not([data-reduced-motion='ignore']) {
     transform: none !important;
     transition: none !important;
     will-change: auto;
   }
 
-  .spotlight-surface::after,
-  .click-spark > canvas {
+  .spotlight-surface:not([data-reduced-motion='ignore'])::after,
+  .click-spark:not([data-reduced-motion='ignore']) > canvas {
     display: none !important;
   }
 }

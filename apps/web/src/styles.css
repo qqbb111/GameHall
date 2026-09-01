@@ -199,7 +199,8 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
+  .room-shell, .room-shell *, .room-shell *::before, .room-shell *::after,
+  .loading-screen, .loading-screen *, .loading-screen *::before, .loading-screen *::after { scroll-behavior: auto !important; transition: none !important; }
 }
 
 /* 房间与对局 */
@@ -491,10 +492,8 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html { scroll-behavior: auto !important; }
-  *, *::before, *::after { animation: none !important; transition: none !important; }
-  .ambient-ribbon { display: none; }
-  .primary-spark .primary-button { transform: none !important; }
+  .room-shell, .room-shell *, .room-shell *::before, .room-shell *::after,
+  .loading-screen, .loading-screen *, .loading-screen *::before, .loading-screen *::after { animation: none !important; transition: none !important; }
 }
 
 /* 首页 2.0：东方夜局 / 漆器月门 */
@@ -1039,11 +1038,6 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
 
 @media (pointer: coarse) {
   .editorial-art::after, .editorial-aurora, .grand-board-glow, .grand-stone { animation: none; }
-  .hero-editorial:hover .grand-board { transform: rotate(-7deg) rotateX(10deg) translate3d(-1%, 0, 0); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .editorial-art::after, .editorial-aurora, .grand-board-glow, .grand-stone { animation: none !important; }
   .hero-editorial:hover .grand-board { transform: rotate(-7deg) rotateX(10deg) translate3d(-1%, 0, 0); }
 }
 
@@ -1673,27 +1667,4 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
   .quoridor-wall { transform: scaleY(1) translateZ(12px); }
   .calculation-result { color: #d6a653; opacity: .9; transform: translate(-50%, -50%) scale(.82); filter: drop-shadow(0 0 8px rgba(243,207,134,.45)); }
   .game-card-surface:active .featured-card { transform: scale(.985); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .hero-copy::before, .hero-title-char, .hero-title-line.is-gold::after,
-  .editorial-art::after, .editorial-aurora, .cinematic-beam, .cinematic-particles i,
-  .grand-board-glow, .grand-board-trail, .grand-board-depth::before, .grand-board-depth::after, .grand-stone, .featured-card .game-art-orbit,
-  .featured-card .game-art > .gameplay-effect, .winning-stone, .gomoku-win-guide, .gomoku-win-pulse,
-  .quoridor-wall, .quoridor-route, .mini-quoridor-pawn, .calculation-card, .calculation-ring, .calculation-result { animation: none !important; }
-  .hero-copy::before { opacity: 1; transform: translate(-50%, -50%) scale(1); filter: none; }
-  .hero-title-char { opacity: 1; transform: none; filter: none; }
-  .hero-title-line.is-gold::after { opacity: 1; transform: scaleX(1); }
-  .hero-editorial:hover .grand-board.cinematic-board { transform: rotate(-7deg) rotateX(11deg) translate3d(-1%, 0, 0); filter: none; }
-  .game-card-surface:hover .effect-gomoku .mini-board,
-  .game-card-surface:focus-within .effect-gomoku .mini-board,
-  .game-card-surface:hover .effect-quoridor .mini-quoridor,
-  .game-card-surface:focus-within .effect-quoridor .mini-quoridor { transform: rotateZ(-4deg) rotateX(5deg); filter: none; }
-  .gomoku-win-guide { opacity: .76; transform: rotate(-45deg) scaleX(1); }
-  .quoridor-route { opacity: .62; }
-  .route-one { transform: rotate(28deg) scaleX(1); }
-  .route-two { transform: rotate(88deg) scaleX(1); }
-  .route-three { transform: rotate(152deg) scaleX(1); }
-  .quoridor-wall { transform: scaleY(1) translateZ(12px); }
-  .calculation-result { color: #d6a653; opacity: .9; transform: translate(-50%, -50%) scale(.82); filter: drop-shadow(0 0 8px rgba(243,207,134,.45)); }
 }

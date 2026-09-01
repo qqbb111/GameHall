@@ -70,6 +70,40 @@ describe('motion primitives', () => {
     expect(screen.getByRole('button', { name: '火花按钮' }).parentElement).toHaveAttribute('data-motion', 'static');
   });
 
+  it('明确忽略减少动态效果时仍启用显现、聚光和火花', () => {
+    installMatchMedia({ '(prefers-reduced-motion: reduce)': true });
+    let callback: IntersectionObserverCallback = () => undefined;
+    class MockIntersectionObserver {
+      root = null;
+      rootMargin = '';
+      thresholds: number[] = [];
+      observe = vi.fn();
+      disconnect = vi.fn();
+      unobserve = vi.fn();
+      takeRecords = vi.fn(() => []);
+
+      constructor(next: IntersectionObserverCallback) {
+        callback = next;
+      }
+    }
+    vi.stubGlobal('IntersectionObserver', MockIntersectionObserver);
+
+    render(
+      <>
+        <Reveal respectReducedMotion={false}><span>仍然显现</span></Reveal>
+        <SpotlightSurface respectReducedMotion={false}><button type="button">持续聚光</button></SpotlightSurface>
+        <ClickSpark respectReducedMotion={false}><button type="button">持续火花</button></ClickSpark>
+      </>,
+    );
+    const reveal = screen.getByText('仍然显现').parentElement!;
+    expect(reveal).not.toHaveClass('is-visible');
+    act(() => callback([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver));
+    expect(reveal).toHaveClass('is-visible');
+    expect(reveal).toHaveAttribute('data-reduced-motion', 'ignore');
+    expect(screen.getByRole('button', { name: '持续聚光' }).parentElement).toHaveAttribute('data-motion', 'interactive');
+    expect(screen.getByRole('button', { name: '持续火花' }).parentElement).toHaveAttribute('data-motion', 'interactive');
+  });
+
   it('SpotlightSurface 跟随精细指针并在离开时复位', () => {
     render(<SpotlightSurface><button type="button">选择牌桌</button></SpotlightSurface>);
     const surface = screen.getByRole('button', { name: '选择牌桌' }).parentElement!;
