@@ -11,6 +11,7 @@ import {
 import type { GameActionCommand } from '@gamehall/protocol';
 
 type ActionHandler = (action: GameActionCommand['action']) => Promise<unknown>;
+const GOMOKU_STAR_POINTS = new Set(['3,3', '3,11', '7,7', '11,3', '11,11']);
 
 function playerName(player: Player): string {
   return player === 0 ? '玩家一' : '玩家二';
@@ -47,18 +48,21 @@ export function GomokuGame({ state, mySeat, active, onAction }: { state: GomokuS
         <div><span>你执 {myColor}</span><h2 aria-live="polite">{state.phase === 'finished' ? '本局结束' : state.turn === mySeat ? '轮到你落子' : '等待对手落子'}</h2></div>
         <div className={`turn-stone ${state.turn === state.blackPlayer ? 'black' : 'white'}`} aria-label={state.turn === state.blackPlayer ? '当前黑方回合' : '当前白方回合'} />
       </div>
-      <div className="board-scroll" aria-label="可横向滚动查看完整棋盘">
-        <div className="gomoku-board" role="grid" aria-label="15乘15五子棋棋盘">
+      <div className="board-scroll" aria-label="完整五子棋棋盘">
+        <div className="gomoku-board" role="grid" aria-label="15乘15五子棋棋盘" aria-describedby="gomoku-keyboard-help">
           {state.board.map((cell, index) => {
             const row = Math.floor(index / GOMOKU_SIZE);
             const col = index % GOMOKU_SIZE;
             const isLast = state.lastMove?.row === row && state.lastMove.col === col;
             const isWin = state.winningLine.some((coord) => coord.row === row && coord.col === col);
+            const isStar = GOMOKU_STAR_POINTS.has(`${row},${col}`);
             const color = cell === null ? '空位' : cell === state.blackPlayer ? '黑子' : '白子';
             return (
               <button
                 ref={(element) => { buttons.current[index] = element; }}
-                className={`gomoku-cell ${myTurn && cell === null ? 'is-playable' : ''} ${isLast ? 'is-last' : ''} ${isWin ? 'is-winning' : ''}`}
+                className={`gomoku-cell ${isStar ? 'is-star' : ''} ${myTurn && cell === null ? 'is-playable' : ''} ${isLast ? 'is-last' : ''} ${isWin ? 'is-winning' : ''}`}
+                data-row={row}
+                data-col={col}
                 key={index}
                 type="button"
                 role="gridcell"
@@ -69,13 +73,14 @@ export function GomokuGame({ state, mySeat, active, onAction }: { state: GomokuS
                 onKeyDown={(event) => handleKey(event, index)}
                 onClick={() => { if (myTurn && cell === null) void onAction({ type: 'place', row, col }); }}
               >
+                {isStar && <span className="board-star" aria-hidden="true" />}
                 {cell !== null && <span className={`stone ${cell === state.blackPlayer ? 'black' : 'white'}`}><i /></span>}
               </button>
             );
           })}
         </div>
       </div>
-      <p className="board-hint">方向键移动焦点，Enter 或空格落子。最近一步以金色圆点标记。</p>
+      <p className="sr-only" id="gomoku-keyboard-help">方向键移动焦点，Enter 或空格落子。最近一步以金色圆点标记。</p>
     </section>
   );
 }
@@ -89,7 +94,7 @@ export function QuoridorGame({ state, mySeat, active, onAction }: { state: Quori
   const myTurn = active && state.phase === 'playing' && state.turn === mySeat;
   const legalMoveKeys = new Set(state.legalMoves.map((coord) => `${coord.row},${coord.col}`));
   const goal = state.goalRows[mySeat] === 0 ? '上边' : '下边';
-  const track = 'minmax(27px, 1fr) minmax(6px, .16fr) minmax(27px, 1fr) minmax(6px, .16fr) minmax(27px, 1fr) minmax(6px, .16fr) minmax(27px, 1fr) minmax(6px, .16fr) minmax(27px, 1fr) minmax(6px, .16fr) minmax(27px, 1fr) minmax(6px, .16fr) minmax(27px, 1fr) minmax(6px, .16fr) minmax(27px, 1fr) minmax(6px, .16fr) minmax(27px, 1fr)';
+  const track = 'repeat(8, minmax(0, 1fr) minmax(0, .16fr)) minmax(0, 1fr)';
 
   const wallCandidates = useMemo(() => {
     const items: Array<{ row: number; col: number; orientation: WallOrientation; legal: boolean }> = [];
@@ -251,7 +256,7 @@ export function TwentyFourGame({ state, mySeat, active, serverNowMs, onAction }:
     <section className="game-surface twenty-four-surface" aria-label="24点速度对决">
       <div className="surface-title score-title">
         <div><span>第 {state.round} 题 · 先得 5 分</span><h2 aria-live="polite">{state.phase === 'answering' ? '抢先算出 24' : state.phase === 'revealing' ? '本题揭晓' : '比赛结束'}</h2></div>
-        <div className="score-board" aria-label={`比分，你 ${state.scores[mySeat]} 分，对手 ${state.scores[mySeat === 0 ? 1 : 0]} 分`}><b aria-hidden="true" className={mySeat === 0 ? 'mine' : ''}>{state.scores[0]}</b><span aria-hidden="true">:</span><b aria-hidden="true" className={mySeat === 1 ? 'mine' : ''}>{state.scores[1]}</b></div>
+        <div className="score-board" key={`${state.scores[0]}-${state.scores[1]}`} aria-label={`比分，你 ${state.scores[mySeat]} 分，对手 ${state.scores[mySeat === 0 ? 1 : 0]} 分`}><b aria-hidden="true" className={mySeat === 0 ? 'mine' : ''}>{state.scores[0]}</b><span aria-hidden="true">:</span><b aria-hidden="true" className={mySeat === 1 ? 'mine' : ''}>{state.scores[1]}</b></div>
       </div>
       <div className="round-clock" role="timer" aria-label={`本题剩余 ${Math.ceil(remainingMs / 1000)} 秒`}>
         <div><span style={{ width: `${Math.min(100, remainingMs / 300)}%` }} /></div><strong>{(remainingMs / 1000).toFixed(1)}s</strong>

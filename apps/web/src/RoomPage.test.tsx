@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createTwentyFourState, viewTwentyFourState } from '@gamehall/game-core';
 import type { GameSnapshot, RoomSnapshot } from '@gamehall/protocol';
@@ -15,7 +15,10 @@ const state = createTwentyFourState([
 const base = viewTwentyFourState(state, 1_000);
 
 describe('RoomPage result copy', () => {
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
 
   it('24 点按真实终局原因展示胜负，恢复超时仍产生可见结果', () => {
     expect(resultMessage('twenty-four', { ...base, phase: 'finished', winner: 0, finishReason: 'score' }, 0)).toContain('5 分');
@@ -41,9 +44,9 @@ describe('RoomPage result copy', () => {
     });
     const client = (connection: GameHallClient['connection'], roomValue: RoomSnapshot, gameValue: GameSnapshot): GameHallClient => ({
       loading: false, connection, session: { sessionId: 'session', reconnectableRoomCode: null },
-      room: roomValue, game: gameValue, error: null, reactions: [], clearError: vi.fn(), reconnect: vi.fn(),
+      room: roomValue, game: gameValue, error: null, messages: [], messageToasts: [], clearError: vi.fn(), reconnect: vi.fn(),
       createRoom: vi.fn(), joinRoom: vi.fn(), setReady: vi.fn(), leaveRoom: vi.fn(),
-      submitGameAction: vi.fn(), requestRematch: vi.fn(), sendReaction: vi.fn(),
+      submitGameAction: vi.fn(), requestRematch: vi.fn(), sendMessage: vi.fn(),
     }) as GameHallClient;
 
     const activeRoom = room('active', 1_000);
@@ -59,5 +62,91 @@ describe('RoomPage result copy', () => {
     rendered.rerender(<RoomPage client={client('online', room('paused', 11_000), game('paused', 11_000))} />);
     act(() => vi.advanceTimersByTime(1));
     expect(screen.getByRole('timer')).toHaveAccessibleName('本题剩余 20 秒');
+  });
+
+  it('分别复制完整邀请链接和六位房间码', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    const room: RoomSnapshot = {
+      roomId: 'room', code: 'ABC234', gameId: 'gomoku', status: 'waiting', version: 1,
+      hostSeat: 0, mySeat: 0, pauseReason: null, restartDeadlineMs: null, serverTimeMs: 1_000,
+      members: [
+        { seat: 0, nickname: '我', ready: false, rematchReady: false, online: true, disconnectedAtMs: null, disconnectDeadlineMs: null },
+      ],
+    };
+    const client = {
+      loading: false, connection: 'online', session: { sessionId: 'session', reconnectableRoomCode: null },
+      room, game: null, error: null, messages: [], messageToasts: [], clearError: vi.fn(), reconnect: vi.fn(),
+      createRoom: vi.fn(), joinRoom: vi.fn(), setReady: vi.fn(), leaveRoom: vi.fn(),
+      submitGameAction: vi.fn(), requestRematch: vi.fn(), sendMessage: vi.fn(),
+    } as GameHallClient;
+
+    render(<RoomPage client={client} />);
+    fireEvent.click(screen.getByRole('button', { name: '复制邀请链接' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(`${window.location.origin}${window.location.pathname}?room=ABC234`));
+    fireEvent.click(screen.getByRole('button', { name: '复制六位房间码' }));
+    await waitFor(() => expect(writeText).toHaveBeenLastCalledWith('ABC234'));
+  });
+
+  it('品牌与离开按钮复用同一确认流程，并支持 Escape 与焦点恢复', async () => {
+    const room: RoomSnapshot = {
+      roomId: 'room', code: 'ABC234', gameId: 'gomoku', status: 'waiting', version: 1,
+      hostSeat: 0, mySeat: 0, pauseReason: null, restartDeadlineMs: null, serverTimeMs: 1_000,
+      members: [{ seat: 0, nickname: '我', ready: false, rematchReady: false, online: true, disconnectedAtMs: null, disconnectDeadlineMs: null }],
+    };
+    const leaveRoom = vi.fn().mockResolvedValue({ ok: true });
+    const client = {
+      loading: false, connection: 'online', session: { sessionId: 'session', reconnectableRoomCode: null },
+      room, game: null, error: null, messages: [], messageToasts: [], clearError: vi.fn(), reconnect: vi.fn(),
+      createRoom: vi.fn(), joinRoom: vi.fn(), setReady: vi.fn(), leaveRoom,
+      submitGameAction: vi.fn(), requestRematch: vi.fn(), sendMessage: vi.fn(),
+    } as GameHallClient;
+
+    render(<RoomPage client={client} />);
+    const brand = screen.getByRole('button', { name: '返回主界面并离开房间' });
+    fireEvent.click(brand);
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('确认离开房间');
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    expect(brand).toHaveFocus();
+
+    fireEvent.click(screen.getByRole('button', { name: '离开房间' }));
+    fireEvent.click(screen.getByRole('button', { name: '确认离开' }));
+    await waitFor(() => expect(leaveRoom).toHaveBeenCalledTimes(1));
+  });
+
+  it('认输只提交 resign，并支持八个快捷表情和 100 字自定义消息', async () => {
+    const room: RoomSnapshot = {
+      roomId: 'room', code: 'ABC234', gameId: 'gomoku', status: 'active', version: 3,
+      hostSeat: 0, mySeat: 0, pauseReason: null, restartDeadlineMs: null, serverTimeMs: 1_000,
+      members: [
+        { seat: 0, nickname: '我', ready: true, rematchReady: false, online: true, disconnectedAtMs: null, disconnectDeadlineMs: null },
+        { seat: 1, nickname: '好友', ready: true, rematchReady: false, online: true, disconnectedAtMs: null, disconnectDeadlineMs: null },
+      ],
+    };
+    const submitGameAction = vi.fn().mockResolvedValue({ ok: true });
+    const sendMessage = vi.fn().mockResolvedValue({ ok: true });
+    const client = {
+      loading: false, connection: 'online', session: { sessionId: 'session', reconnectableRoomCode: null },
+      room, game: null, error: null, messages: [], messageToasts: [], clearError: vi.fn(), reconnect: vi.fn(),
+      createRoom: vi.fn(), joinRoom: vi.fn(), setReady: vi.fn(), leaveRoom: vi.fn(),
+      submitGameAction, requestRematch: vi.fn(), sendMessage,
+    } as GameHallClient;
+
+    render(<RoomPage client={client} />);
+    expect(screen.getAllByRole('button', { name: /发送 [👍👏😄🤔🔥🎉😮😭]/u })).toHaveLength(8);
+    fireEvent.click(screen.getByRole('button', { name: '认输' }));
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('你仍会留在房间查看结算');
+    fireEvent.click(screen.getByRole('button', { name: '确认认输' }));
+    await waitFor(() => expect(submitGameAction).toHaveBeenCalledWith({ type: 'resign' }));
+
+    fireEvent.click(screen.getByRole('button', { name: '发送 🎉' }));
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledWith('🎉'));
+    const input = screen.getByLabelText('发一条消息');
+    fireEvent.change(input, { target: { value: '棋'.repeat(101) } });
+    expect(screen.getByText('100 / 100')).toBeInTheDocument();
+    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
+    fireEvent.submit(input.closest('form')!);
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledWith('棋'.repeat(100)));
   });
 });

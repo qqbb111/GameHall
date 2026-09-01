@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { legalQuoridorMoves, type GomokuState, type QuoridorState, type QuoridorView, type TwentyFourState, type TwentyFourView } from '@gamehall/game-core';
-import type { Reaction } from '@gamehall/protocol';
 import { GameHallDatabase } from '../../src/database';
 import { createGameHallServer, type RunningGameHallServer } from '../../src/server';
 import {
@@ -16,7 +15,7 @@ import {
   leaveRoom,
   reconnectPeer,
   rematch,
-  sendReaction,
+  sendMessage,
   setReady,
   startTwoPlayerRoom,
   waitFor,
@@ -55,7 +54,7 @@ afterEach(async () => {
 });
 
 describe('GameHall realtime rooms', () => {
-  it('两个真实客户端完成五子棋整局、幂等/乱序校验、表情和交换阵营复赛', async () => {
+  it('两个真实客户端完成五子棋整局、幂等/乱序校验、消息和交换阵营复赛', async () => {
     const running = await startServer();
     const started = await startTwoPlayerRoom(running.url, 'gomoku');
     const [host, guest] = track(started.host, started.guest);
@@ -66,19 +65,19 @@ describe('GameHall realtime rooms', () => {
     const white = bySeat[initial.blackPlayer === 0 ? 1 : 0];
     let version = host.room!.version;
 
-    const unacknowledgedReaction = new Promise<{ reaction: Reaction }>((resolve) => {
-      guest.socket.once('reaction:received', resolve);
+    const unacknowledgedMessage = new Promise<{ content: string }>((resolve) => {
+      guest.socket.once('room:message', resolve);
     });
     (host.socket as unknown as { emit: (event: string, payload: unknown) => void })
-      .emit('reaction:send', { roomId, reaction: '👍' });
-    await expect(unacknowledgedReaction).resolves.toMatchObject({ reaction: '👍' });
+      .emit('room:message:send', { messageId: randomUUID(), roomId, content: '👍' });
+    await expect(unacknowledgedMessage).resolves.toMatchObject({ content: '👍' });
     expect((await fetch(`${running.url}/healthz`)).ok).toBe(true);
 
-    const reactionReceived = new Promise<{ reaction: Reaction; nickname: string }>((resolve) => {
-      guest.socket.once('reaction:received', resolve);
+    const messageReceived = new Promise<{ content: string; nickname: string }>((resolve) => {
+      guest.socket.once('room:message', resolve);
     });
-    expect(await sendReaction(host, roomId, '👏')).toMatchObject({ ok: true });
-    await expect(reactionReceived).resolves.toMatchObject({ reaction: '👏', nickname: '木纹棋手' });
+    expect(await sendMessage(host, roomId, '👏')).toMatchObject({ ok: true });
+    await expect(messageReceived).resolves.toMatchObject({ content: '👏', nickname: '木纹棋手' });
 
     const firstActionId = randomUUID();
     const first = await gameAction(black, roomId, version, { type: 'place', row: 0, col: 0 }, firstActionId);
@@ -112,6 +111,47 @@ describe('GameHall realtime rooms', () => {
     expect(await rematch(guest, roomId)).toMatchObject({ ok: true });
     await waitFor(() => host.room?.status === 'active' && (host.game!.view as GomokuState).phase === 'playing');
     expect((host.game!.view as GomokuState).blackPlayer).toBe(initial.blackPlayer === 0 ? 1 : 0);
+  });
+
+  it('房间消息实时同步、按字素校验、幂等去重、保留最近 100 条并随房间级联清理', async () => {
+    const running = await startServer();
+    const started = await startTwoPlayerRoom(running.url, 'gomoku');
+    const [host, guest] = track(started.host, started.guest);
+    const messageId = randomUUID();
+
+    expect(await sendMessage(host, started.roomId, '  今晚   再来一局  ', messageId)).toMatchObject({ ok: true });
+    await waitFor(() => guest.messages.some((message) => message.messageId === messageId));
+    expect(guest.messages.find((message) => message.messageId === messageId)).toMatchObject({ content: '今晚 再来一局', nickname: '木纹棋手' });
+
+    const receivedCount = guest.messages.length;
+    expect(await sendMessage(host, started.roomId, '今晚 再来一局', messageId)).toMatchObject({ ok: true });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(guest.messages).toHaveLength(receivedCount);
+    expect(await sendMessage(host, started.roomId, '换一条内容', messageId)).toMatchObject({ ok: false, error: { code: 'MESSAGE_ID_REUSED' } });
+    expect(await sendMessage(host, started.roomId, '棋'.repeat(101))).toMatchObject({ ok: false, error: { code: 'INVALID_MESSAGE' } });
+    expect(await sendMessage(host, started.roomId, '坏\u0000消息')).toMatchObject({ ok: false, error: { code: 'INVALID_MESSAGE' } });
+    expect(await sendMessage(host, started.roomId, '<img src=x onerror=alert(1)>')).toMatchObject({ ok: true });
+
+    for (let index = 0; index < 101; index += 1) {
+      expect(running.roomService.sendMessage(host.session.sessionId, {
+        messageId: randomUUID(), roomId: started.roomId, content: `第 ${index + 1} 条`,
+      })).toMatchObject({ ok: true });
+    }
+    expect(running.database.raw.prepare('SELECT COUNT(*) AS count FROM room_messages WHERE room_id=?').get(started.roomId)).toEqual({ count: 100 });
+
+    guest.messages = [];
+    guest.socket.disconnect();
+    await reconnectPeer(guest);
+    await waitFor(() => guest.messages.length === 100);
+    expect(guest.messages[0]?.content).toBe('第 2 条');
+    expect(guest.messages[99]?.content).toBe('第 101 条');
+
+    const loneHost = track(await createPeer(running.url))[0];
+    const created = await createRoom(loneHost, '独坐棋手', 'gomoku');
+    if (!created.ok || !created.roomId) return;
+    expect(await sendMessage(loneHost, created.roomId, '临别一言')).toMatchObject({ ok: true });
+    expect(await leaveRoom(loneHost, created.roomId)).toMatchObject({ ok: true });
+    expect(running.database.raw.prepare('SELECT COUNT(*) AS count FROM room_messages WHERE room_id=?').get(created.roomId)).toEqual({ count: 0 });
   });
 
   it('断线后暂停并可凭原 Cookie 恢复，超时后由服务器判负', async () => {
@@ -181,7 +221,7 @@ describe('GameHall realtime rooms', () => {
     await waitFor(() => host.room?.status === 'finished' && host.room.members.length === 1);
     expect((host.game!.view as GomokuState).result).toEqual({ type: 'win', winner: 0, reason: 'leave' });
     expect(running.database.raw.prepare('SELECT COUNT(*) AS count FROM room_members WHERE room_id=?').get(started.roomId)).toEqual({ count: 1 });
-    expect(await sendReaction(guest, started.roomId, '👍')).toMatchObject({ ok: false, error: { code: 'NOT_A_MEMBER' } });
+    expect(await sendMessage(guest, started.roomId, '👍')).toMatchObject({ ok: false, error: { code: 'NOT_A_MEMBER' } });
     guest.room = null;
     running.roomService.emitSnapshots(started.roomId);
     await new Promise((resolve) => setTimeout(resolve, 30));
@@ -210,6 +250,7 @@ describe('GameHall realtime rooms', () => {
     expect(illegalRepeat).toMatchObject({ ok: false, error: { code: 'NOT_YOUR_TURN' } });
 
     let finalQuoridor: QuoridorState | null = null;
+    let winningVersion: number | null = null;
     for (let turn = 0; turn < 80; turn += 1) {
       const row = running.database.raw.prepare('SELECT version, state_json FROM rooms WHERE id=?').get(quoridor.roomId) as { version: number; state_json: string };
       const authoritative = JSON.parse(row.state_json) as QuoridorState;
@@ -222,9 +263,31 @@ describe('GameHall realtime rooms', () => {
         .sort((left, right) => Math.abs(left.row - authoritative.goalRows[authoritative.turn]) - Math.abs(right.row - authoritative.goalRows[authoritative.turn]))[0]!;
       const moved = await gameAction(actor, quoridor.roomId, row.version, { type: 'move', ...target });
       expect(moved).toMatchObject({ ok: true });
+      if (!moved.ok) continue;
+      const persisted = running.database.raw.prepare('SELECT status, version, state_json FROM rooms WHERE id=?').get(quoridor.roomId) as { status: string; version: number; state_json: string };
+      const persistedState = JSON.parse(persisted.state_json) as QuoridorState;
+      if (persistedState.phase === 'finished') {
+        finalQuoridor = persistedState;
+        winningVersion = moved.version!;
+        expect(persisted.status).toBe('finished');
+        expect(persisted.version).toBe(winningVersion);
+        expect(persistedState.result).toMatchObject({ type: 'win', winner: authoritative.turn, reason: 'goal' });
+        break;
+      }
     }
-    await waitFor(() => qHost.room?.status === 'finished');
-    expect(finalQuoridor?.result).toMatchObject({ type: 'win', reason: 'goal' });
+    expect(finalQuoridor?.wallsRemaining).not.toEqual([10, 10]);
+    expect(winningVersion).not.toBeNull();
+    await waitFor(() => qHost.room?.status === 'finished' && qGuest.room?.status === 'finished'
+      && (qHost.game?.view as QuoridorView | undefined)?.result !== null
+      && (qGuest.game?.view as QuoridorView | undefined)?.result !== null);
+    expect(qHost.room?.version).toBe(winningVersion);
+    expect(qGuest.room?.version).toBe(winningVersion);
+    expect(qHost.game?.version).toBe(winningVersion);
+    expect(qGuest.game?.version).toBe(winningVersion);
+    expect((qHost.game?.view as QuoridorView).result).toEqual(finalQuoridor?.result);
+    expect((qGuest.game?.view as QuoridorView).result).toEqual(finalQuoridor?.result);
+    expect(await gameAction(qHost, quoridor.roomId, winningVersion!, { type: 'move', row: 0, col: 0 }))
+      .toMatchObject({ ok: false, error: { code: 'GAME_NOT_ACTIVE' } });
 
     const twentyFour = await startTwoPlayerRoom(running.url, 'twenty-four');
     const [tHost, tGuest] = track(twentyFour.host, twentyFour.guest);
@@ -303,6 +366,7 @@ describe('GameHall realtime rooms', () => {
     const started = await startTwoPlayerRoom(firstServer.url, 'gomoku');
     const [oldHost, oldGuest] = track(started.host, started.guest);
     const originalState = oldHost.game!.view as GomokuState;
+    expect(await sendMessage(oldHost, started.roomId, '重启后还在')).toMatchObject({ ok: true });
 
     await firstServer.close();
     const secondServer = await startServer(databasePath);
@@ -314,6 +378,8 @@ describe('GameHall realtime rooms', () => {
     expect(newHost.room?.code).toBe(oldHost.room?.code);
     expect((newHost.game!.view as GomokuState).blackPlayer).toBe(originalState.blackPlayer);
     expect(newHost.room!.version).toBeGreaterThan(oldHost.room!.version);
+    await waitFor(() => newHost.messages.some((message) => message.content === '重启后还在'));
+    expect(newGuest.messages).toEqual(expect.arrayContaining([expect.objectContaining({ content: '重启后还在', nickname: '木纹棋手' })]));
   });
 
   it('24 点服务重启后恢复同一权威题面、分数和剩余计时', async () => {

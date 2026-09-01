@@ -1,9 +1,18 @@
+import { useEffect } from 'react';
 import { HomePage } from './HomePage';
 import { RoomPage } from './RoomPage';
+import { rememberNickname } from './client-preferences';
 import { useGameHallClient } from './gamehall-client';
 
 export function App() {
   const client = useGameHallClient();
+
+  useEffect(() => {
+    const room = client.room;
+    if (!room) return;
+    const me = room.members.find((member) => member.seat === room.mySeat);
+    if (me) rememberNickname(me.nickname);
+  }, [client.room]);
 
   if (client.loading) {
     return (

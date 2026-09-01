@@ -4,7 +4,6 @@ export const gameIds = ['gomoku', 'quoridor', 'twenty-four'] as const;
 export type GameId = (typeof gameIds)[number];
 export type PlayerSeat = 0 | 1;
 export type RoomStatus = 'waiting' | 'active' | 'paused' | 'finished';
-export type Reaction = '👍' | '👏' | '😄' | '🤔';
 
 const commandId = z.string().uuid();
 const roomCode = z.string().regex(/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$/);
@@ -24,7 +23,12 @@ export const joinRoomSchema = z.object({ commandId, nickname, code: roomCode }).
 export const readyRoomSchema = z.object({ commandId, roomId, ready: z.boolean() }).strict();
 export const leaveRoomSchema = z.object({ commandId, roomId }).strict();
 export const rematchSchema = z.object({ commandId, roomId, requested: z.boolean() }).strict();
-export const reactionSchema = z.object({ roomId, reaction: z.enum(['👍', '👏', '😄', '🤔']) }).strict();
+export const roomMessageSchema = z.object({
+  messageId: z.string().uuid(),
+  roomId,
+  // The server performs the authoritative visible-grapheme and safety checks.
+  content: z.string().min(1).max(2_000),
+}).strict();
 const transportActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('place'), row: z.number().int(), col: z.number().int() }).strict(),
   z.object({ type: z.literal('move'), row: z.number().int(), col: z.number().int() }).strict(),
@@ -46,7 +50,7 @@ export type JoinRoomCommand = z.infer<typeof joinRoomSchema>;
 export type ReadyRoomCommand = z.infer<typeof readyRoomSchema>;
 export type LeaveRoomCommand = z.infer<typeof leaveRoomSchema>;
 export type RematchCommand = z.infer<typeof rematchSchema>;
-export type ReactionCommand = z.infer<typeof reactionSchema>;
+export type RoomMessageCommand = z.infer<typeof roomMessageSchema>;
 export type GameActionCommand = z.infer<typeof gameActionSchema>;
 
 export type RoomMemberView = {
@@ -83,6 +87,15 @@ export type GameSnapshot = {
   serverTimeMs: number;
 };
 
+export type RoomMessage = {
+  messageId: string;
+  roomId: string;
+  seat: PlayerSeat;
+  nickname: string;
+  content: string;
+  sentAtMs: number;
+};
+
 export type CommandError = {
   commandId: string | null;
   event: string;
@@ -100,7 +113,8 @@ export type ServerToClientEvents = {
   'room:snapshot': (snapshot: RoomSnapshot) => void;
   'game:snapshot': (snapshot: GameSnapshot) => void;
   'presence:update': (snapshot: RoomSnapshot) => void;
-  'reaction:received': (message: { roomId: string; seat: PlayerSeat; nickname: string; reaction: Reaction; sentAtMs: number }) => void;
+  'room:message': (message: RoomMessage) => void;
+  'room:message:history': (payload: { roomId: string; messages: RoomMessage[] }) => void;
   'command:error': (error: CommandError) => void;
 };
 
@@ -111,7 +125,7 @@ export type ClientToServerEvents = {
   'room:leave': (command: LeaveRoomCommand, ack: (result: CommandAck) => void) => void;
   'game:action': (command: GameActionCommand, ack: (result: CommandAck) => void) => void;
   'game:rematch': (command: RematchCommand, ack: (result: CommandAck) => void) => void;
-  'reaction:send': (command: ReactionCommand, ack: (result: CommandAck) => void) => void;
+  'room:message:send': (command: RoomMessageCommand, ack: (result: CommandAck) => void) => void;
 };
 
 export type SessionResponse = {

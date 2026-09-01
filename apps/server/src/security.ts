@@ -23,6 +23,15 @@ export function normalizeNickname(input: string): { display: string; key: string
   return { display, key: display.normalize('NFKC').toLocaleLowerCase('zh-CN') };
 }
 
+export function normalizeRoomMessage(input: string): string | null {
+  const display = input.normalize('NFC').trim().replace(/\s+/gu, ' ');
+  const safetyText = display.replaceAll('\u200D', '');
+  if (!safetyText || bidiAndControl.test(safetyText)) return null;
+  const segmenter = new Intl.Segmenter('zh-CN', { granularity: 'grapheme' });
+  const count = [...segmenter.segment(display)].length;
+  return count >= 1 && count <= 100 ? display : null;
+}
+
 export function stableStringify(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;

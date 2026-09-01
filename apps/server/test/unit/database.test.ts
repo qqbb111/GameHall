@@ -10,8 +10,10 @@ describe('GameHallDatabase', () => {
       expect(database.raw.prepare('SELECT version, name FROM schema_migrations').all()).toEqual([
         { version: 1, name: 'initial_schema' },
         { version: 2, name: 'server_runtime_heartbeat' },
+        { version: 3, name: 'room_messages' },
       ]);
       expect(database.raw.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='server_runtime'").get()).toEqual({ name: 'server_runtime' });
+      expect(database.raw.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='room_messages'").get()).toEqual({ name: 'room_messages' });
     } finally {
       database.close();
     }

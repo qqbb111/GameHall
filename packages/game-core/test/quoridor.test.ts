@@ -53,7 +53,7 @@ describe('quoridor', () => {
     expect(canPlaceQuoridorWall(state, { row: 3, col: 4, orientation: 'V' })).toMatchObject({ ok: false, code: 'PATH_BLOCKED' });
   });
 
-  it('moves, places walls and detects the goal', () => {
+  it('finishes immediately on the goal after an asymmetric wall and move history', () => {
     let state = createQuoridorState(0);
     const wall = applyQuoridorAction(state, 0, { type: 'placeWall', row: 4, col: 4, orientation: 'H' });
     expect(wall.ok).toBe(true);
@@ -63,6 +63,45 @@ describe('quoridor', () => {
     state.turn = 0;
     state.pawns[0] = { row: 1, col: 0 };
     const win = applyQuoridorAction(state, 0, { type: 'move', row: 0, col: 0 });
-    expect(win.ok && win.state.result).toMatchObject({ type: 'win', winner: 0 });
+    expect(win.ok).toBe(true);
+    if (!win.ok) return;
+    expect(win.state.phase).toBe('finished');
+    expect(win.state.turn).toBe(0);
+    expect(win.state.pawns[0]).toEqual({ row: 0, col: 0 });
+    expect(win.state.result).toEqual({ type: 'win', winner: 0, reason: 'goal' });
+    expect(applyQuoridorAction(win.state, 1, { type: 'move', row: 1, col: 4 })).toMatchObject({
+      ok: false,
+      error: { code: 'GAME_FINISHED' },
+    });
+  });
+
+  it('finishes immediately when either seat reaches its own goal row', () => {
+    const south = createQuoridorState(0);
+    south.pawns[0] = { row: 1, col: 2 };
+    const southWin = applyQuoridorAction(south, 0, { type: 'move', row: 0, col: 2 });
+    expect(southWin.ok && southWin.state).toMatchObject({
+      phase: 'finished',
+      result: { type: 'win', winner: 0, reason: 'goal' },
+    });
+
+    const north = createQuoridorState(0);
+    north.turn = 1;
+    north.pawns[1] = { row: 7, col: 6 };
+    const northWin = applyQuoridorAction(north, 1, { type: 'move', row: 8, col: 6 });
+    expect(northWin.ok && northWin.state).toMatchObject({
+      phase: 'finished',
+      result: { type: 'win', winner: 1, reason: 'goal' },
+    });
+  });
+
+  it('finishes immediately when a straight jump lands on the goal row', () => {
+    const state = createQuoridorState(0);
+    state.pawns = [{ row: 2, col: 4 }, { row: 1, col: 4 }];
+    const win = applyQuoridorAction(state, 0, { type: 'move', row: 0, col: 4 });
+    expect(win.ok && win.state).toMatchObject({
+      phase: 'finished',
+      pawns: [{ row: 0, col: 4 }, { row: 1, col: 4 }],
+      result: { type: 'win', winner: 0, reason: 'goal' },
+    });
   });
 });

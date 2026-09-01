@@ -22,6 +22,21 @@ describe('game components', () => {
     expect(onAction).toHaveBeenCalledWith({ type: 'place', row: 7, col: 8 });
   });
 
+  it('五子棋使用 225 个格点并在标准坐标绘制五个纯视觉星位', () => {
+    const { container } = render(<GomokuGame state={createGomokuState(0)} mySeat={0} active onAction={vi.fn()} />);
+    const cells = screen.getAllByRole('gridcell');
+    expect(cells).toHaveLength(225);
+    expect(cells[0]).toHaveAttribute('data-row', '0');
+    expect(cells[0]).toHaveAttribute('data-col', '0');
+    expect(cells[224]).toHaveAttribute('data-row', '14');
+    expect(cells[224]).toHaveAttribute('data-col', '14');
+    expect(container.querySelectorAll('.board-star')).toHaveLength(5);
+    for (const [row, col] of [[3, 3], [3, 11], [7, 7], [11, 3], [11, 11]]) {
+      expect(container.querySelector(`.gomoku-cell[data-row="${row}"][data-col="${col}"] .board-star`)).not.toBeNull();
+    }
+    expect(screen.getByText(/方向键移动焦点/)).toHaveClass('sr-only');
+  });
+
   it('路墙棋只在合法目标上触发移动', () => {
     const onAction = vi.fn().mockResolvedValue(undefined);
     const state = createQuoridorState(0);
@@ -30,6 +45,14 @@ describe('game components', () => {
     const legal = view.legalMoves[0]!;
     fireEvent.click(screen.getByRole('gridcell', { name: new RegExp(`第 ${legal.row + 1} 行第 ${legal.col + 1} 列.*可移动`) }));
     expect(onAction).toHaveBeenCalledWith({ type: 'move', row: legal.row, col: legal.col });
+  });
+
+  it('路墙棋棋子是两个独立的单体圆形元素', () => {
+    const view = quoridorDefinition.viewFor(createQuoridorState(0), 0, 0);
+    const { container } = render(<QuoridorGame state={view} mySeat={0} active onAction={vi.fn()} />);
+    expect(screen.getAllByRole('gridcell')).toHaveLength(81);
+    expect(container.querySelectorAll('.pawn')).toHaveLength(2);
+    expect(container.querySelectorAll('.pawn > i')).toHaveLength(2);
   });
 
   it('路墙棋棋盘和放墙锚点使用方向键单焦点导航', () => {

@@ -1,0 +1,99 @@
+.reveal {
+  opacity: 0;
+  transform: translate3d(0, var(--reveal-distance, 24px), 0);
+  filter: blur(8px);
+  transition:
+    opacity .72s cubic-bezier(.22, 1, .36, 1) var(--reveal-delay, 0ms),
+    transform .82s cubic-bezier(.22, 1, .36, 1) var(--reveal-delay, 0ms),
+    filter .72s ease var(--reveal-delay, 0ms);
+}
+
+.reveal.is-visible {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  filter: blur(0);
+}
+
+.spotlight-surface {
+  --spot-x: 50%;
+  --spot-y: 50%;
+  --tilt-x: 0deg;
+  --tilt-y: 0deg;
+  --parallax-x: 0px;
+  --parallax-y: 0px;
+  --surface-lift: 0px;
+  position: relative;
+  transform: perspective(900px) translateY(var(--surface-lift)) rotateX(var(--tilt-x)) rotateY(var(--tilt-y));
+  transform-style: preserve-3d;
+  transition: transform .48s cubic-bezier(.2, .8, .2, 1);
+  will-change: transform;
+}
+
+.spotlight-surface::after {
+  content: '';
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(340px circle at var(--spot-x) var(--spot-y), var(--spotlight-color), transparent 62%);
+  mix-blend-mode: screen;
+  transition: opacity .35s ease;
+}
+
+.spotlight-surface.is-tracking::after,
+.spotlight-surface:focus-within::after {
+  opacity: 1;
+}
+
+.click-spark {
+  position: relative;
+  display: block;
+  isolation: isolate;
+}
+
+.click-spark > :not(canvas) {
+  position: relative;
+  z-index: 1;
+}
+
+.click-spark > canvas {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+  overflow: visible;
+}
+
+@media (pointer: coarse) {
+  .spotlight-surface {
+    transform: none !important;
+    will-change: auto;
+  }
+
+  .spotlight-surface::after,
+  .click-spark > canvas {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal,
+  .reveal.is-visible {
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+    transition: none !important;
+  }
+
+  .spotlight-surface {
+    transform: none !important;
+    transition: none !important;
+    will-change: auto;
+  }
+
+  .spotlight-surface::after,
+  .click-spark > canvas {
+    display: none !important;
+  }
+}

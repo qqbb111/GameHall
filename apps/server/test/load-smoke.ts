@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { createGameHallServer } from '../src/server';
-import { TEST_ORIGIN, createPeer, createRoom, joinRoom, sendReaction, setReady, waitFor, type TestPeer } from './helpers';
+import { TEST_ORIGIN, createPeer, createRoom, joinRoom, sendMessage, setReady, waitFor, type TestPeer } from './helpers';
 
 const startedAt = Date.now();
 const application = createGameHallServer({
@@ -33,7 +33,7 @@ try {
     setReady(guest, roomId),
   ]));
   await waitFor(() => roomResults.every(({ host, guest }) => host.room?.status === 'active' && guest.room?.status === 'active'), 8_000);
-  await Promise.all(roomResults.map(({ roomId, host }) => sendReaction(host, roomId, '👍')));
+  await Promise.all(roomResults.map(({ roomId, host }) => sendMessage(host, roomId, '👍')));
 
   const roomCount = running.database.raw.prepare("SELECT COUNT(*) AS count FROM rooms WHERE status='active'").get() as { count: number };
   if (roomCount.count !== 25) throw new Error(`expected 25 active rooms, got ${roomCount.count}`);

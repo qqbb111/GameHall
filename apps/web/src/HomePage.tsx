@@ -1,18 +1,21 @@
 import {
   ArrowRight,
   CircleDot,
+  Dices,
   DoorOpen,
-  Grid3X3,
   LockKeyhole,
   Play,
-  Sparkles,
   Timer,
   Users,
 } from 'lucide-react';
-import { useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { GameId } from '@gamehall/protocol';
+import { readRememberedNickname } from './client-preferences';
 import type { GameHallClient } from './gamehall-client';
 import { games, type GameCardInfo } from './games';
+import { ClickSpark, Reveal, SpotlightSurface } from './motion-primitives';
+import { generateRandomNickname } from './random-nickname';
+import { parseRoomCodeInput, removeRoomQueryFromAddress } from './room-code';
 
 function GameGlyph({ kind }: { kind: GameCardInfo['icon'] }) {
   if (kind === 'gomoku') {
@@ -21,137 +24,216 @@ function GameGlyph({ kind }: { kind: GameCardInfo['icon'] }) {
   if (kind === 'twenty-four') {
     return <div className="mini-card" aria-hidden="true"><strong>24</strong><span>♠</span></div>;
   }
-  if (kind === 'quoridor') return <Grid3X3 aria-hidden="true" />;
+  if (kind === 'quoridor') {
+    return (
+      <div className="mini-quoridor" aria-hidden="true">
+        {Array.from({ length: 9 }, (_, index) => <i key={index} />)}
+        <span className="mini-quoridor-pawn is-dark" />
+        <span className="mini-quoridor-pawn is-light" />
+        <b />
+      </div>
+    );
+  }
   if (kind === 'go') return <CircleDot aria-hidden="true" />;
   return <span className="suit-glyph" aria-hidden="true">♣</span>;
 }
 
-function sanitizeCode(value: string): string {
-  return value.toUpperCase().replace(/[^ABCDEFGHJKLMNPQRSTUVWXYZ23456789]/g, '').slice(0, 6);
+function HeroEditorial() {
+  return (
+    <div className="editorial-art" aria-hidden="true">
+      <span className="editorial-aurora" />
+      <span className="editorial-horizon" />
+      <div className="grand-board">
+        <span className="grand-board-glow" />
+        <i className="grand-stone is-dark is-first" />
+        <i className="grand-stone is-dark is-second" />
+        <i className="grand-stone is-light" />
+      </div>
+    </div>
+  );
+}
+
+function ConnectingNotice() {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setVisible(true), 1_200);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  if (!visible) return null;
+  return <div className="connection-notice" role="status"><span><i />正在连接实时服务</span></div>;
 }
 
 export function HomePage({ client }: { client: GameHallClient }) {
-  const [nickname, setNickname] = useState('');
+  const [nickname, setNickname] = useState(readRememberedNickname);
   const [roomCode, setRoomCode] = useState(() => {
-    const queryCode = sanitizeCode(new URLSearchParams(window.location.search).get('room') ?? '');
+    const queryCode = parseRoomCodeInput(window.location.search);
     return queryCode || client.session?.reconnectableRoomCode || '';
   });
-  const [selectedGame, setSelectedGame] = useState<GameId>('gomoku');
-  const [pending, setPending] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-  const gameButtons = useRef<Array<HTMLButtonElement | null>>([]);
+  const [pendingGameId, setPendingGameId] = useState<GameId | null>(null);
+  const [joinPending, setJoinPending] = useState(false);
+  const [nicknameError, setNicknameError] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [joinError, setJoinError] = useState<string | null>(null);
+  const identityPanel = useRef<HTMLDivElement>(null);
+  const nicknameInput = useRef<HTMLInputElement>(null);
   const onlineGames = useMemo(() => games.filter((game) => game.status === 'online'), []);
-  const selected = useMemo(() => games.find((game) => game.id === selectedGame)!, [selectedGame]);
+  const comingGames = useMemo(() => games.filter((game) => game.status === 'soon'), []);
 
-  function handleGameKey(event: KeyboardEvent<HTMLButtonElement>, index: number) {
-    let next = index;
-    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') next = (index + 1) % onlineGames.length;
-    else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') next = (index - 1 + onlineGames.length) % onlineGames.length;
-    else if (event.key === 'Home') next = 0;
-    else if (event.key === 'End') next = onlineGames.length - 1;
-    else return;
-    event.preventDefault();
-    setSelectedGame(onlineGames[next]!.id as GameId);
-    gameButtons.current[next]?.focus();
+  function requestNickname() {
+    setNicknameError('先留下昵称，再选择一张桌开局');
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+    identityPanel.current?.scrollIntoView?.({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' });
+    nicknameInput.current?.focus();
   }
 
-  async function createRoom() {
-    if (!nickname.trim()) return setFormError('请先填写昵称');
-    setPending(true);
-    setFormError(null);
-    const result = await client.createRoom(nickname, selectedGame);
-    if (!result.ok) setFormError(result.error.message);
-    setPending(false);
+  function randomizeNickname() {
+    setNickname((current) => generateRandomNickname(current));
+    setNicknameError(null);
+  }
+
+  async function createRoom(gameId: GameId) {
+    const cleanNickname = nickname.trim();
+    if (!cleanNickname) return requestNickname();
+    setPendingGameId(gameId);
+    setNicknameError(null);
+    setCreateError(null);
+    const result = await client.createRoom(cleanNickname, gameId);
+    if (!result.ok) setCreateError(result.error.message);
+    else removeRoomQueryFromAddress();
+    setPendingGameId(null);
   }
 
   async function joinRoom() {
-    if (!nickname.trim()) return setFormError('请先填写昵称');
-    if (roomCode.length !== 6) return setFormError('请输入完整的 6 位邀请码');
-    setPending(true);
-    setFormError(null);
-    const result = await client.joinRoom(nickname, roomCode);
-    if (!result.ok) setFormError(result.error.message);
-    setPending(false);
+    const cleanNickname = nickname.trim();
+    if (!cleanNickname) return requestNickname();
+    if (roomCode.length !== 6) return setJoinError('请输入完整的 6 位邀请码');
+    setJoinPending(true);
+    setNicknameError(null);
+    setJoinError(null);
+    const result = await client.joinRoom(cleanNickname, roomCode);
+    if (!result.ok) setJoinError(result.error.message);
+    else removeRoomQueryFromAddress();
+    setJoinPending(false);
   }
 
   return (
     <div className="site-shell">
+      <div className="ambient-backdrop" aria-hidden="true">
+        <span className="ambient-orb ambient-orb-jade" />
+        <span className="ambient-orb ambient-orb-gold" />
+        <span className="ambient-ribbon" />
+        <span className="ambient-grain" />
+      </div>
       <header className="topbar">
         <a className="brand" href="#top" aria-label="GameHall 首页">
           <span className="brand-mark"><span /></span>
           <span><strong>GameHall</strong><small>好友棋牌桌游馆</small></span>
         </a>
-        <div className="topbar-note"><LockKeyhole size={15} /> 私人好友房 · 纯娱乐</div>
       </header>
 
       <main id="top">
         <section className="hero">
           <div className="hero-copy">
-            <div className="eyebrow"><Sparkles size={15} /> 今晚，和朋友开一局</div>
-            <h1>棋逢对手，<br /><em>刚好有空。</em></h1>
-            <p>无需注册，一个邀请码就能坐上牌桌。规则清楚、操作顺手，让胜负留在棋盘上。</p>
-            <div className="trust-row">
-              <span><Users size={16} /> 双人好友房</span>
-              <span><Timer size={16} /> 断线 60 秒重连</span>
-              <span><LockKeyhole size={16} /> 无充值与筹码</span>
-            </div>
+            <Reveal className="hero-kicker" delayMs={30} distance={16}>
+              <div className="eyebrow">今晚，和朋友开一局</div>
+            </Reveal>
+            <Reveal delayMs={90} distance={34}>
+              <h1><span>棋逢对手，</span><br /><em>刚好有空。</em></h1>
+            </Reveal>
+            <Reveal delayMs={170} distance={26}>
+              <p className="hero-description">无需注册，一个邀请码就能坐上牌桌。规则清楚、操作顺手，让胜负留在棋盘上。</p>
+            </Reveal>
+            <Reveal delayMs={250} distance={20}>
+              <div className="trust-row">
+                <span><Users size={16} /> 双人好友房</span>
+                <span><Timer size={16} /> 断线 60 秒重连</span>
+                <span><LockKeyhole size={16} /> 无充值与筹码</span>
+              </div>
+            </Reveal>
           </div>
 
-          <form className="entry-card" aria-label="创建或加入房间" onSubmit={(event) => { event.preventDefault(); void createRoom(); }}>
-            <div className="entry-head">
-              <div><span>快速开局</span><h2>先取个响亮的名字</h2></div>
-              <button className={`online-pill ${client.connection !== 'online' ? 'is-offline' : ''}`} type="button" onClick={client.reconnect} disabled={client.connection === 'online'} aria-live="polite">
-                <i />{client.connection === 'online' ? '服务在线' : client.connection === 'connecting' ? '正在连接' : '连接中断'}
-              </button>
+          <Reveal className="hero-editorial-reveal" delayMs={150} distance={34}>
+            <div className="hero-editorial">
+              <HeroEditorial />
+              <div className="identity-panel" ref={identityPanel}>
+                <div className="identity-heading"><span>YOUR NAME</span><h2>先取个响亮的名字</h2><p>留下称呼，再从下方挑一张桌。</p></div>
+                <label className="field-label" htmlFor="nickname">你的昵称</label>
+                <div className="nickname-row">
+                  <button className="nickname-random" type="button" onClick={randomizeNickname} aria-label="随机昵称" title="换一个雅致昵称">
+                    <Dices size={19} />
+                  </button>
+                  <input ref={nicknameInput} id="nickname" value={nickname} maxLength={256} onChange={(event) => { setNickname(event.target.value); setNicknameError(null); }} placeholder="例如：落子无悔" autoComplete="nickname" />
+                </div>
+                {nicknameError && <p className="identity-error" role="alert">{nicknameError}</p>}
+              </div>
             </div>
-
-            <label className="field-label" htmlFor="nickname">你的昵称</label>
-            <input id="nickname" value={nickname} maxLength={256} onChange={(event) => setNickname(event.target.value)} placeholder="例如：落子无悔" autoComplete="nickname" />
-
-            <label className="field-label" id="game-select-label">选择游戏</label>
-            <div className="game-pills" role="radiogroup" aria-labelledby="game-select-label">
-              {onlineGames.map((game, index) => (
-                <button ref={(element) => { gameButtons.current[index] = element; }} className={selectedGame === game.id ? 'active' : ''} key={game.id} onClick={() => setSelectedGame(game.id as GameId)} onKeyDown={(event) => handleGameKey(event, index)} type="button" role="radio" aria-checked={selectedGame === game.id} tabIndex={selectedGame === game.id ? 0 : -1}>{game.name}</button>
-              ))}
-            </div>
-
-            <button className="primary-button" type="submit" disabled={pending || client.connection !== 'online'}>
-              <Play size={18} fill="currentColor" />创建 {selected.name} 房间<ArrowRight size={18} />
-            </button>
-
-            <div className="divider"><span>或使用邀请码</span></div>
-            <div className="join-row">
-              <input aria-label="六位房间邀请码" className="code-input" value={roomCode} maxLength={6} onChange={(event) => setRoomCode(sanitizeCode(event.target.value))} onKeyDown={(event) => {
-                if (event.key !== 'Enter') return;
-                event.preventDefault();
-                event.stopPropagation();
-                void joinRoom();
-              }} placeholder="输入 6 位码" autoCapitalize="characters" spellCheck={false} />
-              <button className="secondary-button" type="button" onClick={() => void joinRoom()} disabled={pending || client.connection !== 'online'}><DoorOpen size={18} /> 加入房间</button>
-            </div>
-            {(formError || client.error) && <p className="form-error" role="alert">{formError ?? client.error?.message}</p>}
-          </form>
+          </Reveal>
         </section>
 
         <section className="catalog" aria-labelledby="catalog-title">
-          <div className="section-heading">
-            <div><span>GAME TABLES</span><h2 id="catalog-title">今晚玩什么？</h2></div>
-            <p>三款游戏已就位，其余玩法将在规则确认后逐一开放。</p>
-          </div>
-          <div className="game-grid">
-            {games.map((game) => (
-              <article className={`game-card ${game.status === 'soon' ? 'is-soon' : ''}`} key={game.id}>
-                <div className={`game-art accent-${game.accent}`}><GameGlyph kind={game.icon} /></div>
-                <div className="game-info">
-                  <div className="status-line"><span className={game.status === 'online' ? 'status-live' : 'status-soon'}>{game.status === 'online' ? '可开局 · 2 人' : '开发中'}</span></div>
-                  <h3>{game.name}</h3><p>{game.subtitle}</p>
-                </div>
-                <button type="button" aria-label={game.status === 'online' ? `选择${game.name}` : `${game.name}尚未开放`} disabled={game.status === 'soon'} onClick={() => { setSelectedGame(game.id as GameId); document.querySelector('.entry-card')?.scrollIntoView({ behavior: 'smooth' }); }}>
-                  {game.status === 'online' ? <ArrowRight size={18} /> : <LockKeyhole size={16} />}
-                </button>
-              </article>
+          <Reveal distance={22}>
+            <div className="section-heading">
+              <div><span>FEATURED TABLES</span><h2 id="catalog-title">今晚玩什么？</h2></div>
+              <p>三张桌已经亮灯。选一局，把邀请码发给你的对手。</p>
+            </div>
+          </Reveal>
+
+          {client.connection === 'connecting' && <ConnectingNotice />}
+          {client.connection === 'offline' && (
+            <div className="connection-notice" role="status">
+              <span><i />{client.error?.message ?? '实时服务连接中断'}</span>
+              <button type="button" onClick={client.reconnect}>重新连接</button>
+            </div>
+          )}
+
+          <Reveal className="invite-strip-reveal" delayMs={50} distance={20}>
+            <form className="invite-strip" aria-label="加入好友房" onSubmit={(event) => { event.preventDefault(); void joinRoom(); }}>
+              <div className="invite-copy"><DoorOpen size={19} /><span><strong>已有房间？</strong><small>带上邀请码入席</small></span></div>
+              <div className="invite-entry">
+                <input aria-label="六位房间邀请码" aria-description="也可以粘贴完整邀请链接" className="code-input" value={roomCode} onChange={(event) => { setRoomCode(parseRoomCodeInput(event.target.value)); setJoinError(null); }} placeholder="房间码或邀请链接" autoCapitalize="characters" spellCheck={false} />
+                <button className="secondary-button" type="submit" disabled={joinPending || pendingGameId !== null || client.connection !== 'online'}>{joinPending ? '正在入席' : '加入房间'}<ArrowRight size={17} /></button>
+              </div>
+              {joinError && <p className="invite-error" role="alert">{joinError}</p>}
+            </form>
+          </Reveal>
+
+          {createError && <p className="catalog-error" role="alert">{createError}</p>}
+          <div className="featured-grid">
+            {onlineGames.map((game, index) => (
+              <Reveal className="game-card-reveal" delayMs={index * 85} distance={36} key={game.id}>
+                <ClickSpark className="featured-spark">
+                  <SpotlightSurface className="game-card-surface" color="rgba(240, 206, 139, 0.28)" tilt>
+                    <article className="game-card featured-card">
+                      <div className="game-number">0{index + 1}</div>
+                      <div className={`game-art accent-${game.accent}`}><span className="game-art-orbit" aria-hidden="true" /><GameGlyph kind={game.icon} /></div>
+                    <div className="game-info">
+                      <div className="status-line"><span className="status-live">可开局 · 2 人</span></div>
+                      <h3>{game.name}</h3><p>{game.subtitle}</p>
+                    </div>
+                    <button type="button" aria-label={`创建${game.name}房间`} disabled={pendingGameId !== null || joinPending || client.connection !== 'online'} onClick={() => void createRoom(game.id as GameId)}>
+                      <Play size={13} fill="currentColor" /><span>{pendingGameId === game.id ? '正在开桌' : '立即开局'}</span><ArrowRight size={18} />
+                    </button>
+                  </article>
+                  </SpotlightSurface>
+                </ClickSpark>
+              </Reveal>
             ))}
           </div>
+
+          <Reveal className="coming-reveal" delayMs={120} distance={22}>
+            <div className="coming-heading"><div><span>COMING SOON</span><h3>新玩法即将入席</h3></div><p>规则确认后逐一开放</p></div>
+            <div className="coming-grid">
+              {comingGames.map((game) => (
+                <article className="coming-card" key={game.id}>
+                  <div className={`coming-icon accent-${game.accent}`}><GameGlyph kind={game.icon} /></div>
+                  <div><span className="coming-status">开发中</span><strong>{game.name}</strong><small>{game.subtitle}</small></div>
+                  <button type="button" aria-label={`${game.name}尚未开放`} disabled><LockKeyhole size={15} /></button>
+                </article>
+              ))}
+            </div>
+          </Reveal>
         </section>
       </main>
       <footer><span>GameHall</span><p>好友相聚，胜负有度。本站仅提供纯娱乐对局。</p></footer>

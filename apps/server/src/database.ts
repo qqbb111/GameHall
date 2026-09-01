@@ -88,6 +88,25 @@ const migrations = [
       ) STRICT;
     `,
   },
+  {
+    version: 3,
+    name: 'room_messages',
+    sql: `
+      CREATE TABLE IF NOT EXISTS room_messages (
+        sequence INTEGER PRIMARY KEY,
+        message_id TEXT NOT NULL UNIQUE,
+        room_id TEXT NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+        sender_session_id TEXT NOT NULL,
+        seat INTEGER NOT NULL CHECK (seat IN (0, 1)),
+        nickname TEXT NOT NULL,
+        content TEXT NOT NULL,
+        sent_at_ms INTEGER NOT NULL
+      ) STRICT;
+
+      CREATE INDEX IF NOT EXISTS idx_room_messages_room_sequence
+        ON room_messages(room_id, sequence);
+    `,
+  },
 ] as const;
 
 export class GameHallDatabase {

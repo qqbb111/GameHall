@@ -27,14 +27,15 @@ import type {
   JoinRoomCommand,
   LeaveRoomCommand,
   PlayerSeat,
-  Reaction,
   ReadyRoomCommand,
   RematchCommand,
+  RoomMessage,
+  RoomMessageCommand,
   RoomSnapshot,
   ServerToClientEvents,
 } from '@gamehall/protocol';
 import type { GameHallDatabase } from './database';
-import { normalizeNickname, requestHash } from './security';
+import { normalizeNickname, normalizeRoomMessage, requestHash } from './security';
 
 type InterServerEvents = Record<string, never>;
 export type SocketData = { sessionId: string };
@@ -254,7 +255,10 @@ export class RoomService {
     if (wasOffline) {
       for (const membership of memberships) this.handleReconnect(sessionId, membership.id, nowMs);
     }
-    for (const membership of memberships) this.emitSnapshots(membership.id);
+    for (const membership of memberships) {
+      this.emitSnapshots(membership.id);
+      this.emitMessageHistoryToSession(membership.id, sessionId);
+    }
   }
 
   disconnect(socket: GameHallSocket, nowMs = Date.now()): void {
@@ -333,6 +337,7 @@ export class RoomService {
     });
     this.joinSessionSockets(sessionId, roomId);
     this.emitSnapshots(roomId);
+    this.emitMessageHistoryToSession(roomId, sessionId);
     return { ok: true, roomId, code, version: 0 };
   }
 
@@ -345,6 +350,7 @@ export class RoomService {
     if (sameMembership) {
       this.joinSessionSockets(sessionId, room.id);
       this.emitSnapshots(room.id);
+      this.emitMessageHistoryToSession(room.id, sessionId);
       return { ok: true, roomId: room.id, code: room.code, version: room.version };
     }
     const existing = this.findActiveMembership(sessionId);
@@ -367,6 +373,7 @@ export class RoomService {
     });
     this.joinSessionSockets(sessionId, room.id);
     this.emitSnapshots(room.id);
+    this.emitMessageHistoryToSession(room.id, sessionId);
     return { ok: true, roomId: room.id, code: room.code, version: newVersion };
   }
 
@@ -503,7 +510,11 @@ export class RoomService {
             } else {
               const nextState = result.state!;
               resultingVersion = room.version + 1;
-              const finished = gameResult(nextState) !== null;
+              const terminalResult = gameResult(nextState);
+              const finished = terminalResult !== null;
+              if (finished !== (nextState.phase === 'finished')) {
+                throw new Error('game result and phase disagree');
+              }
               const status = finished ? 'finished' : 'active';
               const nextRoundAt = nextState.kind === 'twenty-four' && nextState.phase === 'revealing' ? nowMs + REVEAL_MS : null;
               const cleanupAt = finished ? nowMs + FINISHED_TTL_MS : room.cleanup_at_ms;
@@ -531,19 +542,51 @@ export class RoomService {
     return ack;
   }
 
-  sendReaction(sessionId: string, roomId: string, reaction: Reaction): CommandAck {
-    const room = this.getRoom(roomId);
-    if (!room) return errorAck('reaction:send', null, 'ROOM_NOT_FOUND', '房间不存在');
-    const member = this.getMember(roomId, sessionId);
-    if (!member) return errorAck('reaction:send', null, 'NOT_A_MEMBER', '你不在这个房间');
-    this.io.to(roomId).emit('reaction:received', {
-      roomId,
-      seat: member.seat,
-      nickname: member.nickname,
-      reaction,
-      sentAtMs: Date.now(),
+  sendMessage(sessionId: string, command: RoomMessageCommand): CommandAck {
+    const room = this.getRoom(command.roomId);
+    if (!room) return errorAck('room:message:send', command.messageId, 'ROOM_NOT_FOUND', '房间不存在');
+    const member = this.getMember(command.roomId, sessionId);
+    if (!member) return errorAck('room:message:send', command.messageId, 'NOT_A_MEMBER', '你不在这个房间');
+    const content = normalizeRoomMessage(command.content);
+    if (!content) {
+      return errorAck('room:message:send', command.messageId, 'INVALID_MESSAGE', '消息需为 1–100 个可见字符，且不能包含控制字符');
+    }
+
+    let message: RoomMessage | null = null;
+    const result = this.database.transaction((): CommandAck => {
+      const existing = this.database.raw.prepare(`
+        SELECT room_id, sender_session_id, content FROM room_messages WHERE message_id=?
+      `).get(command.messageId) as { room_id: string; sender_session_id: string; content: string } | undefined;
+      if (existing) {
+        if (existing.room_id === command.roomId && existing.sender_session_id === sessionId && existing.content === content) {
+          return { ok: true, roomId: command.roomId, version: room.version };
+        }
+        return errorAck('room:message:send', command.messageId, 'MESSAGE_ID_REUSED', '同一个消息编号不能用于不同内容');
+      }
+
+      const sentAtMs = Date.now();
+      this.database.raw.prepare(`
+        INSERT INTO room_messages(message_id, room_id, sender_session_id, seat, nickname, content, sent_at_ms)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(command.messageId, command.roomId, sessionId, member.seat, member.nickname, content, sentAtMs);
+      this.database.raw.prepare(`
+        DELETE FROM room_messages
+        WHERE room_id=? AND sequence NOT IN (
+          SELECT sequence FROM room_messages WHERE room_id=? ORDER BY sequence DESC LIMIT 100
+        )
+      `).run(command.roomId, command.roomId);
+      message = {
+        messageId: command.messageId,
+        roomId: command.roomId,
+        seat: member.seat,
+        nickname: member.nickname,
+        content,
+        sentAtMs,
+      };
+      return { ok: true, roomId: command.roomId, version: room.version };
     });
-    return { ok: true, roomId, version: room.version };
+    if (message) this.io.to(command.roomId).emit('room:message', message);
+    return result;
   }
 
   sweep(nowMs = Date.now()): void {
@@ -665,6 +708,34 @@ export class RoomService {
           serverTimeMs: nowMs,
         });
       }
+    }
+  }
+
+  private emitMessageHistoryToSession(roomId: string, sessionId: string): void {
+    const messages = this.database.raw.prepare(`
+      SELECT message_id, room_id, seat, nickname, content, sent_at_ms
+      FROM room_messages WHERE room_id=? ORDER BY sequence ASC
+    `).all(roomId) as Array<{
+      message_id: string;
+      room_id: string;
+      seat: PlayerSeat;
+      nickname: string;
+      content: string;
+      sent_at_ms: number;
+    }>;
+    const payload = {
+      roomId,
+      messages: messages.map((item): RoomMessage => ({
+        messageId: item.message_id,
+        roomId: item.room_id,
+        seat: item.seat,
+        nickname: item.nickname,
+        content: item.content,
+        sentAtMs: item.sent_at_ms,
+      })),
+    };
+    for (const socketId of this.connections.get(sessionId) ?? []) {
+      this.io.to(socketId).emit('room:message:history', payload);
     }
   }
 

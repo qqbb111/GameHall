@@ -141,6 +141,22 @@ export function canPlaceQuoridorWall(state: QuoridorState, wall: QuoridorWall): 
   return { ok: true };
 }
 
+function finishAfterPawnMove(
+  state: QuoridorState,
+  actor: Player,
+  pawns: [Coord, Coord],
+  lastAction: Extract<QuoridorAction, { type: 'move' }>,
+): QuoridorState | null {
+  if (pawns[actor].row !== state.goalRows[actor]) return null;
+  return {
+    ...state,
+    pawns,
+    lastAction,
+    phase: 'finished',
+    result: { type: 'win', winner: actor, reason: 'goal' },
+  };
+}
+
 export function applyQuoridorAction(state: QuoridorState, actor: Player, action: QuoridorAction): ApplyResult<QuoridorState> {
   if (state.phase !== 'playing') return ruleError('GAME_FINISHED', '本局已经结束');
   if (action.type === 'resign') {
@@ -156,13 +172,9 @@ export function applyQuoridorAction(state: QuoridorState, actor: Player, action:
     }
     const pawns: [Coord, Coord] = [{ ...state.pawns[0] }, { ...state.pawns[1] }];
     pawns[actor] = target;
-    const lastAction: QuoridorAction = { type: 'move', row: action.row, col: action.col };
-    if (target.row === state.goalRows[actor]) {
-      return {
-        ok: true,
-        state: { ...state, pawns, lastAction, phase: 'finished', result: { type: 'win', winner: actor, reason: 'goal' } },
-      };
-    }
+    const lastAction: Extract<QuoridorAction, { type: 'move' }> = { type: 'move', row: action.row, col: action.col };
+    const finishedState = finishAfterPawnMove(state, actor, pawns, lastAction);
+    if (finishedState) return { ok: true, state: finishedState };
     return { ok: true, state: { ...state, pawns, lastAction, turn: otherPlayer(actor) } };
   }
 

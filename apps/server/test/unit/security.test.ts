@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeNickname, requestHash, SlidingWindowLimiter } from '../../src/security';
+import { normalizeNickname, normalizeRoomMessage, requestHash, SlidingWindowLimiter } from '../../src/security';
 
 describe('guest security helpers', () => {
   it('按可见字素限制昵称并拒绝控制字符', () => {
@@ -8,6 +8,15 @@ describe('guest security helpers', () => {
     expect(normalizeNickname('👨‍👩‍👧‍👦'.repeat(16))?.display).toBe('👨‍👩‍👧‍👦'.repeat(16));
     expect(normalizeNickname('😀'.repeat(17))).toBeNull();
     expect(normalizeNickname('坏\u0000名字')).toBeNull();
+  });
+
+  it('按可见字素清理房间消息并拒绝危险文本', () => {
+    expect(normalizeRoomMessage('  今晚   再来一局  ')).toBe('今晚 再来一局');
+    expect(normalizeRoomMessage('👨‍👩‍👧‍👦'.repeat(100))).toBe('👨‍👩‍👧‍👦'.repeat(100));
+    expect(normalizeRoomMessage('棋'.repeat(101))).toBeNull();
+    expect(normalizeRoomMessage('   ')).toBeNull();
+    expect(normalizeRoomMessage('坏\u0000消息')).toBeNull();
+    expect(normalizeRoomMessage('方向\u202E反转')).toBeNull();
   });
 
   it('稳定哈希不受对象键顺序影响', () => {

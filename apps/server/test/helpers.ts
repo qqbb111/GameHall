@@ -6,7 +6,7 @@ import type {
   GameActionCommand,
   GameId,
   GameSnapshot,
-  Reaction,
+  RoomMessage,
   RoomSnapshot,
   ServerToClientEvents,
   SessionResponse,
@@ -21,6 +21,7 @@ export type TestPeer = {
   session: SessionResponse;
   room: RoomSnapshot | null;
   game: GameSnapshot | null;
+  messages: RoomMessage[];
 };
 
 export async function createPeer(url: string, cookie?: string): Promise<TestPeer> {
@@ -40,10 +41,14 @@ export async function createPeer(url: string, cookie?: string): Promise<TestPeer
     transports: ['websocket'],
     extraHeaders: { Cookie: activeCookie, Origin: TEST_ORIGIN },
   });
-  const peer: TestPeer = { socket, cookie: activeCookie, session, room: null, game: null };
+  const peer: TestPeer = { socket, cookie: activeCookie, session, room: null, game: null, messages: [] };
   socket.on('room:snapshot', (snapshot) => { peer.room = snapshot; });
   socket.on('presence:update', (snapshot) => { peer.room = snapshot; });
   socket.on('game:snapshot', (snapshot) => { peer.game = snapshot; });
+  socket.on('room:message:history', (payload) => { peer.messages = payload.messages; });
+  socket.on('room:message', (message) => {
+    if (!peer.messages.some((item) => item.messageId === message.messageId)) peer.messages = [...peer.messages, message].slice(-100);
+  });
   await new Promise<void>((resolve, reject) => {
     socket.once('connect', resolve);
     socket.once('connect_error', reject);
@@ -86,8 +91,8 @@ export function rematch(peer: TestPeer, roomId: string, requested = true): Promi
   return new Promise((resolve) => peer.socket.emit('game:rematch', { commandId: randomUUID(), roomId, requested }, resolve));
 }
 
-export function sendReaction(peer: TestPeer, roomId: string, reaction: Reaction): Promise<CommandAck> {
-  return new Promise((resolve) => peer.socket.emit('reaction:send', { roomId, reaction }, resolve));
+export function sendMessage(peer: TestPeer, roomId: string, content: string, messageId = randomUUID()): Promise<CommandAck> {
+  return new Promise((resolve) => peer.socket.emit('room:message:send', { messageId, roomId, content }, resolve));
 }
 
 export async function waitFor(check: () => boolean, timeoutMs = 4_000): Promise<void> {

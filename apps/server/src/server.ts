@@ -11,7 +11,7 @@ import {
   gameActionSchema,
   joinRoomSchema,
   leaveRoomSchema,
-  reactionSchema,
+  roomMessageSchema,
   readyRoomSchema,
   rematchSchema,
   type ClientToServerEvents,
@@ -292,14 +292,14 @@ export function createGameHallServer(configOverrides: Partial<ServerConfig> = {}
       });
     });
 
-    socket.on('reaction:send', (payload, callback) => {
-      dispatchSocketCommand(socket, 'reaction:send', callback, () => {
-        const limited = rateLimitAck(socket, 'reaction:send', 12, 10_000, '表情发送太频繁');
+    socket.on('room:message:send', (payload, callback) => {
+      dispatchSocketCommand(socket, 'room:message:send', callback, () => {
+        const limited = rateLimitAck(socket, 'room:message:send', 12, 10_000, '消息发送太频繁');
         if (limited) return limited;
-        const parsed = reactionSchema.safeParse(payload);
+        const parsed = roomMessageSchema.safeParse(payload);
         return parsed.success
-          ? roomService.sendReaction(socket.data.sessionId, parsed.data.roomId, parsed.data.reaction)
-          : { ok: false, error: commandError('reaction:send', null, 'INVALID_REACTION', '不支持这个表情') };
+          ? roomService.sendMessage(socket.data.sessionId, parsed.data)
+          : { ok: false, error: commandError('room:message:send', null, 'INVALID_MESSAGE', '消息需为 1–100 个可见字符') };
       });
     });
 
