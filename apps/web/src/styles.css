@@ -418,15 +418,21 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
 .solution-card strong { display: block; margin: 12px 0; color: var(--gold-light); font: 700 clamp(18px, 4vw, 27px) ui-monospace, monospace; }
 .solution-card p { margin: 0; color: #73887f; font-size: 11px; }
 
-.result-panel { margin-top: 14px; padding: 22px; display: flex; flex-direction: column; align-items: center; text-align: center; border: 1px solid rgba(240,206,139,.2); border-radius: 16px; background: linear-gradient(145deg, rgba(101,73,37,.35), rgba(17,42,36,.94)); }
+.game-stage { position: relative; isolation: isolate; }
+.game-stage > .game-surface { transition: filter .42s ease, opacity .42s ease; }
+.game-stage.has-result > .game-surface { filter: brightness(.54) saturate(.72); }
+.result-panel { width: min(460px, calc(100% - 34px)); padding: clamp(24px, 4vw, 38px); display: flex; flex-direction: column; align-items: center; text-align: center; border: 1px solid rgba(240,206,139,.3); border-radius: 19px; background: linear-gradient(145deg, rgba(31,59,50,.88), rgba(5,24,21,.96)); box-shadow: 0 28px 80px rgba(0,0,0,.52), inset 0 1px rgba(255,255,255,.05), 0 0 42px rgba(217,173,97,.08); backdrop-filter: blur(16px); }
 .result-panel > span:first-child { color: var(--gold); font-size: 9px; font-weight: 800; letter-spacing: .2em; }
-.result-panel h2 { margin: 9px 0 16px; font: 700 20px 'Noto Serif SC', serif; }
-.result-panel button { min-height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 20px; border: 0; border-radius: 9px; color: #16271f; background: var(--gold-light); font-weight: 800; }
+.result-panel h2 { max-width: 360px; margin: 11px 0 19px; font: 700 clamp(19px, 3vw, 25px)/1.5 'Noto Serif SC', serif; }
+.result-panel button { min-width: min(250px, 72vw); min-height: 58px; display: flex; align-items: center; justify-content: center; gap: 11px; padding: 8px 22px; border: 0; border-radius: 11px; color: #16271f; background: linear-gradient(135deg, #f0cf86, #d4a653); box-shadow: 0 12px 30px rgba(217,173,97,.18); font-weight: 800; }
+.result-panel button > span { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.result-panel button strong { font: 800 14px 'Noto Serif SC', serif; }
+.result-panel button small { margin: 0; color: currentColor; font-size: 9px; opacity: .72; }
 .result-panel button.is-ready { color: #b6e1cd; border: 1px solid rgba(104,206,156,.25); background: rgba(48,119,87,.24); }
 .result-panel small { margin-top: 8px; color: #71877d; font-size: 9px; }
-.result-reveal { margin-top: 14px; }
-.result-reveal .result-panel { margin-top: 0; }
-.rematch-spark { display: block; }
+.result-reveal { position: absolute; z-index: 12; inset: 0; display: grid; place-items: center; border-radius: 20px; background: radial-gradient(circle at 50% 46%, rgba(217,173,97,.08), transparent 48%), rgba(1,13,11,.32); }
+.result-reveal .result-panel { margin: 0; }
+.rematch-spark { display: block; border-radius: 11px; }
 
 .command-toast { max-width: calc(100vw - 36px); position: fixed; z-index: 50; left: 50%; bottom: 24px; transform: translateX(-50%); padding: 12px 12px 12px 16px; display: flex; align-items: center; gap: 15px; border: 1px solid rgba(241,160,124,.27); border-radius: 12px; color: #f3c4ad; background: #321e19; box-shadow: 0 18px 45px #0008; font-size: 12px; animation: command-toast-in .34s cubic-bezier(.2,1.35,.4,1) both; }
 .command-toast button { min-height: 34px; padding: 0 11px; border: 0; border-radius: 7px; color: #f2d3c4; background: rgba(255,255,255,.08); font-size: 10px; }
@@ -475,6 +481,10 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
   .room-sidebar { grid-template-columns: 1fr; }
   .room-sidebar > .room-rules-note, .sidebar-actions { grid-column: auto; }
   .game-surface { padding: 14px 10px 18px; border-radius: 15px; }
+  .result-reveal { border-radius: 15px; }
+  .result-panel { width: calc(100% - 20px); padding: 22px 14px; border-radius: 15px; }
+  .result-panel h2 { margin-bottom: 15px; font-size: 18px; }
+  .result-panel button { min-width: min(240px, 78vw); }
   .surface-title { padding: 0 5px; }
   .quoridor-tools { display: grid; grid-template-columns: repeat(3, 1fr); }
   .quoridor-tools button { padding: 0 5px; }

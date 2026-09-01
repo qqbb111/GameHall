@@ -277,7 +277,7 @@ export function RoomPage({ client }: { client: GameHallClient }) {
           )}
 
           {game && room.status !== 'waiting' && (
-            <>
+            <div className={`game-stage ${result ? 'has-result' : ''}`}>
               {room.gameId === 'gomoku' && <GomokuGame state={game.view as GomokuState} mySeat={room.mySeat} active={canPlay} onAction={client.submitGameAction} />}
               {room.gameId === 'quoridor' && <QuoridorGame state={game.view as QuoridorView} mySeat={room.mySeat} active={canPlay} onAction={client.submitGameAction} />}
               {room.gameId === 'twenty-four' && <TwentyFourGame key={(game.view as TwentyFourView).round} state={game.view as TwentyFourView} mySeat={room.mySeat} active={canPlay} serverNowMs={gameClockNow} onAction={client.submitGameAction} />}
@@ -288,8 +288,9 @@ export function RoomPage({ client }: { client: GameHallClient }) {
                     {room.members.length === 2 ? (
                       <>
                         <ClickSpark className="rematch-spark">
-                          <button type="button" className={me?.rematchReady ? 'is-ready' : ''} disabled={pending || client.connection !== 'online'} onClick={() => void run(() => client.requestRematch(!me?.rematchReady))}>
-                            <RotateCcw size={18} />{me?.rematchReady ? `已申请复赛（${rematchCount}/2）` : '再来一场'}
+                          <button type="button" className={me?.rematchReady ? 'is-ready' : ''} disabled={pending || client.connection !== 'online'} onClick={() => void run(() => client.requestRematch(!me?.rematchReady))} aria-pressed={Boolean(me?.rematchReady)}>
+                            <RotateCcw size={19} />
+                            <span><strong>{me?.rematchReady ? '已同意再来一局' : '再来一局'}</strong><small>同意人数 {rematchCount}/2</small></span>
                           </button>
                         </ClickSpark>
                         <small>双方确认后自动交换阵营</small>
@@ -298,7 +299,7 @@ export function RoomPage({ client }: { client: GameHallClient }) {
                   </div>
                 </Reveal>
               )}
-            </>
+            </div>
           )}
         </section>
 

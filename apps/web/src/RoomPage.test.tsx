@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createTwentyFourState, viewTwentyFourState } from '@gamehall/game-core';
-import type { GameSnapshot, RoomSnapshot } from '@gamehall/protocol';
+import { createGomokuState, createQuoridorState, createTwentyFourState, viewTwentyFourState } from '@gamehall/game-core';
+import type { GameId, GameSnapshot, RoomSnapshot } from '@gamehall/protocol';
 import type { GameHallClient } from './gamehall-client';
 import { RoomPage } from './RoomPage';
 import { resultMessage } from './room-result';
@@ -14,6 +14,33 @@ const state = createTwentyFourState([
 ], '1*2*3*4', 1_000);
 const base = viewTwentyFourState(state, 1_000);
 
+const finishedViews = {
+  gomoku: { ...createGomokuState(0), phase: 'finished', result: { type: 'win', winner: 0, reason: 'disconnect' } },
+  quoridor: { ...createQuoridorState(0), phase: 'finished', result: { type: 'win', winner: 0, reason: 'goal' }, legalMoves: [] },
+  'twenty-four': { ...base, phase: 'finished', winner: 0, finishReason: 'score' },
+} as const;
+
+function finishedClient(gameId: GameId, rematchReady: [boolean, boolean] = [false, false], requestRematch = vi.fn().mockResolvedValue({ ok: true })): GameHallClient {
+  const room: RoomSnapshot = {
+    roomId: 'room', code: 'ABC234', gameId, status: 'finished', version: 7,
+    hostSeat: 0, mySeat: 0, pauseReason: null, restartDeadlineMs: null, serverTimeMs: 1_000,
+    members: [
+      { seat: 0, nickname: '我', ready: true, rematchReady: rematchReady[0], online: true, disconnectedAtMs: null, disconnectDeadlineMs: null },
+      { seat: 1, nickname: '好友', ready: true, rematchReady: rematchReady[1], online: true, disconnectedAtMs: null, disconnectDeadlineMs: null },
+    ],
+  };
+  const game: GameSnapshot = {
+    roomId: 'room', gameId, status: 'finished', version: 7, mySeat: 0,
+    view: finishedViews[gameId], serverTimeMs: 1_000,
+  };
+  return {
+    loading: false, connection: 'online', session: { sessionId: 'session', reconnectableRoomCode: null },
+    room, game, error: null, messages: [], messageToasts: [], clearError: vi.fn(), reconnect: vi.fn(),
+    createRoom: vi.fn(), joinRoom: vi.fn(), setReady: vi.fn(), leaveRoom: vi.fn(),
+    submitGameAction: vi.fn(), requestRematch, sendMessage: vi.fn(),
+  } as GameHallClient;
+}
+
 describe('RoomPage result copy', () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -25,6 +52,37 @@ describe('RoomPage result copy', () => {
     expect(resultMessage('twenty-four', { ...base, phase: 'finished', winner: 1, finishReason: 'resign' }, 0)).toContain('认输');
     expect(resultMessage('twenty-four', { ...base, phase: 'finished', winner: 0, finishReason: 'disconnect' }, 0)).toContain('超时未重连');
     expect(resultMessage('twenty-four', { ...base, phase: 'finished', winner: null, finishReason: 'restart_timeout' }, 0)).toContain('和局');
+  });
+
+  it.each([
+    ['gomoku', '五子棋对局'],
+    ['quoridor', '路墙棋对局'],
+    ['twenty-four', '24点速度对决'],
+  ] as const)('%s 终局结算覆盖在对应棋盘舞台内', (gameId, surfaceLabel) => {
+    const rendered = render(<RoomPage client={finishedClient(gameId)} />);
+    const resultPanel = screen.getByText('GAME COMPLETE').closest('[role="status"]');
+    const stage = resultPanel?.closest('.game-stage');
+    expect(stage).toHaveClass('has-result');
+    expect(stage).toContainElement(screen.getByLabelText(surfaceLabel));
+    rendered.unmount();
+  });
+
+  it('复赛按钮常驻显示双方同意人数，并支持本端同意与撤回', async () => {
+    const requestRematch = vi.fn().mockResolvedValue({ ok: true });
+    const rendered = render(<RoomPage client={finishedClient('gomoku', [false, false], requestRematch)} />);
+    const initialButton = screen.getByRole('button', { name: /再来一局.*同意人数 0\/2/ });
+    expect(initialButton).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(initialButton);
+    await waitFor(() => expect(requestRematch).toHaveBeenLastCalledWith(true));
+
+    rendered.rerender(<RoomPage client={finishedClient('gomoku', [false, true], requestRematch)} />);
+    expect(screen.getByRole('button', { name: /再来一局.*同意人数 1\/2/ })).toHaveAttribute('aria-pressed', 'false');
+
+    rendered.rerender(<RoomPage client={finishedClient('gomoku', [true, false], requestRematch)} />);
+    const readyButton = screen.getByRole('button', { name: /已同意再来一局.*同意人数 1\/2/ });
+    expect(readyButton).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(readyButton);
+    await waitFor(() => expect(requestRematch).toHaveBeenLastCalledWith(false));
   });
 
   it('本端重连到仍暂停的 24 点房时按权威快照重锚并冻结题钟', () => {
