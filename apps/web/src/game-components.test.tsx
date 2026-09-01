@@ -30,6 +30,12 @@ describe('game components', () => {
     expect(cells[0]).toHaveAttribute('data-col', '0');
     expect(cells[224]).toHaveAttribute('data-row', '14');
     expect(cells[224]).toHaveAttribute('data-col', '14');
+    const gridLayer = container.querySelector('.gomoku-grid-lines');
+    const gridLines = gridLayer?.querySelector('svg');
+    expect(gridLayer).toHaveAttribute('aria-hidden', 'true');
+    expect(gridLines).toHaveAttribute('viewBox', '-0.5 -0.5 15 15');
+    expect(gridLines?.querySelector('path')?.getAttribute('d')).toContain('M 14 0 V 14');
+    expect(gridLines?.querySelector('rect')).toHaveAttribute('width', '14');
     expect(container.querySelectorAll('.board-star')).toHaveLength(5);
     for (const [row, col] of [[3, 3], [3, 11], [7, 7], [11, 3], [11, 11]]) {
       expect(container.querySelector(`.gomoku-cell[data-row="${row}"][data-col="${col}"] .board-star`)).not.toBeNull();

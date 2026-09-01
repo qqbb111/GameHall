@@ -338,8 +338,8 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
 .turn-stone.black { background: radial-gradient(circle at 32% 27%, #4a514c, #0d1210 62%); box-shadow: 0 4px 10px #0008; }
 .turn-stone.white { background: radial-gradient(circle at 32% 27%, #fff, #d9d2c3 68%); box-shadow: 0 4px 10px #0006; }
 .board-scroll { width: 100%; max-width: 100%; overflow: visible; }
-.gomoku-board { width: min(558px, 100%); aspect-ratio: 1; margin: 0 auto; padding: clamp(8px, 2.7%, 15px); display: grid; grid-template-columns: repeat(15, minmax(0, 1fr)); grid-template-rows: repeat(15, minmax(0, 1fr)); position: relative; border: clamp(5px, 1.6vw, 9px) solid #72512d; border-radius: 8px; background-color: #c99b58; box-shadow: inset 0 0 30px #67441d55, 0 20px 45px #0005; }
-.gomoku-cell { min-width: 0; min-height: 0; position: relative; z-index: 1; appearance: none; border: 0; padding: 0; background: transparent; }
+.gomoku-board { --gomoku-padding: clamp(8px, 2.7%, 15px); width: min(558px, 100%); aspect-ratio: 1; margin: 0 auto; padding: var(--gomoku-padding); display: grid; grid-template-columns: repeat(15, minmax(0, 1fr)); grid-template-rows: repeat(15, minmax(0, 1fr)); position: relative; border: clamp(5px, 1.6vw, 9px) solid #72512d; border-radius: 8px; background-color: #c99b58; box-shadow: inset 0 0 30px #67441d55, 0 20px 45px #0005; }
+.gomoku-cell { min-width: 0; min-height: 0; position: relative; z-index: 2; appearance: none; border: 0; padding: 0; background: transparent; }
 .gomoku-cell::before, .gomoku-cell::after { content: ''; position: absolute; z-index: 0; pointer-events: none; background: rgba(69,48,28,.62); }
 .gomoku-cell::before { height: 1px; left: 0; right: 0; top: 50%; }
 .gomoku-cell::after { width: 1px; top: 0; bottom: 0; left: 50%; }
@@ -1124,10 +1124,12 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
 @keyframes confirm-dialog-in { from { opacity: 0; transform: translateY(14px) scale(.96); } }
 
 /* 15 路正规五子棋棋面；交互格点仍然是原来的 15×15。 */
-.gomoku-board { padding: clamp(9px, 2.9%, 16px); border: 3px solid #7b5830; border-radius: 3px; background: radial-gradient(circle at 32% 18%, rgba(255,229,178,.2), transparent 38%), linear-gradient(125deg, #cfaa6d, #bd9154 68%, #b18149); box-shadow: inset 0 0 0 1px rgba(255,235,193,.25), inset 0 0 22px rgba(91,55,24,.14), 0 18px 42px #0004; }
-.gomoku-cell::before, .gomoku-cell::after { background: rgba(62,43,26,.72); }
-.gomoku-cell[data-row="0"]::before, .gomoku-cell[data-row="14"]::before { height: 2px; transform: translateY(-.5px); }
-.gomoku-cell[data-col="0"]::after, .gomoku-cell[data-col="14"]::after { width: 2px; transform: translateX(-.5px); }
+.gomoku-board { --gomoku-padding: clamp(9px, 2.9%, 16px); padding: var(--gomoku-padding); border: 3px solid #7b5830; border-radius: 3px; background: radial-gradient(circle at 32% 18%, rgba(255,229,178,.2), transparent 38%), linear-gradient(125deg, #cfaa6d, #bd9154 68%, #b18149); box-shadow: inset 0 0 0 1px rgba(255,235,193,.25), inset 0 0 22px rgba(91,55,24,.14), 0 18px 42px #0004; }
+.gomoku-cell::before, .gomoku-cell::after { content: none; }
+.gomoku-grid-lines { position: absolute; z-index: 1; inset: var(--gomoku-padding); pointer-events: none; }
+.gomoku-grid-lines svg { width: 100%; height: 100%; display: block; overflow: visible; shape-rendering: geometricPrecision; }
+.gomoku-grid-lines path { fill: none; stroke: rgba(66,45,27,.72); stroke-width: .82; vector-effect: non-scaling-stroke; }
+.gomoku-grid-lines rect { fill: none; stroke: rgba(58,39,24,.84); stroke-width: 1.35; vector-effect: non-scaling-stroke; }
 .board-star { width: clamp(5px, 1vw, 7px); height: clamp(5px, 1vw, 7px); position: absolute; z-index: 1; left: 50%; top: 50%; border-radius: 50%; transform: translate(-50%, -50%); background: #3c2a1c; box-shadow: 0 0 0 1px rgba(63,43,27,.22); pointer-events: none; }
 
 /* 首页墨绿漆器棋盘 */
@@ -1452,18 +1454,18 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
   box-shadow: 1px 4px 7px rgba(0,0,0,.42), inset 0 1px rgba(255,255,255,.13);
   transform: translateZ(8px);
 }
-.winning-stone.stone-1 { --stone-left: 10px; --stone-top: 69px; --stone-delay: 110ms; }
-.winning-stone.stone-2 { --stone-left: 27px; --stone-top: 52px; --stone-delay: 215ms; background: linear-gradient(145deg, #fff8e7, #cfc2a8 72%); }
-.winning-stone.stone-3 { --stone-left: 44px; --stone-top: 35px; --stone-delay: 320ms; }
-.winning-stone.stone-4 { --stone-left: 61px; --stone-top: 18px; --stone-delay: 425ms; background: linear-gradient(145deg, #fff8e7, #cfc2a8 72%); }
-.winning-stone.stone-5 { --stone-left: 78px; --stone-top: 1px; --stone-delay: 530ms; }
+.winning-stone.stone-1 { --stone-left: 14px; --stone-top: 66px; --stone-delay: 110ms; }
+.winning-stone.stone-2 { --stone-left: 29px; --stone-top: 51px; --stone-delay: 215ms; background: linear-gradient(145deg, #fff8e7, #cfc2a8 72%); }
+.winning-stone.stone-3 { --stone-left: 44px; --stone-top: 36px; --stone-delay: 320ms; }
+.winning-stone.stone-4 { --stone-left: 59px; --stone-top: 21px; --stone-delay: 425ms; background: linear-gradient(145deg, #fff8e7, #cfc2a8 72%); }
+.winning-stone.stone-5 { --stone-left: 74px; --stone-top: 6px; --stone-delay: 530ms; }
 .gomoku-win-guide {
-  width: 90px;
+  width: 84px;
   height: 2px;
   position: absolute;
   z-index: 4;
-  left: 4px;
-  top: 49px;
+  left: 8px;
+  top: 43px;
   border-radius: 99px;
   background: linear-gradient(90deg, transparent, #ffe2a2 15% 85%, transparent);
   filter: drop-shadow(0 0 5px rgba(248,205,121,.8));
@@ -1498,9 +1500,9 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
 }
 .effect-quoridor .mini-quoridor > i { border-color: rgba(146,108,62,.58); background: linear-gradient(145deg, #b99155, #875f32); }
 .effect-quoridor .mini-quoridor-pawn { z-index: 6; transform: translateZ(12px); }
-.effect-quoridor .mini-quoridor-pawn.is-dark { left: 15px; top: 15px; background: #4c9b78; }
+.effect-quoridor .mini-quoridor-pawn.is-dark { left: 15px; top: 11px; background: #4c9b78; }
 .effect-quoridor .mini-quoridor-pawn.is-light { right: 15px; bottom: 15px; background: #eee3c9; }
-.effect-quoridor .quoridor-wall { width: 42px; height: 6px; left: 27px; top: 45px; transform: scaleY(.45) translateZ(8px); transform-origin: bottom; }
+.effect-quoridor .quoridor-wall { width: 42px; height: 6px; left: 27px; top: 40px; transform: scaleY(.45) translateZ(8px); transform-origin: bottom; }
 .quoridor-route {
   position: absolute;
   z-index: 5;
@@ -1511,9 +1513,9 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
   opacity: .18;
   transform-origin: left center;
 }
-.route-one { width: 37px; left: 18px; top: 22px; transform: rotate(28deg) scaleX(.4); }
-.route-two { width: 30px; left: 47px; top: 39px; transform: rotate(88deg) scaleX(.35); }
-.route-three { width: 38px; left: 51px; top: 70px; transform: rotate(152deg) scaleX(.35); }
+.route-one { width: 37px; left: 18px; top: 18px; transform: rotate(28deg) scaleX(.4); }
+.route-two { width: 30px; left: 47px; top: 34px; transform: rotate(88deg) scaleX(.35); }
+.route-three { width: 38px; left: 51px; top: 61px; transform: rotate(152deg) scaleX(.35); }
 
 .effect-twenty-four { perspective: 800px; }
 .calculation-ring {
@@ -1625,7 +1627,7 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
 @keyframes quoridor-route-one { to { opacity: .88; transform: rotate(28deg) scaleX(1); } }
 @keyframes quoridor-route-two { to { opacity: .88; transform: rotate(88deg) scaleX(1); } }
 @keyframes quoridor-route-three { to { opacity: .88; transform: rotate(152deg) scaleX(1); } }
-@keyframes quoridor-pawn-route { 0% { transform: translate3d(0, 0, 12px); } 36% { transform: translate3d(33px, 18px, 18px); } 65% { transform: translate3d(34px, 48px, 18px); } 100% { transform: translate3d(8px, 60px, 14px); } }
+@keyframes quoridor-pawn-route { 0% { transform: translate3d(0, 0, 12px); } 36% { transform: translate3d(33px, 15px, 18px); } 65% { transform: translate3d(34px, 39px, 18px); } 100% { transform: translate3d(8px, 49px, 14px); } }
 @keyframes calculation-card-converge { 45% { opacity: .95; transform: translate3d(0, -13px, 24px) rotateY(95deg) scale(1.06); filter: brightness(1.16); } 100% { opacity: .2; transform: translate3d(0, 0, 5px) rotateY(180deg) scale(.62); filter: blur(1px); } }
 @keyframes calculation-ring-collapse { 55% { opacity: .85; transform: scale(1.16) rotateX(64deg) rotateZ(90deg); } 100% { opacity: .08; transform: scale(.45) rotateX(64deg) rotateZ(180deg); filter: blur(2px); } }
 @keyframes calculation-result-reveal { to { opacity: 1; transform: translate(-50%, -50%) scale(1); filter: blur(0) drop-shadow(0 0 10px rgba(243,207,134,.45)); } }

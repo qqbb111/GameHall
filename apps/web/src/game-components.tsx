@@ -12,6 +12,9 @@ import type { GameActionCommand } from '@gamehall/protocol';
 
 type ActionHandler = (action: GameActionCommand['action']) => Promise<unknown>;
 const GOMOKU_STAR_POINTS = new Set(['3,3', '3,11', '7,7', '11,3', '11,11']);
+const GOMOKU_GRID_PATH = Array.from({ length: GOMOKU_SIZE }, (_, index) => (
+  `M 0 ${index} H ${GOMOKU_SIZE - 1} M ${index} 0 V ${GOMOKU_SIZE - 1}`
+)).join(' ');
 
 function playerName(player: Player): string {
   return player === 0 ? '玩家一' : '玩家二';
@@ -50,6 +53,12 @@ export function GomokuGame({ state, mySeat, active, onAction }: { state: GomokuS
       </div>
       <div className="board-scroll" aria-label="完整五子棋棋盘">
         <div className="gomoku-board" role="grid" aria-label="15乘15五子棋棋盘" aria-describedby="gomoku-keyboard-help">
+          <span className="gomoku-grid-lines" aria-hidden="true">
+            <svg viewBox="-0.5 -0.5 15 15" preserveAspectRatio="none" focusable="false">
+              <path d={GOMOKU_GRID_PATH} />
+              <rect x="0" y="0" width="14" height="14" />
+            </svg>
+          </span>
           {state.board.map((cell, index) => {
             const row = Math.floor(index / GOMOKU_SIZE);
             const col = index % GOMOKU_SIZE;
