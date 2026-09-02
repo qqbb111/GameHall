@@ -1,11 +1,15 @@
 import {
   ArrowRight,
+  Check,
   CircleDot,
   Dices,
   DoorOpen,
+  Gamepad2,
   LockKeyhole,
   Play,
+  Share2,
   Timer,
+  UserRound,
   Users,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
@@ -59,26 +63,33 @@ function GameGlyph({ kind }: { kind: GameCardInfo['icon'] }) {
   return <span className="suit-glyph" aria-hidden="true">♣</span>;
 }
 
-function HeroEditorial() {
+function TableOpeningGuide({ nickname, onChooseGame }: { nickname: string; onChooseGame: () => void }) {
+  const hasNickname = nickname.trim().length > 0;
+
   return (
-    <div className="editorial-art" aria-hidden="true">
-      <span className="editorial-aurora" />
-      <span className="cinematic-beam beam-one" />
-      <span className="cinematic-beam beam-two" />
-      <div className="cinematic-particles">
-        {Array.from({ length: 7 }, (_, index) => <i className={`particle-${index + 1}`} key={index} />)}
+    <section className={`opening-guide ${hasNickname ? 'has-name' : 'needs-name'}`} aria-labelledby="opening-guide-title">
+      <div className="opening-guide-heading">
+        <span>TABLE ROUTE</span>
+        <h2 id="opening-guide-title">开一桌，只要三步</h2>
+        <p>不注册、不排队，留名后直接挑一款游戏。</p>
       </div>
-      <div className="grand-board cinematic-board">
-        <span className="grand-board-depth" />
-        <span className="grand-board-edge" />
-        <span className="grand-board-glow" />
-        <span className="grand-board-trail trail-one" />
-        <span className="grand-board-trail trail-two" />
-        <i className="grand-stone is-dark is-first" />
-        <i className="grand-stone is-dark is-second" />
-        <i className="grand-stone is-light" />
-      </div>
-    </div>
+      <ol className="opening-steps" aria-label="开桌流程">
+        <li className={`opening-step ${hasNickname ? 'is-complete' : 'is-active'}`} aria-current={hasNickname ? undefined : 'step'}>
+          <span className="opening-step-index"><UserRound size={18} /><small>01</small></span>
+          <span className="opening-step-copy"><b>留下称呼</b><strong>{hasNickname ? nickname.trim() : '先在右侧留下称呼'}</strong><small>昵称会随你一起进入好友房</small></span>
+          {hasNickname && <Check className="opening-step-check" size={18} aria-label="已完成" />}
+        </li>
+        <li className={`opening-step ${hasNickname ? 'is-active' : 'is-pending'}`} aria-current={hasNickname ? 'step' : undefined}>
+          <span className="opening-step-index"><Gamepad2 size={18} /><small>02</small></span>
+          <span className="opening-step-copy"><b>挑一张桌</b><strong>五子棋 · 路墙棋 · 24 点</strong><small>点击游戏卡，房间立即创建</small></span>
+          <button type="button" onClick={onChooseGame} disabled={!hasNickname}>去选游戏 <ArrowRight size={15} /></button>
+        </li>
+        <li className="opening-step is-pending">
+          <span className="opening-step-index"><Share2 size={18} /><small>03</small></span>
+          <span className="opening-step-copy"><b>邀请好友</b><strong>把六位邀请码发给对手</strong><small>邀请码会在开桌后自动生成</small></span>
+        </li>
+      </ol>
+    </section>
   );
 }
 
@@ -138,6 +149,7 @@ export function HomePage({ client }: { client: GameHallClient }) {
   const [joinError, setJoinError] = useState<string | null>(null);
   const identityPanel = useRef<HTMLDivElement>(null);
   const nicknameInput = useRef<HTMLInputElement>(null);
+  const catalogSection = useRef<HTMLElement>(null);
   const onlineGames = useMemo(() => games.filter((game) => game.status === 'online'), []);
   const comingGames = useMemo(() => games.filter((game) => game.status === 'soon'), []);
 
@@ -150,6 +162,10 @@ export function HomePage({ client }: { client: GameHallClient }) {
   function randomizeNickname() {
     setNickname((current) => generateRandomNickname(current));
     setNicknameError(null);
+  }
+
+  function scrollToCatalog() {
+    catalogSection.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   async function createRoom(gameId: GameId) {
@@ -213,7 +229,7 @@ export function HomePage({ client }: { client: GameHallClient }) {
 
           <Reveal className="hero-editorial-reveal" delayMs={150} distance={34} respectReducedMotion={false}>
             <div className="hero-editorial">
-              <HeroEditorial />
+              <TableOpeningGuide nickname={nickname} onChooseGame={scrollToCatalog} />
               <div className="identity-panel" ref={identityPanel}>
                 <div className="identity-heading"><span>YOUR NAME</span><h2>先取个响亮的名字</h2><p>留下称呼，再从下方挑一张桌。</p></div>
                 <label className="field-label" htmlFor="nickname">你的昵称</label>
@@ -229,7 +245,7 @@ export function HomePage({ client }: { client: GameHallClient }) {
           </Reveal>
         </section>
 
-        <section className="catalog" aria-labelledby="catalog-title">
+        <section className="catalog" aria-labelledby="catalog-title" ref={catalogSection}>
           <Reveal distance={22} respectReducedMotion={false}>
             <div className="section-heading">
               <div><span>FEATURED TABLES</span><h2 id="catalog-title">今晚玩什么？</h2></div>

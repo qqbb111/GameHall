@@ -57,8 +57,36 @@ describe('HomePage', () => {
     expect(container.querySelector('.editorial-path')).not.toBeInTheDocument();
     expect(container.querySelector('.editorial-numbers')).not.toBeInTheDocument();
     expect(container.querySelector('.editorial-horizon')).not.toBeInTheDocument();
-    expect(container.querySelector('.grand-board.cinematic-board')).toBeInTheDocument();
-    expect(container.querySelector('.cinematic-particles')?.closest('[aria-hidden="true"]')).toBeInTheDocument();
+    expect(container.querySelector('.grand-board')).not.toBeInTheDocument();
+    expect(container.querySelector('.cinematic-particles')).not.toBeInTheDocument();
+    expect(screen.getByRole('list', { name: '开桌流程' })).toBeInTheDocument();
+  });
+
+  it('开桌引导随昵称推进步骤，并可定位到真实游戏目录', () => {
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+    const { container } = render(<HomePage client={clientStub()} />);
+    const guide = container.querySelector('.opening-guide');
+    const nameStep = screen.getByText('留下称呼').closest('li');
+    const gameStep = screen.getByText('挑一张桌').closest('li');
+    const chooseGame = screen.getByRole('button', { name: '去选游戏' });
+
+    expect(guide).not.toHaveAttribute('aria-hidden');
+    expect(nameStep).toHaveClass('is-active');
+    expect(nameStep).toHaveAttribute('aria-current', 'step');
+    expect(screen.getByText('先在右侧留下称呼')).toBeInTheDocument();
+    expect(gameStep).toHaveClass('is-pending');
+    expect(chooseGame).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText('你的昵称'), { target: { value: '引路棋客' } });
+    expect(nameStep).toHaveClass('is-complete');
+    expect(screen.getByText('引路棋客')).toBeInTheDocument();
+    expect(screen.getByLabelText('已完成')).toBeInTheDocument();
+    expect(gameStep).toHaveClass('is-active');
+    expect(gameStep).toHaveAttribute('aria-current', 'step');
+    expect(chooseGame).toBeEnabled();
+
+    fireEvent.click(chooseGame);
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' });
   });
 
   it('电影级标题保持完整可访问名称，视觉字符不会被重复朗读', () => {
