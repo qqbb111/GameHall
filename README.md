@@ -10,8 +10,8 @@
 - 活跃玩家断线后整局暂停，60 秒内凭 HttpOnly Cookie 恢复；服务重启后双方有 10 分钟恢复窗口。
 - 24 点题钟在暂停时冻结；服务每秒持久化运行心跳，硬重启后按最后运行时刻恢复真实剩余题时，不会重置为 30 秒。
 - 结束后双方可申请复赛，五子棋交换黑白、路墙棋交换起始边。
-- 房内只有 👍、👏、😄、🤔 四个固定表情，不接收自由文本。
-- 无账号、匹配、观战、聊天、排行榜、永久战绩、AI、真钱、充值、筹码或奖励兑换。
+- 房内支持 8 个快捷表情和最多 100 个可见字符的自定义消息；每个房间持久化最近 100 条，房间清理时级联删除。
+- 无账号、匹配、观战、跨房私聊、排行榜、永久战绩、AI、真钱、充值、筹码或奖励兑换。
 
 ## 技术结构
 
@@ -42,18 +42,33 @@ pnpm dev
 pnpm migrate
 ```
 
-## 验证门禁
+## 分层验证
+
+开发过程中只运行受影响范围的检查，不为每个 commit 重复执行全量测试：
 
 ```bash
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm test:integration
-pnpm build
-pnpm smoke:load
+pnpm verify:web       # Web 交互、样式与构建
+pnpm verify:core      # 游戏规则核心
+pnpm verify:server    # 服务端、数据库与 Socket.IO
 ```
 
-`test:integration` 会启动真实 HTTP/Socket.IO 服务与两个 Socket.IO 客户端，覆盖建房、加入、准备、整局五子棋、完整走到目标边的路墙棋、打到 5 分并经历错误冷却与题目超时的 24 点对决，以及幂等/乱序动作、无 ACK 客户端、断线恢复、超时判负、优雅/硬重启恢复、重启恢复超时、固定表情和复赛换边。`smoke:load` 建立 50 个并发连接与 25 个活跃房间。
+一次交付中的所有 commit 完成后，统一运行一次完整门禁：
+
+```bash
+pnpm verify:full
+```
+
+它依次执行 lint、typecheck、单元测试、集成测试、production build 和负载冒烟，与 CI 使用同一入口。`test:integration` 会启动真实 HTTP/Socket.IO 服务与两个 Socket.IO 客户端，覆盖建房、加入、准备、三款游戏、幂等/乱序动作、断线与重启恢复、房间消息、超时判负和复赛换边；`smoke:load` 建立 50 个并发连接与 25 个活跃房间。
+
+## 开发协作
+
+- 每个逻辑完整的改动创建独立 Git commit，并同步更新本 README 中受影响的功能、接口、运行方式或开发约定。
+- 文案、局部样式和单组件修改默认由单个实现 Agent 完成。
+- 游戏规则、数据库、Socket.IO、重连、事务、并发、安全或跨包改动增加独立只读验证 Agent。
+- 实现默认使用 Sol medium，独立验证默认使用 Luna medium；Luna max 仅用于疑难竞态、幂等或 flaky 问题。
+- 同一时间只有一个 Agent 修改工作区，集成测试与负载测试串行执行。
+
+完整的验证矩阵、失败交接格式和三次试运行记录见 [`docs/verification-workflow.md`](docs/verification-workflow.md)。仓库级硬性规则见 [`AGENTS.md`](AGENTS.md)。
 
 ## 环境变量
 
