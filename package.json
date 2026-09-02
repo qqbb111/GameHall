@@ -15,6 +15,10 @@
     "test": "pnpm -r test",
     "test:integration": "pnpm --filter @gamehall/server test:integration",
     "smoke:load": "pnpm --filter @gamehall/server smoke:load",
+    "verify:web": "pnpm --filter @gamehall/web lint && pnpm --filter @gamehall/web typecheck && pnpm --filter @gamehall/web test && pnpm --filter @gamehall/web build",
+    "verify:core": "pnpm --filter @gamehall/game-core lint && pnpm --filter @gamehall/game-core typecheck && pnpm --filter @gamehall/game-core test && pnpm --filter @gamehall/game-core build",
+    "verify:server": "pnpm --filter @gamehall/server lint && pnpm --filter @gamehall/server typecheck && pnpm --filter @gamehall/server test && pnpm --filter @gamehall/server test:integration && pnpm --filter @gamehall/server build",
+    "verify:full": "pnpm lint && pnpm typecheck && pnpm test && pnpm test:integration && pnpm build && pnpm smoke:load",
     "migrate": "pnpm --filter @gamehall/server migrate"
   }
 }
