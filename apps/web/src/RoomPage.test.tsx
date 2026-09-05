@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createGomokuState, createQuoridorState, createTwentyFourState, viewTwentyFourState } from '@gamehall/game-core';
-import type { GameId, GameSnapshot, RoomSnapshot } from '@gamehall/protocol';
+import { abortSplendorState, createSplendorState, splendorDefinition, createGomokuState, createQuoridorState, createTwentyFourState, viewTwentyFourState } from '@gamehall/game-core';
+import type { GameSnapshot, RoomSnapshot } from '@gamehall/protocol';
 import type { GameHallClient } from './gamehall-client';
 import { RoomPage } from './RoomPage';
 import { resultMessage } from './room-result';
@@ -20,7 +20,7 @@ const finishedViews = {
   'twenty-four': { ...base, phase: 'finished', winner: 0, finishReason: 'score' },
 } as const;
 
-function finishedClient(gameId: GameId, rematchReady: [boolean, boolean] = [false, false], requestRematch = vi.fn().mockResolvedValue({ ok: true })): GameHallClient {
+function finishedClient(gameId: keyof typeof finishedViews, rematchReady: [boolean, boolean] = [false, false], requestRematch = vi.fn().mockResolvedValue({ ok: true })): GameHallClient {
   const room: RoomSnapshot = {
     roomId: 'room', code: 'ABC234', gameId, status: 'finished', version: 7,
     hostSeat: 0, mySeat: 0, pauseReason: null, restartDeadlineMs: null, serverTimeMs: 1_000,
@@ -36,12 +36,33 @@ function finishedClient(gameId: GameId, rematchReady: [boolean, boolean] = [fals
   return {
     loading: false, connection: 'online', session: { sessionId: 'session', reconnectableRoomCode: null },
     room, game, error: null, messages: [], messageToasts: [], clearError: vi.fn(), reconnect: vi.fn(),
-    createRoom: vi.fn(), joinRoom: vi.fn(), setReady: vi.fn(), leaveRoom: vi.fn(),
+    createRoom: vi.fn(), joinRoom: vi.fn(), startRoom: vi.fn(), reopenRoom: vi.fn(), setReady: vi.fn(), leaveRoom: vi.fn(),
     submitGameAction: vi.fn(), requestRematch, sendMessage: vi.fn(),
   } as GameHallClient;
 }
 
 describe('RoomPage result copy', () => {
+  it('璀璨宝石四座等待区由房主确认开局，中止可保留邀请码返回等待区', async () => {
+    const client = finishedClient('gomoku');
+    client.room = { ...client.room!, gameId: 'splendor', status: 'waiting' };
+    client.game = null;
+    client.startRoom = vi.fn().mockResolvedValue({ ok: true }); client.reopenRoom = vi.fn().mockResolvedValue({ ok: true });
+    const rendered = render(<RoomPage client={client} />);
+    expect(rendered.container.querySelectorAll('.waiting-seats .player-card')).toHaveLength(4);
+    fireEvent.click(screen.getByRole('button', { name: '房主确认开局' }));
+    await waitFor(() => expect(client.startRoom).toHaveBeenCalledTimes(1));
+    client.room = { ...client.room!, status: 'finished' };
+    const state = abortSplendorState(createSplendorState({ playerCount: 2 }), 'disconnect');
+    client.game = { gameId: 'splendor', roomId: 'room', status: 'finished', version: 8, mySeat: 0, view: splendorDefinition.viewFor(state, 0, 0), serverTimeMs: 1000 };
+    rendered.rerender(<RoomPage client={client} />);
+    expect(screen.getByRole('heading', { name: /中止.*不计胜负/ })).toBeInTheDocument();
+    expect(screen.getByLabelText('本局分数')).toHaveTextContent('0 分');
+    fireEvent.click(screen.getByRole('button', { name: '保留邀请码，返回等待区' }));
+    await waitFor(() => expect(client.reopenRoom).toHaveBeenCalledTimes(1));
+    client.room = { ...client.room!, mySeat: 1 };
+    rendered.rerender(<RoomPage client={client} />);
+    expect(screen.queryByRole('button', { name: '保留邀请码，返回等待区' })).not.toBeInTheDocument();
+  });
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
@@ -103,7 +124,7 @@ describe('RoomPage result copy', () => {
     const client = (connection: GameHallClient['connection'], roomValue: RoomSnapshot, gameValue: GameSnapshot): GameHallClient => ({
       loading: false, connection, session: { sessionId: 'session', reconnectableRoomCode: null },
       room: roomValue, game: gameValue, error: null, messages: [], messageToasts: [], clearError: vi.fn(), reconnect: vi.fn(),
-      createRoom: vi.fn(), joinRoom: vi.fn(), setReady: vi.fn(), leaveRoom: vi.fn(),
+      createRoom: vi.fn(), joinRoom: vi.fn(), startRoom: vi.fn(), reopenRoom: vi.fn(), setReady: vi.fn(), leaveRoom: vi.fn(),
       submitGameAction: vi.fn(), requestRematch: vi.fn(), sendMessage: vi.fn(),
     }) as GameHallClient;
 
@@ -135,7 +156,7 @@ describe('RoomPage result copy', () => {
     const client = {
       loading: false, connection: 'online', session: { sessionId: 'session', reconnectableRoomCode: null },
       room, game: null, error: null, messages: [], messageToasts: [], clearError: vi.fn(), reconnect: vi.fn(),
-      createRoom: vi.fn(), joinRoom: vi.fn(), setReady: vi.fn(), leaveRoom: vi.fn(),
+      createRoom: vi.fn(), joinRoom: vi.fn(), startRoom: vi.fn(), reopenRoom: vi.fn(), setReady: vi.fn(), leaveRoom: vi.fn(),
       submitGameAction: vi.fn(), requestRematch: vi.fn(), sendMessage: vi.fn(),
     } as GameHallClient;
 
@@ -156,7 +177,7 @@ describe('RoomPage result copy', () => {
     const client = {
       loading: false, connection: 'online', session: { sessionId: 'session', reconnectableRoomCode: null },
       room, game: null, error: null, messages: [], messageToasts: [], clearError: vi.fn(), reconnect: vi.fn(),
-      createRoom: vi.fn(), joinRoom: vi.fn(), setReady: vi.fn(), leaveRoom,
+      createRoom: vi.fn(), joinRoom: vi.fn(), startRoom: vi.fn(), reopenRoom: vi.fn(), setReady: vi.fn(), leaveRoom,
       submitGameAction: vi.fn(), requestRematch: vi.fn(), sendMessage: vi.fn(),
     } as GameHallClient;
 
@@ -187,7 +208,7 @@ describe('RoomPage result copy', () => {
     const client = {
       loading: false, connection: 'online', session: { sessionId: 'session', reconnectableRoomCode: null },
       room, game: null, error: null, messages: [], messageToasts: [], clearError: vi.fn(), reconnect: vi.fn(),
-      createRoom: vi.fn(), joinRoom: vi.fn(), setReady: vi.fn(), leaveRoom: vi.fn(),
+      createRoom: vi.fn(), joinRoom: vi.fn(), startRoom: vi.fn(), reopenRoom: vi.fn(), setReady: vi.fn(), leaveRoom: vi.fn(),
       submitGameAction, requestRematch: vi.fn(), sendMessage,
     } as GameHallClient;
 

@@ -54,6 +54,24 @@ function sessionResponse() {
 }
 
 describe('useGameHallClient connection recovery', () => {
+  it('重开清除旧对局并拒绝上一局的延迟房间和游戏快照', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(sessionResponse()));
+    const { result } = renderHook(() => useGameHallClient());
+    await waitFor(() => expect(socketMocks.sockets).toHaveLength(1));
+    const deliver = (event: string, payload: unknown) => act(() => { (socketMocks.sockets[0]!.handlers.get(event) as unknown as (value: unknown) => void)(payload); });
+    const room = { roomId: 'room', gameId: 'splendor', version: 10, status: 'finished', members: [] };
+    const game = { roomId: 'room', gameId: 'splendor', version: 10, status: 'finished', view: { phase: 'finished' } };
+    deliver('room:snapshot', room); deliver('game:snapshot', game);
+    expect(result.current.game?.version).toBe(10);
+    deliver('room:snapshot', { ...room, version: 11, status: 'waiting' });
+    expect(result.current.game).toBeNull();
+    deliver('game:snapshot', game); deliver('presence:update', room);
+    expect(result.current.game).toBeNull(); expect(result.current.room?.status).toBe('waiting');
+    deliver('room:snapshot', { ...room, version: 14, status: 'active' });
+    deliver('game:snapshot', { ...game, version: 14, status: 'active', view: { phase: 'action' } });
+    deliver('game:snapshot', game);
+    expect(result.current.game?.version).toBe(14);
+  });
   beforeEach(() => {
     socketMocks.sockets.length = 0;
     vi.mocked(io).mockClear();

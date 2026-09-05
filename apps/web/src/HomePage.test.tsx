@@ -118,8 +118,8 @@ describe('HomePage', () => {
     const reveals = container.querySelectorAll('.reveal');
     expect(reveals.length).toBeGreaterThan(0);
     expect(container.querySelectorAll('.reveal[data-reduced-motion="ignore"]')).toHaveLength(reveals.length);
-    expect(container.querySelectorAll('.game-card-surface[data-reduced-motion="ignore"]')).toHaveLength(3);
-    expect(container.querySelectorAll('.featured-spark[data-reduced-motion="ignore"]')).toHaveLength(3);
+    expect(container.querySelectorAll('.game-card-surface[data-reduced-motion="ignore"]')).toHaveLength(4);
+    expect(container.querySelectorAll('.featured-spark[data-reduced-motion="ignore"]')).toHaveLength(4);
   });
 
   it('连接中的提示延迟显示且没有无效重连按钮', () => {

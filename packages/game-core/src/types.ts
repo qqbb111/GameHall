@@ -1,5 +1,10 @@
 export type Player = 0 | 1;
 
+export function requireBinaryPlayer(seat: number): Player {
+  if (seat === 0 || seat === 1) return seat;
+  throw new Error('binary game contains invalid seat');
+}
+
 export type GameResult =
   | { type: 'win'; winner: Player; reason: 'line' | 'goal' | 'score' | 'resign' | 'disconnect' | 'leave' }
   | { type: 'draw' };
@@ -17,14 +22,14 @@ export type ActionValidation<Action> =
   | { ok: true; action: Action }
   | { ok: false; message: string };
 
-export interface GameDefinition<State, Action, View, InitialOptions> {
+export interface GameDefinition<State, Action, View, InitialOptions, Actor = Player, Result = GameResult> {
   readonly id: string;
   readonly stateSchemaVersion: number;
   initialize(options: InitialOptions): State;
   validateAction(input: unknown): ActionValidation<Action>;
-  advance(state: State, actor: Player, action: Action, nowMs: number): ApplyResult<State>;
-  viewFor(state: State, viewer: Player, nowMs: number): View;
-  result(state: State): GameResult | null;
+  advance(state: State, actor: Actor, action: Action, nowMs: number): ApplyResult<State>;
+  viewFor(state: State, viewer: Actor, nowMs: number): View;
+  result(state: State): Result | null;
   serialize(state: State): string;
   deserialize(serialized: string): State;
 }

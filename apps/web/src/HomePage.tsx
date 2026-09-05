@@ -3,6 +3,7 @@ import {
   Check,
   CircleDot,
   Dices,
+  Gem,
   DoorOpen,
   Gamepad2,
   LockKeyhole,
@@ -22,6 +23,7 @@ import { generateRandomNickname } from './random-nickname';
 import { parseRoomCodeInput, removeRoomQueryFromAddress } from './room-code';
 
 function GameGlyph({ kind }: { kind: GameCardInfo['icon'] }) {
+  if (kind === 'splendor') return <Gem size={88} aria-hidden="true" />;
   if (kind === 'gomoku') {
     return (
       <div className="gameplay-effect effect-gomoku" aria-hidden="true">
@@ -220,7 +222,7 @@ export function HomePage({ client }: { client: GameHallClient }) {
             </Reveal>
             <Reveal delayMs={1_310} distance={20} respectReducedMotion={false}>
               <div className="trust-row">
-                <span><Users size={16} /> 双人好友房</span>
+                <span><Users size={16} /> 2–4 人好友房</span>
                 <span><Timer size={16} /> 断线 60 秒重连</span>
                 <span><LockKeyhole size={16} /> 无充值与筹码</span>
               </div>

@@ -40,6 +40,7 @@ export function useGameHallClient() {
   const [connection, setConnection] = useState<'connecting' | 'online' | 'offline'>('connecting');
   const [session, setSession] = useState<SessionResponse | null>(null);
   const [room, setRoom] = useState<RoomSnapshot | null>(null);
+  const latestRoomRef = useRef<RoomSnapshot | null>(null);
   const [game, setGame] = useState<GameSnapshot | null>(null);
   const [error, setError] = useState<CommandError | null>(null);
   const [messages, setMessages] = useState<RoomMessage[]>([]);
@@ -79,19 +80,25 @@ export function useGameHallClient() {
         setConnection('offline');
         setError({ event: 'connection', commandId: null, code: 'RECONNECT_FAILED', message: '自动重连未成功，请点击重新连接', retryable: true });
       });
-      socket.on('room:snapshot', (snapshot) => {
-        setRoom((current) => current && current.roomId === snapshot.roomId && current.version > snapshot.version ? current : snapshot);
+      function receiveRoom(snapshot: RoomSnapshot) {
+        const current = latestRoomRef.current;
+        if (current?.roomId === snapshot.roomId && current.version > snapshot.version) return;
+        latestRoomRef.current = snapshot;
+        setRoom(snapshot);
+        if (snapshot.status === 'waiting' || (current && current.roomId !== snapshot.roomId)) setGame(null);
         setMessages((current) => current.length > 0 && current[0]?.roomId !== snapshot.roomId ? [] : current);
-      });
+      }
+      socket.on('room:snapshot', receiveRoom);
       socket.on('game:snapshot', (snapshot) => {
+        const latest = latestRoomRef.current;
+        if (latest && (latest.roomId !== snapshot.roomId || latest.status === 'waiting' || latest.version > snapshot.version)) return;
         setGame((current) => current && current.roomId === snapshot.roomId && current.version > snapshot.version ? current : snapshot);
       });
-      socket.on('presence:update', (snapshot) => {
-        setRoom((current) => current && current.roomId === snapshot.roomId && current.version > snapshot.version ? current : snapshot);
-      });
+      socket.on('presence:update', receiveRoom);
       socket.on('command:error', (commandError) => {
         setError(commandError);
         if (commandError.event === 'room:closed') {
+          latestRoomRef.current = null;
           setRoom(null);
           setGame(null);
           setMessages([]);
@@ -229,6 +236,7 @@ export function useGameHallClient() {
     const commandId = crypto.randomUUID();
     const result = await emitWithAck('room:leave', { commandId, roomId: room.roomId }, commandId);
     if (result.ok) {
+      latestRoomRef.current = null;
       setRoom(null);
       setGame(null);
       setMessages([]);
@@ -252,6 +260,18 @@ export function useGameHallClient() {
     if (!room) return failCommand('game:rematch', null, 'NO_ROOM', '当前不在房间中');
     const commandId = crypto.randomUUID();
     return emitWithAck('game:rematch', { commandId, roomId: room.roomId, requested }, commandId);
+  }, [emitWithAck, failCommand, room]);
+
+  const startRoom = useCallback(async (): Promise<CommandAck> => {
+    if (!room) return failCommand('room:start', null, 'NO_ROOM', '当前不在房间中');
+    const commandId = crypto.randomUUID();
+    return emitWithAck('room:start', { commandId, roomId: room.roomId, expectedVersion: room.version }, commandId);
+  }, [emitWithAck, failCommand, room]);
+
+  const reopenRoom = useCallback(async (): Promise<CommandAck> => {
+    if (!room) return failCommand('room:reopen', null, 'NO_ROOM', '当前不在房间中');
+    const commandId = crypto.randomUUID();
+    return emitWithAck('room:reopen', { commandId, roomId: room.roomId, expectedVersion: room.version }, commandId);
   }, [emitWithAck, failCommand, room]);
 
   const sendMessage = useCallback(async (content: string): Promise<CommandAck> => {
@@ -290,6 +310,8 @@ export function useGameHallClient() {
     leaveRoom,
     submitGameAction,
     requestRematch,
+    startRoom,
+    reopenRoom,
     sendMessage,
   };
 }

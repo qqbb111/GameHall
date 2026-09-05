@@ -1,8 +1,8 @@
 import { z } from 'zod';
 
-export const gameIds = ['gomoku', 'quoridor', 'twenty-four'] as const;
+export const gameIds = ['gomoku', 'quoridor', 'twenty-four', 'splendor'] as const;
 export type GameId = (typeof gameIds)[number];
-export type PlayerSeat = 0 | 1;
+export type PlayerSeat = 0 | 1 | 2 | 3;
 export type RoomStatus = 'waiting' | 'active' | 'paused' | 'finished';
 
 const commandId = z.string().uuid();
@@ -21,6 +21,8 @@ export const createRoomSchema = z.object({
 
 export const joinRoomSchema = z.object({ commandId, nickname, code: roomCode }).strict();
 export const readyRoomSchema = z.object({ commandId, roomId, ready: z.boolean() }).strict();
+export const startRoomSchema = z.object({ commandId, roomId, expectedVersion: z.number().int().nonnegative() }).strict();
+export const reopenRoomSchema = z.object({ commandId, roomId, expectedVersion: z.number().int().nonnegative() }).strict();
 export const leaveRoomSchema = z.object({ commandId, roomId }).strict();
 export const rematchSchema = z.object({ commandId, roomId, requested: z.boolean() }).strict();
 export const roomMessageSchema = z.object({
@@ -35,6 +37,18 @@ const transportActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('placeWall'), row: z.number().int(), col: z.number().int(), orientation: z.enum(['H', 'V']) }).strict(),
   z.object({ type: z.literal('submit'), expression: z.string().max(128) }).strict(),
   z.object({ type: z.literal('resign') }).strict(),
+  z.object({ type: z.literal('takeTokens'), colors: z.array(z.enum(['white', 'blue', 'green', 'red', 'black'])).min(1).max(3) }).strict(),
+  z.object({ type: z.literal('reserve'), source: z.union([
+    z.object({ kind: z.literal('market'), tier: z.union([z.literal(1), z.literal(2), z.literal(3)]), cardId: z.string().max(16) }).strict(),
+    z.object({ kind: z.literal('deck'), tier: z.union([z.literal(1), z.literal(2), z.literal(3)]) }).strict(),
+  ]) }).strict(),
+  z.object({ type: z.literal('purchase'), source: z.union([
+    z.object({ kind: z.literal('market'), tier: z.union([z.literal(1), z.literal(2), z.literal(3)]), cardId: z.string().max(16) }).strict(),
+    z.object({ kind: z.literal('reserved'), cardId: z.string().max(16) }).strict(),
+  ]), payment: z.object({ white: z.number().int().min(0).max(10), blue: z.number().int().min(0).max(10), green: z.number().int().min(0).max(10), red: z.number().int().min(0).max(10), black: z.number().int().min(0).max(10), gold: z.number().int().min(0).max(10) }).strict() }).strict(),
+  z.object({ type: z.literal('returnTokens'), tokens: z.object({ white: z.number().int().min(0).max(10), blue: z.number().int().min(0).max(10), green: z.number().int().min(0).max(10), red: z.number().int().min(0).max(10), black: z.number().int().min(0).max(10), gold: z.number().int().min(0).max(10) }).strict() }).strict(),
+  z.object({ type: z.literal('chooseNoble'), nobleId: z.string().max(16) }).strict(),
+  z.object({ type: z.literal('pass') }).strict(),
 ]);
 export const gameActionSchema = z.object({
   actionId: z.string().uuid(),
@@ -48,6 +62,8 @@ export const gameActionSchema = z.object({
 export type CreateRoomCommand = z.infer<typeof createRoomSchema>;
 export type JoinRoomCommand = z.infer<typeof joinRoomSchema>;
 export type ReadyRoomCommand = z.infer<typeof readyRoomSchema>;
+export type StartRoomCommand = z.infer<typeof startRoomSchema>;
+export type ReopenRoomCommand = z.infer<typeof reopenRoomSchema>;
 export type LeaveRoomCommand = z.infer<typeof leaveRoomSchema>;
 export type RematchCommand = z.infer<typeof rematchSchema>;
 export type RoomMessageCommand = z.infer<typeof roomMessageSchema>;
@@ -88,6 +104,7 @@ export type GameSnapshot = {
 };
 
 export type RoomMessage = {
+  isMine?: boolean;
   messageId: string;
   roomId: string;
   seat: PlayerSeat;
@@ -122,6 +139,8 @@ export type ClientToServerEvents = {
   'room:create': (command: CreateRoomCommand, ack: (result: CommandAck) => void) => void;
   'room:join': (command: JoinRoomCommand, ack: (result: CommandAck) => void) => void;
   'room:ready': (command: ReadyRoomCommand, ack: (result: CommandAck) => void) => void;
+  'room:start': (command: StartRoomCommand, ack: (result: CommandAck) => void) => void;
+  'room:reopen': (command: ReopenRoomCommand, ack: (result: CommandAck) => void) => void;
   'room:leave': (command: LeaveRoomCommand, ack: (result: CommandAck) => void) => void;
   'game:action': (command: GameActionCommand, ack: (result: CommandAck) => void) => void;
   'game:rematch': (command: RematchCommand, ack: (result: CommandAck) => void) => void;

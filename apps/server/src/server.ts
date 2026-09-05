@@ -13,6 +13,8 @@ import {
   leaveRoomSchema,
   roomMessageSchema,
   readyRoomSchema,
+  startRoomSchema,
+  reopenRoomSchema,
   rematchSchema,
   type ClientToServerEvents,
   type CommandAck,
@@ -256,6 +258,26 @@ export function createGameHallServer(configOverrides: Partial<ServerConfig> = {}
         return parsed.success
           ? roomService.setReady(socket.data.sessionId, parsed.data)
           : { ok: false, error: commandError('room:ready', null, 'INVALID_PAYLOAD', '准备状态不合法') };
+      });
+    });
+
+    socket.on('room:start', (payload, callback) => {
+      dispatchSocketCommand(socket, 'room:start', callback, () => {
+        const limited = rateLimitAck(socket, 'room:start', 20, 60_000, '开局请求太频繁');
+        if (limited) return limited;
+        const parsed = startRoomSchema.safeParse(payload);
+        return parsed.success ? roomService.startRoom(socket.data.sessionId, parsed.data)
+          : { ok: false, error: commandError('room:start', null, 'INVALID_PAYLOAD', '开局参数不合法') };
+      });
+    });
+
+    socket.on('room:reopen', (payload, callback) => {
+      dispatchSocketCommand(socket, 'room:reopen', callback, () => {
+        const limited = rateLimitAck(socket, 'room:reopen', 20, 60_000, '重开请求太频繁');
+        if (limited) return limited;
+        const parsed = reopenRoomSchema.safeParse(payload);
+        return parsed.success ? roomService.reopenRoom(socket.data.sessionId, parsed.data)
+          : { ok: false, error: commandError('room:reopen', null, 'INVALID_PAYLOAD', '重开参数不合法') };
       });
     });
 

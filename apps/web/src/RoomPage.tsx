@@ -1,13 +1,15 @@
 import { Check, Clipboard, DoorOpen, Flag, Link2, LoaderCircle, LogOut, RotateCcw, Send, ShieldCheck, TriangleAlert, Wifi, WifiOff, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { GomokuState, QuoridorView, TwentyFourView } from '@gamehall/game-core';
+import { requireBinaryPlayer, type GomokuState, type QuoridorView, type TwentyFourView, type SplendorView } from '@gamehall/game-core';
 import type { GameId, RoomMemberView } from '@gamehall/protocol';
 import type { GameHallClient } from './gamehall-client';
 import { GomokuGame, QuoridorGame, TwentyFourGame } from './game-components';
 import { ClickSpark, Reveal } from './motion-primitives';
 import { resultMessage } from './room-result';
+import { SplendorGame } from './SplendorGame';
 
 const gameNames: Record<GameId, string> = {
+  splendor: '璀璨宝石',
   gomoku: '五子棋',
   quoridor: '路墙棋',
   'twenty-four': '24 点速度对决',
@@ -139,7 +141,7 @@ export function RoomPage({ client }: { client: GameHallClient }) {
   const rematchCount = room?.members.filter((member) => member.rematchReady).length ?? 0;
   const statusText = useMemo(() => {
     if (!room) return '';
-    if (room.status === 'waiting') return room.members.length < 2 ? '等待好友加入' : '等待双方准备';
+    if (room.status === 'waiting') return room.members.length < 2 ? '等待好友加入' : room.gameId === 'splendor' ? '等待准备与房主开局' : '等待双方准备';
     if (room.status === 'paused') return '对局暂停';
     if (room.status === 'finished') return '本局结束';
     return '对局进行中';
@@ -147,10 +149,14 @@ export function RoomPage({ client }: { client: GameHallClient }) {
 
   if (!room) return null;
   const currentRoom = room;
+  const multiplayer = room.gameId === 'splendor';
+  const isHost = room.mySeat === room.hostSeat;
 
   async function run(operation: () => Promise<unknown>) {
+    if (pendingRef.current) return;
+    pendingRef.current = true;
     setPending(true);
-    try { await operation(); } finally { setPending(false); }
+    try { await operation(); } finally { pendingRef.current = false; setPending(false); }
   }
 
   async function copyInvite(target: 'link' | 'code') {
@@ -202,7 +208,7 @@ export function RoomPage({ client }: { client: GameHallClient }) {
   }
 
   return (
-    <div className={`room-shell room-status-${room.status}`}>
+    <div className={`room-shell room-status-${room.status} ${multiplayer ? 'splendor-room' : ''}`}>
       <header className="room-topbar">
         <div className="room-topbar-left">
           <button className="brand room-brand-button" type="button" aria-label="返回主界面并离开房间" onClick={(event) => openConfirmation('leave', event.currentTarget)}>
@@ -249,7 +255,7 @@ export function RoomPage({ client }: { client: GameHallClient }) {
             <div className="pause-banner" role="status">
               <LoaderCircle size={20} />
               <div>
-                <strong>{client.connection !== 'online' ? '正在恢复连接与权威棋盘…' : room.pauseReason === 'restart' ? '服务恢复后等待双方回来' : '好友暂时断线，对局已暂停'}</strong>
+                <strong>{client.connection !== 'online' ? '正在恢复连接与对局…' : room.pauseReason === 'restart' ? multiplayer ? '服务恢复后等待全员回来' : '服务恢复后等待双方回来' : '好友暂时断线，对局已暂停'}</strong>
                 <span>{pauseSeconds === null ? '你的座位和对局状态会保留。' : `${pauseSeconds} 秒内重连即可继续本局。`}</span>
               </div>
             </div>
@@ -260,32 +266,36 @@ export function RoomPage({ client }: { client: GameHallClient }) {
               <section className="waiting-panel" aria-labelledby="waiting-title">
                 <div className="waiting-emblem"><Link2 /></div>
                 <span>FRIEND ROOM</span>
-                <h2 id="waiting-title">{room.members.length < 2 ? '把邀请链接发给好友' : '两位玩家已经到齐'}</h2>
-                <p>{room.members.length < 2 ? '好友通过六位邀请码或分享链接加入。房间闲置两小时后自动清理。' : '双方点击准备后立即开局；首局阵营由服务器随机分配。'}</p>
-                <div className="waiting-seats">
+                <h2 id="waiting-title">{room.members.length < 2 ? '把邀请链接发给好友' : multiplayer ? `${room.members.length} 位玩家已入席` : '两位玩家已经到齐'}</h2>
+                <p>{multiplayer ? `支持 2–4 人。全员在线并准备后，由房主 ${room.members.find((member) => member.seat === room.hostSeat)?.nickname ?? ''} 确认开局；每局随机首家。` : room.members.length < 2 ? '好友通过六位邀请码或分享链接加入。房间闲置两小时后自动清理。' : '双方点击准备后立即开局；首局阵营由服务器随机分配。'}</p>
+                <div className={`waiting-seats ${multiplayer ? 'is-multiplayer' : ''}`}>
+                  {multiplayer ? [0, 1, 2, 3].map((seat) => <PlayerCard key={seat} member={room.members.find((member) => member.seat === seat)} mine={room.mySeat === seat} />) : <>
                   <PlayerCard key={room.members.find((member) => member.seat === 0)?.nickname ?? 'empty-0'} member={room.members.find((member) => member.seat === 0)} mine={room.mySeat === 0} />
                   <span>VS</span>
                   <PlayerCard key={room.members.find((member) => member.seat === 1)?.nickname ?? 'empty-1'} member={room.members.find((member) => member.seat === 1)} mine={room.mySeat === 1} />
+                  </>}
                 </div>
                 <ClickSpark className="ready-spark">
                   <button className={`ready-button ${me?.ready ? 'is-ready' : ''}`} type="button" disabled={pending || room.members.length < 2 || client.connection !== 'online'} onClick={() => void run(() => client.setReady(!me?.ready))}>
                     {me?.ready ? <><Check size={19} /> 已准备，点击取消</> : <><ShieldCheck size={19} /> 我准备好了</>}
                   </button>
                 </ClickSpark>
+                {multiplayer && isHost && <button className="ready-button" type="button" disabled={pending || client.connection !== 'online' || room.members.length < 2 || room.members.some((member) => !member.online || !member.ready)} onClick={() => void run(client.startRoom)}>房主确认开局</button>}
               </section>
             </Reveal>
           )}
 
           {game && room.status !== 'waiting' && (
             <div className={`game-stage ${result ? 'has-result' : ''}`}>
-              {room.gameId === 'gomoku' && <GomokuGame state={game.view as GomokuState} mySeat={room.mySeat} active={canPlay} onAction={client.submitGameAction} />}
-              {room.gameId === 'quoridor' && <QuoridorGame state={game.view as QuoridorView} mySeat={room.mySeat} active={canPlay} onAction={client.submitGameAction} />}
-              {room.gameId === 'twenty-four' && <TwentyFourGame key={(game.view as TwentyFourView).round} state={game.view as TwentyFourView} mySeat={room.mySeat} active={canPlay} serverNowMs={gameClockNow} onAction={client.submitGameAction} />}
+              {room.gameId === 'splendor' && <SplendorGame key={game.version} state={game.view as SplendorView} mySeat={room.mySeat} active={canPlay} members={room.members} onAction={client.submitGameAction} />}
+              {room.gameId === 'gomoku' && <GomokuGame state={game.view as GomokuState} mySeat={requireBinaryPlayer(room.mySeat)} active={canPlay} onAction={client.submitGameAction} />}
+              {room.gameId === 'quoridor' && <QuoridorGame state={game.view as QuoridorView} mySeat={requireBinaryPlayer(room.mySeat)} active={canPlay} onAction={client.submitGameAction} />}
+              {room.gameId === 'twenty-four' && <TwentyFourGame key={(game.view as TwentyFourView).round} state={game.view as TwentyFourView} mySeat={requireBinaryPlayer(room.mySeat)} active={canPlay} serverNowMs={gameClockNow} onAction={client.submitGameAction} />}
               {result && (
                 <Reveal className="result-reveal" distance={20} key={result}>
                   <div className="result-panel" role="status">
                     <span>GAME COMPLETE</span><h2>{result}</h2>
-                    {room.members.length === 2 ? (
+                    {multiplayer ? <><p>返回等待区后可继续邀请好友，所有人重新准备。</p>{isHost ? <button type="button" disabled={pending || client.connection !== 'online'} onClick={() => void run(client.reopenRoom)}><RotateCcw size={19} /> 保留邀请码，返回等待区</button> : <small>等待房主返回等待区</small>}</> : room.members.length === 2 ? (
                       <>
                         <ClickSpark className="rematch-spark">
                           <button type="button" className={me?.rematchReady ? 'is-ready' : ''} disabled={pending || client.connection !== 'online'} onClick={() => void run(() => client.requestRematch(!me?.rematchReady))} aria-pressed={Boolean(me?.rematchReady)}>
@@ -305,17 +315,19 @@ export function RoomPage({ client }: { client: GameHallClient }) {
 
         <aside className="room-sidebar" aria-label="房间信息与操作">
           <section>
-            <div className="sidebar-title"><span>座位</span><small>2 人房</small></div>
+            <div className="sidebar-title"><span>座位</span><small>{multiplayer ? '2–4 人房' : '2 人房'}</small></div>
+            {multiplayer ? room.members.map((member) => <div key={member.seat}><PlayerCard member={member} mine={member.seat === room.mySeat} />{member.seat === room.hostSeat && <small>房主</small>}</div>) : <>
             <PlayerCard member={me} mine />
             <PlayerCard member={opponent} mine={false} />
+            </>}
           </section>
           <section className="room-messages-panel">
             <div className="sidebar-title"><span>房间消息</span><small>最近 100 条</small></div>
             <div className="message-list" ref={messageListRef} onScroll={handleMessageScroll} aria-live="polite" aria-label="房间消息记录">
               {client.messages.length === 0 && <p className="message-empty">说句话，等好友入席。</p>}
               {client.messages.map((message) => (
-                <article className={`room-message ${message.seat === room.mySeat ? 'is-mine' : 'is-theirs'}`} key={message.messageId}>
-                  <div><strong>{message.seat === room.mySeat ? '你' : message.nickname}</strong><time>{new Date(message.sentAtMs).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</time></div>
+                <article className={`room-message ${(message.isMine ?? (!multiplayer && message.seat === room.mySeat)) ? 'is-mine' : 'is-theirs'}`} key={message.messageId}>
+                  <div><strong>{(message.isMine ?? (!multiplayer && message.seat === room.mySeat)) ? '你' : message.nickname}</strong><time>{new Date(message.sentAtMs).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</time></div>
                   <p>{message.content}</p>
                 </article>
               ))}
@@ -359,7 +371,7 @@ export function RoomPage({ client }: { client: GameHallClient }) {
             <span>{confirmAction === 'leave' ? 'LEAVE TABLE' : 'CONCEDE GAME'}</span>
             <h2 id="confirm-title">{confirmAction === 'leave' ? '确认离开房间？' : '确认认输？'}</h2>
             <p id="confirm-description">
-              {confirmAction === 'leave'
+              {multiplayer ? confirmAction === 'leave' ? '离开后返回主界面。进行中的对局会中止，不计胜负；房主离开会将房主身份交给最早入房的在线成员。' : '本局会立即中止，不计胜负。你仍可留在房间查看分数，由房主返回等待区再开。' : confirmAction === 'leave'
                 ? (room.status === 'active' || room.status === 'paused' ? '对局尚未结束，现在离开将由服务器判负并返回主界面。' : '离开后将返回主界面；房主离开等待中的房间会关闭房间。')
                 : '本局会立即结束并判对手获胜，你仍会留在房间查看结算并可申请复赛。'}
             </p>

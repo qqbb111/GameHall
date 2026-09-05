@@ -1,7 +1,18 @@
-import type { GomokuState, Player, QuoridorView, TwentyFourView } from '@gamehall/game-core';
+import type { GomokuState, SplendorView, QuoridorView, TwentyFourView } from '@gamehall/game-core';
 import type { GameId } from '@gamehall/protocol';
 
-export function resultMessage(gameId: GameId, view: unknown, mySeat: Player): string | null {
+export function resultMessage(gameId: GameId, view: unknown, mySeat: number): string | null {
+  if (gameId === 'splendor') {
+    const result = (view as SplendorView).result;
+    if (!result) return null;
+    if (result.type === 'aborted') {
+      const reason = { resign: '玩家认输', leave: '玩家离开', disconnect: '断线恢复超时', restart_timeout: '服务恢复等待超时', stalemate: '整轮无合法行动' }[result.reason];
+      return `${reason}，本局中止，不计胜负。`;
+    }
+    return result.winners.some((seat) => seat === mySeat)
+      ? result.winners.length > 1 ? '你与好友共享本局胜利！' : '你的商会赢得了本局！'
+      : '本局结算完成，再来一场宝石贸易？';
+  }
   if (gameId === 'twenty-four') {
     const state = view as TwentyFourView;
     if (state.phase !== 'finished') return null;
