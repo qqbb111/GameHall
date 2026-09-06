@@ -9,6 +9,26 @@ function setup(state = createSplendorState({ playerCount: 2, startingPlayer: 0 }
   return { ...rendered, onAction };
 }
 describe('璀璨宝石操作', () => {
+  it('盲抽先打开确认面板，支持 Escape 关闭和焦点恢复', async () => {
+    const { onAction } = setup();
+    const deck = screen.getByRole('button', { name: /盲抽保留 3 阶顶牌/ }); deck.focus();
+    fireEvent.click(deck);
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveFocus(); expect(onAction).not.toHaveBeenCalled();
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument(); expect(deck).toHaveFocus();
+    fireEvent.click(deck); fireEvent.click(screen.getByRole('button', { name: '确认盲抽保留' }));
+    await waitFor(() => expect(onAction).toHaveBeenCalledWith({ type: 'reserve', source: { kind: 'deck', tier: 3 } }));
+  });
+
+  it('交易面板的键盘焦点循环留在面板内', () => {
+    setup(); fireEvent.click(screen.getByRole('button', { name: /盲抽保留 3 阶顶牌/ }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.keyDown(dialog, { key: 'Tab', shiftKey: true });
+    expect(screen.getByRole('button', { name: '确认盲抽保留' })).toHaveFocus();
+    fireEvent.keyDown(dialog, { key: 'Tab' });
+    expect(screen.getByRole('button', { name: '关闭卡牌详情' })).toHaveFocus();
+  });
   it('选择宝石后确认提交，等待回执时防止重复', () => {
     const onAction = vi.fn(() => new Promise(() => {}));
     setup(undefined, true, onAction);

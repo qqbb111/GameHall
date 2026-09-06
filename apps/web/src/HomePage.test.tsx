@@ -113,13 +113,15 @@ describe('HomePage', () => {
     expect(container.querySelector('.effect-twenty-four .calculation-result')).toHaveTextContent('24');
   });
 
-  it('主页显现与卡片交互明确忽略系统减少动态效果', () => {
+  it('保留旧游戏的动态效果，新增璀璨宝石遵循系统减少动画偏好', () => {
     const { container } = render(<HomePage client={clientStub()} />);
     const reveals = container.querySelectorAll('.reveal');
     expect(reveals.length).toBeGreaterThan(0);
-    expect(container.querySelectorAll('.reveal[data-reduced-motion="ignore"]')).toHaveLength(reveals.length);
-    expect(container.querySelectorAll('.game-card-surface[data-reduced-motion="ignore"]')).toHaveLength(4);
-    expect(container.querySelectorAll('.featured-spark[data-reduced-motion="ignore"]')).toHaveLength(4);
+    expect(container.querySelectorAll('.reveal[data-reduced-motion="ignore"]')).toHaveLength(reveals.length - 1);
+    expect(container.querySelectorAll('.game-card-surface[data-reduced-motion="ignore"]')).toHaveLength(3);
+    expect(container.querySelectorAll('.featured-spark[data-reduced-motion="ignore"]')).toHaveLength(3);
+    expect(container.querySelectorAll('.game-card-surface[data-reduced-motion="respect"]')).toHaveLength(1);
+    expect(screen.getByText('可开局 · 2–4 人')).toBeInTheDocument();
   });
 
   it('连接中的提示延迟显示且没有无效重连按钮', () => {

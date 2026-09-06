@@ -3,7 +3,6 @@ import {
   Check,
   CircleDot,
   Dices,
-  Gem,
   DoorOpen,
   Gamepad2,
   LockKeyhole,
@@ -21,9 +20,10 @@ import { games, type GameCardInfo } from './games';
 import { ClickSpark, Reveal, SpotlightSurface } from './motion-primitives';
 import { generateRandomNickname } from './random-nickname';
 import { parseRoomCodeInput, removeRoomQueryFromAddress } from './room-code';
+import { GemMark } from './SplendorGame';
 
 function GameGlyph({ kind }: { kind: GameCardInfo['icon'] }) {
-  if (kind === 'splendor') return <Gem size={88} aria-hidden="true" />;
+  if (kind === 'splendor') return <div className="splendor-home-gems" aria-hidden="true"><GemMark color="blue" /><GemMark color="green" /><GemMark color="gold" /></div>;
   if (kind === 'gomoku') {
     return (
       <div className="gameplay-effect effect-gomoku" aria-hidden="true">
@@ -83,7 +83,7 @@ function TableOpeningGuide({ nickname, onChooseGame }: { nickname: string; onCho
         </li>
         <li className={`opening-step ${hasNickname ? 'is-active' : 'is-pending'}`} aria-current={hasNickname ? 'step' : undefined}>
           <span className="opening-step-index"><Gamepad2 size={18} /><small>02</small></span>
-          <span className="opening-step-copy"><b>挑一张桌</b><strong>五子棋 · 路墙棋 · 24 点</strong><small>点击游戏卡，房间立即创建</small></span>
+          <span className="opening-step-copy"><b>挑一张桌</b><strong>璀璨宝石 · 五子棋 · 路墙棋 · 24 点</strong><small>点击游戏卡，房间立即创建</small></span>
           <button type="button" onClick={onChooseGame} disabled={!hasNickname}>去选游戏 <ArrowRight size={15} /></button>
         </li>
         <li className="opening-step is-pending">
@@ -251,7 +251,7 @@ export function HomePage({ client }: { client: GameHallClient }) {
           <Reveal distance={22} respectReducedMotion={false}>
             <div className="section-heading">
               <div><span>FEATURED TABLES</span><h2 id="catalog-title">今晚玩什么？</h2></div>
-              <p>三张桌已经亮灯。选一局，把邀请码发给你的对手。</p>
+              <p>四张桌已经亮灯。选一局，把邀请码发给好友。</p>
             </div>
           </Reveal>
 
@@ -277,14 +277,14 @@ export function HomePage({ client }: { client: GameHallClient }) {
           {createError && <p className="catalog-error" role="alert">{createError}</p>}
           <div className="featured-grid">
             {onlineGames.map((game, index) => (
-              <Reveal className="game-card-reveal" delayMs={index * 85} distance={36} key={game.id} respectReducedMotion={false}>
-                <ClickSpark className="featured-spark" respectReducedMotion={false}>
-                  <SpotlightSurface className="game-card-surface" color="rgba(240, 206, 139, 0.28)" tilt respectReducedMotion={false}>
+              <Reveal className="game-card-reveal" delayMs={index * 85} distance={36} key={game.id} respectReducedMotion={game.id === 'splendor'}>
+                <ClickSpark className="featured-spark" respectReducedMotion={game.id === 'splendor'}>
+                  <SpotlightSurface className="game-card-surface" color="rgba(240, 206, 139, 0.28)" tilt respectReducedMotion={game.id === 'splendor'}>
                     <article className="game-card featured-card">
                       <div className="game-number">0{index + 1}</div>
                       <div className={`game-art accent-${game.accent}`}><span className="game-art-orbit" aria-hidden="true" /><GameGlyph kind={game.icon} /></div>
                     <div className="game-info">
-                      <div className="status-line"><span className="status-live">可开局 · 2 人</span></div>
+                      <div className="status-line"><span className="status-live">可开局 · {game.id === 'splendor' ? '2–4' : '2'} 人</span></div>
                       <h3>{game.name}</h3><p>{game.subtitle}</p>
                     </div>
                     <button type="button" aria-label={`创建${game.name}房间`} disabled={pendingGameId !== null || joinPending || client.connection !== 'online'} onClick={() => void createRoom(game.id as GameId)}>
