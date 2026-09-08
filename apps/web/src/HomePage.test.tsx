@@ -119,6 +119,10 @@ describe('HomePage', () => {
     const { container } = render(<HomePage client={clientStub()} />);
     expect(container.querySelector('.effect-gomoku')).toBeInTheDocument();
     expect(container.querySelectorAll('.effect-gomoku .winning-stone')).toHaveLength(5);
+    expect(container.querySelector('.gomoku-grid')).toHaveAttribute('viewBox', '0 0 89 89');
+    expect(container.querySelectorAll('.gomoku-grid path')).toHaveLength(5);
+    expect(container.querySelector('.splendor-gem-aura')).toBeInTheDocument();
+    expect(container.querySelectorAll('.splendor-gem-dust i')).toHaveLength(6);
     expect(container.querySelector('.effect-gomoku .gomoku-win-guide')).toBeInTheDocument();
     expect(container.querySelector('.effect-quoridor .quoridor-wall')).toBeInTheDocument();
     expect(container.querySelectorAll('.effect-quoridor .quoridor-route')).toHaveLength(3);

@@ -24,11 +24,16 @@ import { GemMark } from './GemMark';
 import './splendor.css';
 
 function GameGlyph({ kind }: { kind: GameCardInfo['icon'] }) {
-  if (kind === 'splendor') return <div className="splendor-home-gems" aria-hidden="true"><GemMark color="blue" detailed /><GemMark color="green" detailed /><GemMark color="gold" detailed /></div>;
+  if (kind === 'splendor') return <div className="splendor-home-gems" aria-hidden="true">
+    <svg className="splendor-gem-aura" viewBox="0 0 240 160" focusable="false"><ellipse cx="120" cy="87" rx="100" ry="48" /><ellipse cx="120" cy="87" rx="82" ry="37" /><path d="M120 2V25M120 139V158M8 87H28M212 87H232M34 25L50 40M190 134L208 150M205 24L188 40M30 150L48 134" /></svg>
+    <span className="splendor-gem-dust">{Array.from({ length: 6 }, (_, index) => <i key={index} style={{ '--spark-index': index } as CSSProperties} />)}</span>
+    <GemMark color="blue" detailed /><GemMark color="green" detailed /><GemMark color="gold" detailed />
+  </div>;
   if (kind === 'gomoku') {
     return (
       <div className="gameplay-effect effect-gomoku" aria-hidden="true">
         <div className="mini-board">
+          <svg className="gomoku-grid" viewBox="0 0 89 89" focusable="false">{Array.from({ length: 5 }, (_, index) => { const position = 14.5 + index * 15; return <path key={index} d={`M14.5 ${position}H74.5M${position} 14.5V74.5`} />; })}</svg>
           <span className="gomoku-win-guide" />
           {Array.from({ length: 5 }, (_, index) => <i className={`winning-stone stone-${index + 1}`} key={index} />)}
           <span className="gomoku-win-pulse" />

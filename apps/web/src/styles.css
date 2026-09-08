@@ -1255,12 +1255,13 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
   width: 91px;
   height: 91px;
   border: 1px solid rgba(30,28,21,.62);
-  background: repeating-linear-gradient(0deg, transparent 0 17px, rgba(35,30,21,.42) 17px 18px), repeating-linear-gradient(90deg, transparent 0 17px, rgba(35,30,21,.42) 17px 18px), linear-gradient(145deg, #d4ad68, #a9793e);
+  background: linear-gradient(145deg, #d4ad68, #a9793e);
   box-shadow: 12px 19px 35px rgba(0,0,0,.27), inset 0 0 18px rgba(255,229,177,.12);
   transform: rotateZ(-5deg) rotateX(5deg);
   transform-style: preserve-3d;
   transition: transform .68s cubic-bezier(.16,1,.3,1), filter .5s;
 }
+.gomoku-grid { position: absolute; inset: 0; width: 100%; height: 100%; fill: none; stroke: #493620; stroke-opacity: .65; stroke-width: .65; }
 .winning-stone {
   width: 15px;
   height: 15px;
@@ -1273,18 +1274,18 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
   box-shadow: 1px 4px 7px rgba(0,0,0,.42), inset 0 1px rgba(255,255,255,.13);
   transform: translateZ(8px);
 }
-.winning-stone.stone-1 { --stone-left: 14px; --stone-top: 66px; --stone-delay: 110ms; }
-.winning-stone.stone-2 { --stone-left: 29px; --stone-top: 51px; --stone-delay: 215ms; background: linear-gradient(145deg, #fff8e7, #cfc2a8 72%); }
-.winning-stone.stone-3 { --stone-left: 44px; --stone-top: 36px; --stone-delay: 320ms; }
-.winning-stone.stone-4 { --stone-left: 59px; --stone-top: 21px; --stone-delay: 425ms; background: linear-gradient(145deg, #fff8e7, #cfc2a8 72%); }
-.winning-stone.stone-5 { --stone-left: 74px; --stone-top: 6px; --stone-delay: 530ms; }
+.winning-stone.stone-1 { --stone-left: 7px; --stone-top: 67px; --stone-delay: 110ms; }
+.winning-stone.stone-2 { --stone-left: 22px; --stone-top: 52px; --stone-delay: 215ms; background: linear-gradient(145deg, #fff8e7, #cfc2a8 72%); }
+.winning-stone.stone-3 { --stone-left: 37px; --stone-top: 37px; --stone-delay: 320ms; }
+.winning-stone.stone-4 { --stone-left: 52px; --stone-top: 22px; --stone-delay: 425ms; background: linear-gradient(145deg, #fff8e7, #cfc2a8 72%); }
+.winning-stone.stone-5 { --stone-left: 67px; --stone-top: 7px; --stone-delay: 530ms; }
 .gomoku-win-guide {
   width: 84px;
   height: 2px;
   position: absolute;
   z-index: 4;
-  left: 8px;
-  top: 43px;
+  left: 2.5px;
+  top: 43.5px;
   border-radius: 99px;
   background: linear-gradient(90deg, transparent, #ffe2a2 15% 85%, transparent);
   filter: drop-shadow(0 0 5px rgba(248,205,121,.8));
@@ -1296,8 +1297,8 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
   height: 72px;
   position: absolute;
   z-index: 2;
-  left: 9px;
-  top: 9px;
+  left: 8.5px;
+  top: 8.5px;
   border: 1px solid rgba(247,207,130,.68);
   border-radius: 50%;
   opacity: 0;
@@ -1319,9 +1320,9 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
 }
 .effect-quoridor .mini-quoridor > i { border-color: rgba(146,108,62,.58); background: linear-gradient(145deg, #b99155, #875f32); }
 .effect-quoridor .mini-quoridor-pawn { z-index: 6; transform: translateZ(12px); }
-.effect-quoridor .mini-quoridor-pawn.is-dark { left: 15px; top: 11px; background: #4c9b78; }
-.effect-quoridor .mini-quoridor-pawn.is-light { right: 15px; bottom: 15px; background: #eee3c9; }
-.effect-quoridor .quoridor-wall { width: 42px; height: 6px; left: 27px; top: 40px; transform: scaleY(.45) translateZ(8px); transform-origin: bottom; }
+.effect-quoridor .mini-quoridor-pawn.is-dark { left: 8.75px; top: 8.75px; background: #4c9b78; }
+.effect-quoridor .mini-quoridor-pawn.is-light { right: 8.75px; bottom: 8.75px; background: #eee3c9; }
+.effect-quoridor .quoridor-wall { width: 42px; height: 6px; left: 22px; top: 40px; transform: scaleY(.45) translateZ(8px); transform-origin: bottom; }
 .quoridor-route {
   position: absolute;
   z-index: 5;
@@ -1332,9 +1333,9 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
   opacity: .18;
   transform-origin: left center;
 }
-.route-one { width: 37px; left: 18px; top: 18px; transform: rotate(28deg) scaleX(.4); }
-.route-two { width: 30px; left: 47px; top: 34px; transform: rotate(88deg) scaleX(.35); }
-.route-three { width: 38px; left: 51px; top: 61px; transform: rotate(152deg) scaleX(.35); }
+.route-one { width: 18.5px; left: 15.25px; top: 15.25px; transform: rotate(90deg) scaleX(.4); }
+.route-two { width: 18.5px; left: 15.25px; top: 33.75px; transform: rotate(90deg) scaleX(.35); }
+.route-three { width: 18.5px; left: 15.25px; top: 52.25px; transform: rotate(90deg) scaleX(.35); }
 
 .effect-twenty-four { perspective: 800px; position: relative; }
 .calculation-ring {
@@ -1377,7 +1378,7 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
 .mini-card-corner { position: absolute; top: 3px; left: 3px; display: grid; justify-items: center; font: 700 10px/1 Georgia, serif; }
 .mini-card-corner > span { font-size: 9px; }
 .mini-card-corner.is-bottom { top: auto; left: auto; bottom: 3px; right: 3px; transform: rotate(180deg); }
-.mini-card-pips { position: absolute; inset: 12px 10px; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(3, 1fr); place-items: center; font: 12px/1 Georgia, serif; }
+.mini-card-pips { position: absolute; inset: 12px 10px; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(3, 1fr); place-items: center; font: 9px/1 Georgia, serif; }
 .mini-card-pips > span:nth-last-child(-n+2) { transform: rotate(180deg); }
 .calculation-result {
   width: 43px;
@@ -1444,10 +1445,10 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
 @keyframes gomoku-line-win { to { opacity: 1; transform: rotate(-45deg) scaleX(1); } }
 @keyframes gomoku-pulse { 45% { opacity: .9; } 100% { opacity: 0; transform: scale(1.55); } }
 @keyframes quoridor-wall-rise { from { opacity: .35; transform: scaleY(.1) translateZ(2px); } to { opacity: 1; transform: scaleY(1) translateZ(18px); } }
-@keyframes quoridor-route-one { to { opacity: .88; transform: rotate(28deg) scaleX(1); } }
-@keyframes quoridor-route-two { to { opacity: .88; transform: rotate(88deg) scaleX(1); } }
-@keyframes quoridor-route-three { to { opacity: .88; transform: rotate(152deg) scaleX(1); } }
-@keyframes quoridor-pawn-route { 0% { transform: translate3d(0, 0, 12px); } 36% { transform: translate3d(33px, 15px, 18px); } 65% { transform: translate3d(34px, 39px, 18px); } 100% { transform: translate3d(8px, 49px, 14px); } }
+@keyframes quoridor-route-one { to { opacity: .88; transform: rotate(90deg) scaleX(1); } }
+@keyframes quoridor-route-two { to { opacity: .88; transform: rotate(90deg) scaleX(1); } }
+@keyframes quoridor-route-three { to { opacity: .88; transform: rotate(90deg) scaleX(1); } }
+@keyframes quoridor-pawn-route { 0% { transform: translate3d(0, 0, 12px); } 36% { transform: translate3d(0, 18.5px, 18px); } 65% { transform: translate3d(0, 37px, 18px); } 100% { transform: translate3d(0, 55.5px, 14px); } }
 @keyframes calculation-card-converge { 45% { opacity: .95; transform: translate3d(0, -13px, 24px) rotateY(95deg) scale(1.06); filter: brightness(1.16); } 100% { opacity: .2; transform: translate3d(0, 0, 5px) rotateY(180deg) scale(.62); filter: blur(1px); } }
 @keyframes calculation-ring-collapse { 55% { opacity: .85; transform: scale(1.16) rotateX(64deg) rotateZ(90deg); } 100% { opacity: .08; transform: scale(.45) rotateX(64deg) rotateZ(180deg); filter: blur(2px); } }
 @keyframes calculation-result-reveal { to { opacity: 1; transform: translate(-50%, -50%) scale(1); filter: blur(0) drop-shadow(0 0 10px rgba(243,207,134,.45)); } }
@@ -1474,9 +1475,9 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
   .game-card-surface:focus-within .effect-twenty-four .calculation-card, .game-card-surface:focus-within .calculation-ring, .game-card-surface:focus-within .calculation-result { animation: none !important; }
   .gomoku-win-guide { opacity: .76; transform: rotate(-45deg) scaleX(1); }
   .quoridor-route { opacity: .62; }
-  .route-one { transform: rotate(28deg) scaleX(1); }
-  .route-two { transform: rotate(88deg) scaleX(1); }
-  .route-three { transform: rotate(152deg) scaleX(1); }
+  .route-one { transform: rotate(90deg) scaleX(1); }
+  .route-two { transform: rotate(90deg) scaleX(1); }
+  .route-three { transform: rotate(90deg) scaleX(1); }
   .quoridor-wall { transform: scaleY(1) translateZ(12px); }
   .calculation-result { color: #d6a653; opacity: .9; transform: translate(-50%, -50%) scale(.82); filter: drop-shadow(0 0 8px rgba(243,207,134,.45)); }
   .game-card-surface:active .featured-card { transform: scale(.985); }
