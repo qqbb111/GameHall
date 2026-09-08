@@ -31,8 +31,8 @@ async function lobby(running: RunningGameHallServer, count: number) {
   if (!created.ok || !created.roomId || !created.code) throw new Error('create failed');
   const { roomId, code } = created;
   for (let index = 1; index < count; index++) expect(await joinRoom(players[index]!, `商人${index}`, code)).toMatchObject({ ok: true });
-  for (const player of players) expect(await setReady(player, roomId)).toMatchObject({ ok: true });
-  await waitFor(() => players.every((player) => player.room?.members.every((member) => member.ready)));
+  for (const player of players.slice(1)) expect(await setReady(player, roomId)).toMatchObject({ ok: true });
+  await waitFor(() => players.every((player) => player.room?.members.length === count && player.room.members.every((member) => member.ready === (member.seat !== 0))));
   return { players, roomId, code };
 }
 async function start(running: RunningGameHallServer, count: number) {
@@ -91,7 +91,7 @@ describe('Splendor real clients', () => {
     const reopened = await command(host, 'room:reopen', roomId, endVersion, reopenId); expect(reopened).toMatchObject({ ok: true, code });
     expect(await command(host, 'room:reopen', roomId, endVersion, reopenId)).toEqual(reopened);
     expect(read(running, roomId).state).toBeNull();
-    for (const player of players) await setReady(player, roomId);
+    for (const player of players.slice(1)) await setReady(player, roomId);
     await command(host, 'room:start', roomId, read(running, roomId).version);
     const second = read(running, roomId); expect(second.round_no).toBe(2); expect(second.state.decks).not.toEqual(initial.state.decks);
     expect(await command(host, 'room:start', roomId, initialVersion, id)).toEqual(begun);
@@ -209,16 +209,44 @@ describe('Splendor real clients', () => {
 
   it('状态写入后回执插入失败会回滚整个行动和开局事务', async () => {
     const running = await server(); const { players, roomId } = await lobby(running, 2);
+    const hostReady = () => running.database.raw.prepare('SELECT ready FROM room_members WHERE room_id=? AND seat=0').get(roomId);
+    const receipts = () => running.database.raw.prepare('SELECT COUNT(*) AS count FROM processed_actions').get();
+    expect(hostReady()).toEqual({ ready: 0 });
+    const previousReceipts = receipts();
     running.database.raw.exec("CREATE TRIGGER fail_receipt BEFORE INSERT ON processed_actions BEGIN SELECT RAISE(ABORT, 'receipt failure'); END;");
     const before = read(running, roomId);
     expect(() => running.roomService.startRoom(players[0]!.session.sessionId, { commandId: randomUUID(), roomId, expectedVersion: before.version })).toThrow('receipt failure');
     expect(read(running, roomId)).toEqual(before);
+    expect(hostReady()).toEqual({ ready: 0 });
+    expect(receipts()).toEqual(previousReceipts);
     running.database.raw.exec('DROP TRIGGER fail_receipt');
     await command(players[0]!, 'room:start', roomId, before.version);
+    expect(hostReady()).toEqual({ ready: 1 });
     const initial = read(running, roomId);
     running.database.raw.exec("CREATE TRIGGER fail_receipt BEFORE INSERT ON processed_actions BEGIN SELECT RAISE(ABORT, 'receipt failure'); END;");
     expect(() => running.roomService.applyGameAction(players[initial.state.turn]!.session.sessionId, { actionId: randomUUID(), roomId, expectedVersion: initial.version, action: { type: 'reserve', source: { kind: 'deck', tier: 3 } } })).toThrow('receipt failure');
     expect(read(running, roomId)).toEqual(initial);
+  });
+
+  it('人数不足、其他成员离线和过期版本均不改变房主准备状态', async () => {
+    const running = await server();
+    const { players, roomId, code } = await lobby(running, 1);
+    const host = players[0]!;
+    const unchanged = () => {
+      expect(read(running, roomId).state).toBeNull();
+      expect(running.database.raw.prepare('SELECT ready FROM room_members WHERE room_id=? AND seat=0').get(roomId)).toEqual({ ready: 0 });
+    };
+    expect(await command(host, 'room:start', roomId)).toMatchObject({ ok: false, error: { code: 'PLAYERS_NOT_READY' } });
+    unchanged();
+    const guest = await peer(running);
+    await joinRoom(guest, '好友', code);
+    await setReady(guest, roomId);
+    expect(await command(host, 'room:start', roomId, read(running, roomId).version - 1)).toMatchObject({ ok: false, error: { code: 'VERSION_CONFLICT' } });
+    unchanged();
+    guest.socket.disconnect();
+    await waitFor(() => host.room?.members.some(member => !member.online) === true);
+    expect(await command(host, 'room:start', roomId, read(running, roomId).version)).toMatchObject({ ok: false, error: { code: 'PLAYERS_NOT_READY' } });
+    unchanged();
   });
 
   it('同一版本的并发开局和动作只有一个生效', async () => {

@@ -44,12 +44,14 @@ function finishedClient(gameId: keyof typeof finishedViews, rematchReady: [boole
 describe('RoomPage result copy', () => {
   it('璀璨宝石四座等待区由房主确认开局，中止可保留邀请码返回等待区', async () => {
     const client = finishedClient('gomoku');
-    client.room = { ...client.room!, gameId: 'splendor', status: 'waiting' };
+    client.room = { ...client.room!, gameId: 'splendor', status: 'waiting', members: client.room!.members.map(member => ({ ...member, ready: member.seat !== 0 })) };
     client.game = null;
     client.startRoom = vi.fn().mockResolvedValue({ ok: true }); client.reopenRoom = vi.fn().mockResolvedValue({ ok: true });
     const rendered = render(<RoomPage client={client} />);
     expect(rendered.container.querySelectorAll('.waiting-seats .player-card')).toHaveLength(4);
-    fireEvent.click(screen.getByRole('button', { name: '房主确认开局' }));
+    expect(screen.queryByRole('button', { name: '我准备好了' })).not.toBeInTheDocument();
+    expect(screen.getAllByText('房主 · 等待开局')).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: '开始游戏' }));
     await waitFor(() => expect(client.startRoom).toHaveBeenCalledTimes(1));
     client.room = { ...client.room!, status: 'finished' };
     const state = abortSplendorState(createSplendorState({ playerCount: 2 }), 'disconnect');
@@ -66,6 +68,49 @@ describe('RoomPage result copy', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  it('房主单按钮随人数、在线和准备状态变化，开局等待中防止重复提交', async () => {
+    const client = finishedClient('gomoku');
+    const members = client.room!.members.map(member => ({ ...member, ready: false }));
+    client.room = { ...client.room!, gameId: 'splendor', status: 'waiting', members: members.slice(0, 1) };
+    client.game = null;
+    let finish!: () => void;
+    client.startRoom = vi.fn(() => new Promise<{ ok: true }>(resolve => { finish = () => resolve({ ok: true }); }));
+    const rendered = render(<RoomPage client={client} />);
+    expect(screen.getByRole('button', { name: '等待好友加入' })).toBeDisabled();
+    client.room = { ...client.room, members };
+    rendered.rerender(<RoomPage client={client} />);
+    expect(screen.getByRole('button', { name: '等待其他成员准备' })).toBeDisabled();
+    client.room.members = members.map(member => ({ ...member, ready: true, online: member.seat === 0 }));
+    rendered.rerender(<RoomPage client={client} />);
+    expect(screen.getByRole('button', { name: '等待成员上线' })).toBeDisabled();
+    client.connection = 'offline';
+    rendered.rerender(<RoomPage client={client} />);
+    expect(screen.getByRole('button', { name: '等待连接恢复' })).toBeDisabled();
+    client.connection = 'online';
+    client.room.members = members.map(member => ({ ...member, ready: member.seat !== 0 }));
+    rendered.rerender(<RoomPage client={client} />);
+    fireEvent.click(screen.getByRole('button', { name: '开始游戏' }));
+    const pending = screen.getByRole('button', { name: '正在开局…' });
+    expect(pending).toBeDisabled();
+    fireEvent.click(pending);
+    expect(client.startRoom).toHaveBeenCalledTimes(1);
+    await act(async () => finish());
+  });
+
+  it('普通成员可取消准备，房主交接后切换为单个开局按钮', async () => {
+    const client = finishedClient('gomoku');
+    client.room = { ...client.room!, gameId: 'splendor', status: 'waiting', hostSeat: 1 };
+    client.game = null;
+    client.setReady = vi.fn().mockResolvedValue({ ok: true });
+    const rendered = render(<RoomPage client={client} />);
+    fireEvent.click(screen.getByRole('button', { name: /已准备，点击取消/ }));
+    await waitFor(() => expect(client.setReady).toHaveBeenCalledWith(false));
+    client.room = { ...client.room, hostSeat: 0 };
+    rendered.rerender(<RoomPage client={client} />);
+    expect(screen.getByRole('button', { name: '开始游戏' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: /已准备，点击取消/ })).not.toBeInTheDocument();
   });
 
   it('24 点按真实终局原因展示胜负，恢复超时仍产生可见结果', () => {

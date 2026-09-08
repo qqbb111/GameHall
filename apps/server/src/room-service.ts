@@ -447,7 +447,8 @@ export class RoomService {
       if (room.version !== command.expectedVersion) return errorAck('room:start', command.commandId, 'VERSION_CONFLICT', '房间已更新，请重试', true, room.version);
       if (room.status !== 'waiting') return errorAck('room:start', command.commandId, 'ROOM_ALREADY_STARTED', '当前不能开始对局');
       const members = this.getMembers(room.id);
-      if (members.length < 2 || members.length > 4 || !members.every((item) => item.ready && this.isOnline(item.session_id))) return errorAck('room:start', command.commandId, 'PLAYERS_NOT_READY', '至少两位玩家在线且全员准备后才可开始');
+      if (members.length < 2 || members.length > 4 || !members.every((item) => this.isOnline(item.session_id) && (item.seat === room.host_seat || item.ready))) return errorAck('room:start', command.commandId, 'PLAYERS_NOT_READY', '至少两位玩家在线且其他成员均已准备后才可开始');
+      this.database.raw.prepare('UPDATE room_members SET ready=1 WHERE room_id=? AND seat=?').run(room.id, room.host_seat);
       const nowMs = Date.now();
       const state = createInitialGame('splendor', nowMs, undefined, members.map((item) => item.seat));
       this.database.raw.prepare(`UPDATE rooms SET status='active', version=version+1, round_no=round_no+1,

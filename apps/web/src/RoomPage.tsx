@@ -34,7 +34,7 @@ function connectionLabel(connection: GameHallClient['connection']): string {
   return '连接中断';
 }
 
-function PlayerCard({ member, mine }: { member: RoomMemberView | undefined; mine: boolean }) {
+function PlayerCard({ member, mine, waitingHost = false }: { member: RoomMemberView | undefined; mine: boolean; waitingHost?: boolean }) {
   if (!member) {
     return (
       <div className="player-card is-empty">
@@ -48,7 +48,7 @@ function PlayerCard({ member, mine }: { member: RoomMemberView | undefined; mine
       <span className="player-avatar">{Array.from(member.nickname)[0]}</span>
       <div>
         <strong>{member.nickname}{mine ? '（你）' : ''}</strong>
-        <small>{member.online ? member.ready ? '在线 · 已准备' : '在线 · 未准备' : '暂时离线'}</small>
+        <small>{member.online ? waitingHost ? '房主 · 等待开局' : member.ready ? '在线 · 已准备' : '在线 · 未准备' : '暂时离线'}</small>
       </div>
       <i aria-label={member.online ? '在线' : '离线'} />
     </div>
@@ -60,6 +60,7 @@ export function RoomPage({ client }: { client: GameHallClient }) {
   const [copiedTarget, setCopiedTarget] = useState<'link' | 'code' | null>(null);
   const copiedTimer = useRef<number | null>(null);
   const [pending, setPending] = useState(false);
+  const [starting, setStarting] = useState(false);
   const pendingRef = useRef(false);
   const [confirmAction, setConfirmAction] = useState<'leave' | 'resign' | null>(null);
   const confirmTriggerRef = useRef<HTMLElement | null>(null);
@@ -151,12 +152,15 @@ export function RoomPage({ client }: { client: GameHallClient }) {
   const currentRoom = room;
   const multiplayer = room.gameId === 'splendor';
   const isHost = room.mySeat === room.hostSeat;
+  const hostStartLabel = starting ? '正在开局…' : client.connection !== 'online' ? '等待连接恢复' : room.members.length < 2 ? '等待好友加入'
+    : room.members.some((member) => !member.online) ? '等待成员上线'
+      : room.members.some((member) => member.seat !== room.hostSeat && !member.ready) ? '等待其他成员准备' : '开始游戏';
 
-  async function run(operation: () => Promise<unknown>) {
+  async function run(operation: () => Promise<unknown>, start = false) {
     if (pendingRef.current) return;
     pendingRef.current = true;
-    setPending(true);
-    try { await operation(); } finally { pendingRef.current = false; setPending(false); }
+    setPending(true); setStarting(start);
+    try { await operation(); } finally { pendingRef.current = false; setPending(false); setStarting(false); }
   }
 
   async function copyInvite(target: 'link' | 'code') {
@@ -267,20 +271,19 @@ export function RoomPage({ client }: { client: GameHallClient }) {
                 <div className="waiting-emblem"><Link2 /></div>
                 <span>FRIEND ROOM</span>
                 <h2 id="waiting-title">{room.members.length < 2 ? '把邀请链接发给好友' : multiplayer ? `${room.members.length} 位玩家已入席` : '两位玩家已经到齐'}</h2>
-                <p>{multiplayer ? `支持 2–4 人。全员在线并准备后，由房主 ${room.members.find((member) => member.seat === room.hostSeat)?.nickname ?? ''} 确认开局；每局随机首家。` : room.members.length < 2 ? '好友通过六位邀请码或分享链接加入。房间闲置两小时后自动清理。' : '双方点击准备后立即开局；首局阵营由服务器随机分配。'}</p>
+                <p>{multiplayer ? `支持 2–4 人。其他成员准备且全员在线后，房主 ${room.members.find((member) => member.seat === room.hostSeat)?.nickname ?? ''} 点击开始游戏即可开局；每局随机首家。` : room.members.length < 2 ? '好友通过六位邀请码或分享链接加入。房间闲置两小时后自动清理。' : '双方点击准备后立即开局；首局阵营由服务器随机分配。'}</p>
                 <div className={`waiting-seats ${multiplayer ? 'is-multiplayer' : ''}`}>
-                  {multiplayer ? [0, 1, 2, 3].map((seat) => <PlayerCard key={seat} member={room.members.find((member) => member.seat === seat)} mine={room.mySeat === seat} />) : <>
+                  {multiplayer ? [0, 1, 2, 3].map((seat) => <PlayerCard key={seat} member={room.members.find((member) => member.seat === seat)} mine={room.mySeat === seat} waitingHost={seat === room.hostSeat} />) : <>
                   <PlayerCard key={room.members.find((member) => member.seat === 0)?.nickname ?? 'empty-0'} member={room.members.find((member) => member.seat === 0)} mine={room.mySeat === 0} />
                   <span>VS</span>
                   <PlayerCard key={room.members.find((member) => member.seat === 1)?.nickname ?? 'empty-1'} member={room.members.find((member) => member.seat === 1)} mine={room.mySeat === 1} />
                   </>}
                 </div>
                 <ClickSpark className="ready-spark">
-                  <button className={`ready-button ${me?.ready ? 'is-ready' : ''}`} type="button" disabled={pending || room.members.length < 2 || client.connection !== 'online'} onClick={() => void run(() => client.setReady(!me?.ready))}>
+                  {multiplayer && isHost ? <button className="ready-button" type="button" disabled={pending || hostStartLabel !== '开始游戏'} onClick={() => void run(client.startRoom, true)}>{pending ? <LoaderCircle size={19} /> : <ShieldCheck size={19} />}{hostStartLabel}</button> : <button className={`ready-button ${me?.ready ? 'is-ready' : ''}`} type="button" disabled={pending || room.members.length < 2 || client.connection !== 'online'} onClick={() => void run(() => client.setReady(!me?.ready))}>
                     {me?.ready ? <><Check size={19} /> 已准备，点击取消</> : <><ShieldCheck size={19} /> 我准备好了</>}
-                  </button>
+                  </button>}
                 </ClickSpark>
-                {multiplayer && isHost && <button className="ready-button" type="button" disabled={pending || client.connection !== 'online' || room.members.length < 2 || room.members.some((member) => !member.online || !member.ready)} onClick={() => void run(client.startRoom)}>房主确认开局</button>}
               </section>
             </Reveal>
           )}
@@ -316,7 +319,7 @@ export function RoomPage({ client }: { client: GameHallClient }) {
         <aside className="room-sidebar" aria-label="房间信息与操作">
           <section>
             <div className="sidebar-title"><span>座位</span><small>{multiplayer ? '2–4 人房' : '2 人房'}</small></div>
-            {multiplayer ? room.members.map((member) => <div key={member.seat}><PlayerCard member={member} mine={member.seat === room.mySeat} />{member.seat === room.hostSeat && <small>房主</small>}</div>) : <>
+            {multiplayer ? room.members.map((member) => <div key={member.seat}><PlayerCard member={member} mine={member.seat === room.mySeat} waitingHost={room.status === 'waiting' && member.seat === room.hostSeat} />{member.seat === room.hostSeat && room.status !== 'waiting' && <small>房主</small>}</div>) : <>
             <PlayerCard member={me} mine />
             <PlayerCard member={opponent} mine={false} />
             </>}
