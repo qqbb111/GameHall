@@ -57,15 +57,24 @@
 .splendor-supply, .splendor-personal { background: #061a1580; }
 .splendor-token-bank { display: grid; grid-template-columns: repeat(6,minmax(0,1fr)); gap: 6px; }
 .splendor-surface .splendor-token { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 11px; background: #173329; padding: 12px 4px; }
-.splendor-token > .gem-mark { width: 32px; height: 32px; background: #07171680; border: 1px solid #ffffff18; border-radius: 50%; padding: 5px; box-shadow: 0 3px #05130f; }
+.splendor-token > .gem-mark { width: 48px; height: 48px; filter: drop-shadow(0 4px 3px #0007); }
+.splendor-surface .splendor-token:disabled { opacity: 1; background: #102820; border-color: #ffffff09; }
+.splendor-token:disabled > span:not(.gem-mark), .splendor-token:disabled > strong { color: #9fb3aa; }
 .splendor-token strong { color: #f4ddb5; font-size: 16px; }
 .splendor-surface button[aria-pressed=true] { border-color: var(--gold); background: #284a3d; }
 .splendor-action-bar, .splendor-detail-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-top: 12px; }
 .splendor-action-bar > span { color: var(--muted); font-size: 12px; }
 .splendor-surface .splendor-confirm { background: var(--gold); color: var(--ink); font-weight: 700; }
 .splendor-inventory { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; }
-.splendor-inventory > span { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; border: 1px solid var(--line); padding: 8px; border-radius: 8px; font-size: 12px; }
-.splendor-inventory b { margin-left: auto; color: var(--gold-light); font-size: 16px; }.splendor-inventory small { width: 100%; padding-left: 27px; font-size: 10px; }
+.splendor-holding { min-width: 0; border: 1px solid var(--line); padding: 12px; border-radius: 10px; background: #0b211d; }
+.splendor-surface .splendor-holding h4 { margin: 0 0 10px; color: var(--cream); font-size: 12px; font-weight: 500; }
+.splendor-holding-pair { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
+.splendor-holding-pair > div { display: grid; gap: 6px; justify-items: center; color: var(--muted); font-size: 11px; }
+.splendor-holding-pair > div + div { border-left: 1px solid var(--line); }
+.splendor-holding-value { display: flex; align-items: center; gap: 7px; }
+.splendor-holding-value .gem-mark { width: 24px; height: 24px; }
+.splendor-holding-value b { color: var(--gold-light); font-size: 18px; font-variant-numeric: tabular-nums; font-weight: 700; }
+.splendor-inventory-help { color: var(--muted); font-size: 11px; }
 .splendor-reserved { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
 .splendor-reserved > p { grid-column: 1/-1; color: var(--muted); }
 .splendor-required { border-color: var(--gold); background: #243c2d; }

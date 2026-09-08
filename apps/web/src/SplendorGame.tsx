@@ -2,15 +2,11 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { canAffordSplendorCard, gemColors, legalSplendorPayment, tokenColors, type GemColor, type SplendorCard, type SplendorView, type TokenColor, type TokenCounts } from '@gamehall/game-core';
 import type { CommandAck, GameActionCommand, RoomMemberView } from '@gamehall/protocol';
 import './splendor.css';
+import { GemMark } from './GemMark';
 
 const gemNames: Record<TokenColor, string> = { white: '钻石', blue: '蓝宝石', green: '祖母绿', red: '红宝石', black: '缟玛瑙', gold: '黄金' };
 const emptyTokens = (): TokenCounts => ({ white: 0, blue: 0, green: 0, red: 0, black: 0, gold: 0 });
 const total = (tokens: TokenCounts) => tokenColors.reduce((sum, color) => sum + tokens[color], 0);
-
-export function GemMark({ color }: { color: TokenColor }) {
-  const outlines = { white: 'M7 5H25L30 13L16 29L2 13Z', blue: 'M10 3H22L29 10V22L22 29H10L3 22V10Z', green: 'M10 2H22L27 7V25L22 30H10L5 25V7Z', red: 'M16 2L29 10V22L16 30L3 22V10Z', black: 'M16 2L31 28H1Z', gold: 'M8 6H24L30 25H2Z' };
-  return <span className={`gem-mark gem-${color}`} aria-hidden="true"><svg viewBox="0 0 32 32" focusable="false"><path d={outlines[color]} fill="currentColor" /><path d="M10 9L22 9L24 21L16 26L8 21Z" fill="none" stroke="#071716" strokeOpacity=".42" strokeWidth="1.4" /><path d="M10 9L16 15L22 9M16 15L8 21M16 15L24 21" fill="none" stroke="#fff" strokeOpacity=".45" strokeWidth="1.2" /></svg></span>;
-}
 
 function CardScene({ tier }: { tier: number }) {
   return <svg className="splendor-scene-svg" viewBox="0 0 160 70" aria-hidden="true" focusable="false">
@@ -159,7 +155,7 @@ export function SplendorGame({ state, mySeat, active, members, onAction }: {
         className={`splendor-token ${colors.includes(color as GemColor) ? 'is-selected' : ''}`} aria-pressed={colors.includes(color as GemColor)}
         disabled={!canAct || color === 'gold' || state.supply[color] < (takeMode === 'same' ? 4 : 1)}
         onClick={() => { if (color === 'gold') return; setColors((current) => takeMode === 'same' ? [color, color] : current.includes(color) ? current.filter((item) => item !== color) : current.length < 3 ? [...current, color] : current); }}>
-        <GemMark color={color} /><span>{gemNames[color]}</span><strong>{state.supply[color]}</strong>
+        <GemMark color={color} detailed /><span>{gemNames[color]}</span><strong>{state.supply[color]}</strong>
       </button>)}</div>
       <div className="splendor-action-bar"><span>{colors.length ? `已选择 ${colors.map((color) => gemNames[color]).join('、')}` : '黄金通过保留卡牌获得'}</span>
         <button type="button" className="splendor-confirm" disabled={!canAct || !legalTake} onClick={() => void send({ type: 'takeTokens', colors })}>{pending ? '正在确认…' : '确认拿取'}</button>
@@ -167,7 +163,13 @@ export function SplendorGame({ state, mySeat, active, members, onAction }: {
     </section>
 
     <section className="splendor-personal" aria-label="你的商会" ref={personal} tabIndex={-1}><h3>你的商会 <small>{total(me.tokens)}/10 枚宝石 · {me.score} 分</small></h3>
-      <div className="splendor-inventory">{tokenColors.map((color) => <span key={color}><GemMark color={color} />{gemNames[color]} <b>{me.tokens[color]}</b>{color !== 'gold' && <small>永久 −{me.bonuses[color]}</small>}</span>)}</div>
+      <div className="splendor-inventory">{tokenColors.map((color) => <section className="splendor-holding" key={color} aria-label={`${gemNames[color]}持有数量`}>
+        <h4>{gemNames[color]}</h4><div className="splendor-holding-pair">
+          <div><span>永久</span><span className="splendor-holding-value"><GemMark color={color} /><b>{color === 'gold' ? '—' : me.bonuses[color]}</b></span></div>
+          <div><span>临时</span><span className="splendor-holding-value"><GemMark color={color} /><b>{me.tokens[color]}</b></span></div>
+        </div>
+      </section>)}</div>
+      <p className="splendor-inventory-help">永久用于每次购买折扣，临时支付后归还供应区。黄金没有永久奖励；十枚上限只统计临时宝石与黄金。</p>
       <h4>你的保留牌 <small>{me.reservedCount}/3 · 仅自己可见</small></h4><div className="splendor-reserved">{reserved.map(cardButton)}{!reserved.length && <p>保留一张明牌或盲抽顶牌，若供应尚有黄金即可获得一枚。</p>}</div>
     </section>
 

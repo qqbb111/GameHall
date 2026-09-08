@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { SPLENDOR_CARDS, createSplendorState, splendorDefinition, type SplendorState } from '@gamehall/game-core';
 import { SplendorGame } from './SplendorGame';
@@ -9,6 +9,19 @@ function setup(state = createSplendorState({ playerCount: 2, startingPlayer: 0 }
   return { ...rendered, onAction };
 }
 describe('璀璨宝石操作', () => {
+  it('按颜色并排展示永久与临时数量，黄金没有永久奖励且上限不计折扣', () => {
+    const state = createSplendorState({ playerCount: 2, startingPlayer: 0 });
+    state.players[0]!.bonuses.white = 3; state.players[0]!.tokens.white = 2; state.players[0]!.tokens.gold = 1;
+    setup(state);
+    const white = within(screen.getByRole('region', { name: '钻石持有数量' }));
+    expect(white.getByText('永久').parentElement).toHaveTextContent('永久3');
+    expect(white.getByText('临时').parentElement).toHaveTextContent('临时2');
+    const gold = within(screen.getByRole('region', { name: '黄金持有数量' }));
+    expect(gold.getByText('永久').parentElement).toHaveTextContent('永久—');
+    expect(gold.getByText('临时').parentElement).toHaveTextContent('临时1');
+    expect(screen.getByRole('region', { name: '蓝宝石持有数量' })).toHaveTextContent('永久0临时0');
+    expect(screen.getByRole('heading', { name: '你的商会 3/10 枚宝石 · 0 分' })).toBeInTheDocument();
+  });
   it('盲抽先打开确认面板，支持 Escape 关闭和焦点恢复', async () => {
     const { onAction } = setup();
     const deck = screen.getByRole('button', { name: /盲抽保留 3 阶顶牌/ }); deck.focus();

@@ -20,10 +20,11 @@ import { games, type GameCardInfo } from './games';
 import { ClickSpark, Reveal, SpotlightSurface } from './motion-primitives';
 import { generateRandomNickname } from './random-nickname';
 import { parseRoomCodeInput, removeRoomQueryFromAddress } from './room-code';
-import { GemMark } from './SplendorGame';
+import { GemMark } from './GemMark';
+import './splendor.css';
 
 function GameGlyph({ kind }: { kind: GameCardInfo['icon'] }) {
-  if (kind === 'splendor') return <div className="splendor-home-gems" aria-hidden="true"><GemMark color="blue" /><GemMark color="green" /><GemMark color="gold" /></div>;
+  if (kind === 'splendor') return <div className="splendor-home-gems" aria-hidden="true"><GemMark color="blue" detailed /><GemMark color="green" detailed /><GemMark color="gold" detailed /></div>;
   if (kind === 'gomoku') {
     return (
       <div className="gameplay-effect effect-gomoku" aria-hidden="true">
