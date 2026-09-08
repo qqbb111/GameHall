@@ -130,3 +130,5 @@ pnpm --filter @gamehall/web test -- SplendorGame RoomPage
 - SQLite v4 在单事务内备份相关数据、按依赖重建表并恢复原索引，扩展游戏和 0–3 座位约束，保存 `host_seat`。历史迁移不变；旧游戏仍以 `Player = 0 | 1` 和座位检查限制双人。
 
 规则依据：[官方基础版规则书](https://cdn.svc.asmodee.net/production-spacecowboys/uploads/2025/10/SCSPL01EN_SPLENDOR_RULES_LIGHT.pdf)。发展卡成本、分数、奖励颜色逐项对比 [kyle-ip 数据](https://github.com/kyle-ip/splendor/blob/main/src/data/card-pool.json) 与 [anicolao 核对表](https://github.com/anicolao/splendor/blob/main/data/verified_card_properties.csv)，90 项完全一致。按 `tier|bonus|points|white,blue,green,red,black` 排序、LF 连接且无末尾换行的 SHA-256 为 `417d650b072d783121cbb910ac3aa5bbce0f533fffb05a34c3645ed68d5c6401`。贵族另与 [Splendor-AI 清单](https://github.com/roeey777/Splendor-AI/blob/master/src/splendor/splendor/splendor_utils.py) 交叉核对，纠正前一个 JSON 中将红四黑四误写为绿四黑四的一项。只使用规则事实与数值，界面不使用原版卡图。
+
+首页展示：四款游戏在大于 620px 时统一为 2×2，手机单列。璀璨宝石支持悬停／键盘聚焦的舒展与高光动效（触屏及减少动画模式保持静态）；24 点展示黑桃、红桃、梅花、方块六点牌，汇聚后在圆形徽章中心显示 24。前端检查使用 pnpm verify:web，浏览器验收覆盖 375、620、621、698、768、872、1440px。

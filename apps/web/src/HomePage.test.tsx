@@ -35,7 +35,7 @@ describe('HomePage', () => {
     window.history.replaceState(null, '', '/');
   });
 
-  it('只允许进入三款已确认游戏，开发中卡片不可点击', () => {
+  it('四款已确认游戏均可进入，开发中卡片不可点击', () => {
     const { container } = render(<HomePage client={clientStub()} />);
     expect(screen.getByRole('button', { name: '围棋尚未开放' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '关牌尚未开放' })).toBeDisabled();
@@ -44,6 +44,19 @@ describe('HomePage', () => {
     expect(screen.getByRole('button', { name: '牛牛尚未开放' })).toBeDisabled();
     expect(screen.getAllByText('开发中')).toHaveLength(5);
     expect(container.querySelector('.mini-quoridor')).toBeInTheDocument();
+    for (const name of ['璀璨宝石', '五子棋', '路墙棋', '24 点速度对决']) expect(screen.getByRole('button', { name: `创建${name}房间` })).toBeEnabled();
+  });
+
+  it('24 点四张六点牌有完整花色、六个牌面点数和双角标', () => {
+    const { container } = render(<HomePage client={clientStub()} />);
+    const cards = [...container.querySelectorAll('.calculation-card')];
+    expect(cards.map(card => card.getAttribute('data-suit'))).toEqual(['♠', '♥', '♣', '♦']);
+    cards.forEach((card, index) => {
+      expect(card).toHaveClass(index % 2 ? 'is-red' : 'is-black');
+      expect(card.querySelectorAll('.mini-card-pips > span')).toHaveLength(6);
+      expect(card.querySelectorAll('.mini-card-corner')).toHaveLength(2);
+    });
+    expect(container.querySelector('.calculation-result')?.parentElement).toHaveClass('effect-twenty-four');
   });
 
   it('不再展示首屏冗余装饰和重复的游戏单选', () => {

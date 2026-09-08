@@ -567,7 +567,7 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
 .section-heading { align-items: center; padding-bottom: 34px; }
 .section-heading h2 { font-size: clamp(38px, 4.2vw, 61px); letter-spacing: -.04em; }
 .section-heading p { font-size: 14px; }
-.featured-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(18px, 2vw, 30px); padding-top: 34px; }
+.featured-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(18px, 2vw, 30px); padding-top: 34px; }
 .featured-spark, .featured-spark > .spotlight-surface, .game-card-reveal { height: 100%; border-radius: 23px; }
 .featured-card { min-height: 390px; border-radius: 23px; background: linear-gradient(155deg, rgba(18,50,43,.95), rgba(7,27,24,.94)); box-shadow: 0 26px 65px rgba(0,0,0,.19); transition: border-color .35s, background .45s, box-shadow .45s; }
 .featured-card::before { content: ''; height: 3px; position: absolute; z-index: 4; left: 24px; right: 24px; bottom: 0; border-radius: 4px 4px 0 0; background: linear-gradient(90deg, transparent, var(--gold-light), transparent); opacity: 0; transform: scaleX(.45); transition: opacity .3s, transform .4s cubic-bezier(.22,1,.36,1); }
@@ -641,8 +641,8 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
   .hero-scene { width: 100%; min-height: 510px; grid-column: 1; margin: 0; }
   .entry-reveal { width: 100%; max-width: 460px; grid-column: 2; align-self: center; }
   .featured-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .game-card-reveal:nth-child(3) { grid-column: 1 / -1; }
-  .game-card-reveal:nth-child(3) .featured-card { min-height: 360px; }
+
+
   .coming-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
@@ -682,8 +682,8 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
   .section-heading h2 { font-size: 39px; }
   .section-heading p { margin-top: 13px; text-align: left; }
   .featured-grid { grid-template-columns: 1fr; gap: 17px; padding-top: 24px; }
-  .game-card-reveal:nth-child(3) { grid-column: auto; }
-  .featured-card, .game-card-reveal:nth-child(3) .featured-card { min-height: 340px; }
+
+  .featured-card { min-height: 340px; }
   .featured-card .game-art { height: 180px; }
   .coming-reveal { margin-top: 52px; }
   .coming-heading { display: block; }
@@ -1336,8 +1336,10 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
 .route-two { width: 30px; left: 47px; top: 34px; transform: rotate(88deg) scaleX(.35); }
 .route-three { width: 38px; left: 51px; top: 61px; transform: rotate(152deg) scaleX(.35); }
 
-.effect-twenty-four { perspective: 800px; }
+.effect-twenty-four { perspective: 800px; position: relative; }
 .calculation-ring {
+  inset: 0;
+  margin: auto;
   width: 112px;
   height: 112px;
   position: absolute;
@@ -1370,6 +1372,13 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
 .calculation-card.card-2 { transform: translate3d(-12px, -3px, -3px) rotate(-7deg); }
 .calculation-card.card-3 { transform: translate3d(12px, -3px, 3px) rotate(7deg); }
 .calculation-card.card-4 { transform: translate3d(33px, 5px, 9px) rotate(19deg); }
+.calculation-card.is-black { color: #192723; }
+.calculation-card.is-red { color: #b52e3e; }
+.mini-card-corner { position: absolute; top: 3px; left: 3px; display: grid; justify-items: center; font: 700 10px/1 Georgia, serif; }
+.mini-card-corner > span { font-size: 9px; }
+.mini-card-corner.is-bottom { top: auto; left: auto; bottom: 3px; right: 3px; transform: rotate(180deg); }
+.mini-card-pips { position: absolute; inset: 12px 10px; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(3, 1fr); place-items: center; font: 12px/1 Georgia, serif; }
+.mini-card-pips > span:nth-last-child(-n+2) { transform: rotate(180deg); }
 .calculation-result {
   width: 43px;
   height: 43px;
@@ -1383,7 +1392,8 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
   border-radius: 50%;
   color: #f0cd86;
   background: rgba(7,34,29,.92);
-  font: 700 29px Georgia, serif;
+  font: 700 29px/1 Georgia, serif;
+  letter-spacing: 0; padding: 0; box-sizing: border-box;
   opacity: 0;
   transform: translate(-50%, -50%) scale(.55);
   filter: blur(7px) drop-shadow(0 0 10px rgba(243,207,134,.4));

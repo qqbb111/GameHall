@@ -41,9 +41,13 @@ function GameGlyph({ kind }: { kind: GameCardInfo['icon'] }) {
       <div className="gameplay-effect effect-twenty-four" aria-hidden="true">
         <span className="calculation-ring" />
         <div className="calculation-cards">
-          {Array.from({ length: 4 }, (_, index) => <i className={`calculation-card card-${index + 1}`} key={index}>6</i>)}
-          <strong className="calculation-result">24</strong>
+          {['♠', '♥', '♣', '♦'].map((suit, index) => <i className={`calculation-card card-${index + 1} ${index % 2 ? 'is-red' : 'is-black'}`} key={suit} data-suit={suit}>
+            <span className="mini-card-corner">6<span>{suit}</span></span>
+            <span className="mini-card-pips">{Array.from({ length: 6 }, (_, pip) => <span key={pip}>{suit}</span>)}</span>
+            <span className="mini-card-corner is-bottom">6<span>{suit}</span></span>
+          </i>)}
         </div>
+        <strong className="calculation-result">24</strong>
       </div>
     );
   }
