@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1600" height="640" viewBox="0 0 1600 640" role="img" aria-labelledby="title desc">
+<title id="title">GameHall — 今晚，和朋友开一局</title><desc id="desc">无需注册，邀请好友，2–4 人联机。璀璨宝石 2–4 人；五子棋、路墙棋、24 点速度对决各 2 人。</desc>
+<defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#173e33"/><stop offset="1" stop-color="#071b18"/></linearGradient><linearGradient id="paper" x2="1" y2="1"><stop stop-color="#fff9e9"/><stop offset="1" stop-color="#ded0b2"/></linearGradient><linearGradient id="wood" x2="1" y2="1"><stop stop-color="#eed08e"/><stop offset="1" stop-color="#a87635"/></linearGradient><linearGradient id="blue" x2="1" y2="1"><stop stop-color="#b4eaff"/><stop offset=".4" stop-color="#268be6"/><stop offset="1" stop-color="#102f80"/></linearGradient><g id="gem-blue"><polygon points="10,3 22,3 29,10 29,22 22,29 10,29 3,22 3,10" transform="translate(0 1)" fill="#102f80"/><polygon points="10,3 22,3 29,10 29,22 22,29 10,29 3,22 3,10" fill="url(#blue)"/><polygon points="10,3 22,3 19.36,8.72 12.64,8.72" fill="#b4eaff" opacity="0.25"/><polygon points="22,3 29,10 23.28,12.64 19.36,8.72" fill="#b4eaff" opacity="0.6"/><polygon points="29,10 29,22 23.28,19.36 23.28,12.64" fill="#b4eaff" opacity="0.25"/><polygon points="29,22 22,29 19.36,23.28 23.28,19.36" fill="#b4eaff" opacity="0.6"/><polygon points="22,29 10,29 12.64,23.28 19.36,23.28" fill="#102f80" opacity="0.25"/><polygon points="10,29 3,22 8.72,19.36 12.64,23.28" fill="#102f80" opacity="0.6"/><polygon points="3,22 3,10 8.72,12.64 8.72,19.36" fill="#102f80" opacity="0.25"/><polygon points="3,10 10,3 12.64,8.72 8.72,12.64" fill="#102f80" opacity="0.6"/><polygon points="12.64,8.72 19.36,8.72 23.28,12.64 23.28,19.36 19.36,23.28 12.64,23.28 8.72,19.36 8.72,12.64" fill="url(#blue)" stroke="#b4eaff" stroke-width=".35"/><polygon points="10,3 22,3 29,10 29,22 22,29 10,29 3,22 3,10" fill="none" stroke="#b4eaff" stroke-width=".5"/><path d="M9 7v4M7 9h4" stroke="white" stroke-width=".6"/></g><linearGradient id="green" x2="1" y2="1"><stop stop-color="#bcffe0"/><stop offset=".4" stop-color="#20be86"/><stop offset="1" stop-color="#07523f"/></linearGradient><g id="gem-green"><polygon points="10,2 22,2 27,7 27,25 22,30 10,30 5,25 5,7" transform="translate(0 1)" fill="#07523f"/><polygon points="10,2 22,2 27,7 27,25 22,30 10,30 5,25 5,7" fill="url(#green)"/><polygon points="10,2 22,2 19.36,8.16 12.64,8.16" fill="#bcffe0" opacity="0.25"/><polygon points="22,2 27,7 22.16,10.96 19.36,8.16" fill="#bcffe0" opacity="0.6"/><polygon points="27,7 27,25 22.16,21.04 22.16,10.96" fill="#bcffe0" opacity="0.25"/><polygon points="27,25 22,30 19.36,23.84 22.16,21.04" fill="#bcffe0" opacity="0.6"/><polygon points="22,30 10,30 12.64,23.84 19.36,23.84" fill="#07523f" opacity="0.25"/><polygon points="10,30 5,25 9.84,21.04 12.64,23.84" fill="#07523f" opacity="0.6"/><polygon points="5,25 5,7 9.84,10.96 9.84,21.04" fill="#07523f" opacity="0.25"/><polygon points="5,7 10,2 12.64,8.16 9.84,10.96" fill="#07523f" opacity="0.6"/><polygon points="12.64,8.16 19.36,8.16 22.16,10.96 22.16,21.04 19.36,23.84 12.64,23.84 9.84,21.04 9.84,10.96" fill="url(#green)" stroke="#bcffe0" stroke-width=".35"/><polygon points="10,2 22,2 27,7 27,25 22,30 10,30 5,25 5,7" fill="none" stroke="#bcffe0" stroke-width=".5"/><path d="M9 7v4M7 9h4" stroke="white" stroke-width=".6"/></g><linearGradient id="gold" x2="1" y2="1"><stop stop-color="#fff3bf"/><stop offset=".4" stop-color="#dca342"/><stop offset="1" stop-color="#815017"/></linearGradient><g id="gem-gold"><polygon points="8,6 24,6 30,25 2,25" transform="translate(0 1)" fill="#815017"/><polygon points="8,6 24,6 30,25 2,25" fill="url(#gold)"/><polygon points="8,6 24,6 20.48,10.4 11.52,10.4" fill="#fff3bf" opacity="0.25"/><polygon points="24,6 30,25 23.84,21.04 20.48,10.4" fill="#fff3bf" opacity="0.6"/><polygon points="30,25 2,25 8.16,21.04 23.84,21.04" fill="#815017" opacity="0.25"/><polygon points="2,25 8,6 11.52,10.4 8.16,21.04" fill="#815017" opacity="0.6"/><polygon points="11.52,10.4 20.48,10.4 23.84,21.04 8.16,21.04" fill="url(#gold)" stroke="#fff3bf" stroke-width=".35"/><polygon points="8,6 24,6 30,25 2,25" fill="none" stroke="#fff3bf" stroke-width=".5"/><path d="M9 7v4M7 9h4" stroke="white" stroke-width=".6"/></g></defs>
+<rect width="1600" height="640" fill="url(#bg)"/>
+<rect x="24" y="24" width="1552" height="592" rx="24" fill="none" stroke="#cfb270" stroke-opacity=".35"/>
+<circle cx="1430" cy="110" r="240" fill="none" stroke="#e9c782" stroke-opacity=".08"/><circle cx="1430" cy="110" r="180" fill="none" stroke="#e9c782" stroke-opacity=".1"/>
+<g font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif">
+<text x="72" y="107" fill="#edcd8f" font-family="Georgia, serif" font-weight="bold" font-size="58">GameHall</text>
+<text x="72" y="206" fill="#f6f0df" font-size="66" font-weight="bold">今晚，和朋友开一局</text>
+<text x="76" y="263" fill="#a8bfb0" font-size="28">无需注册 · 邀请好友 · 2–4 人联机</text>
+<path d="M1170 236h340" stroke="#d9b875" stroke-opacity=".4"/><text x="1510" y="216" text-anchor="end" fill="#d9b875" font-size="20" letter-spacing="4">好友相聚 · 胜负有度</text>
+<g transform="translate(72 306)">
+<rect width="334" height="270" rx="18" fill="#09231e" stroke="#a4ba91" stroke-opacity=".25"/>
+<text x="20" y="32" fill="#799487" font-size="16">01</text>
+<ellipse cx="167" cy="170" rx="92" ry="13" fill="#03130f" opacity=".55"/>
+<use xlink:href="#gem-blue" transform="translate(66 78) rotate(-14 32 34) scale(2)"/>
+<use xlink:href="#gem-green" transform="translate(126 45) scale(2.65)"/>
+<use xlink:href="#gem-gold" transform="translate(207 90) rotate(14 27 27) scale(1.75)"/>
+<text x="167" y="219" text-anchor="middle" fill="#f3ebd9" font-size="26" font-weight="bold">璀璨宝石</text>
+<text x="167" y="250" text-anchor="middle" fill="#a5bdac" font-size="19">2–4 人好友房</text>
+</g>
+<g transform="translate(446 306)">
+<rect width="334" height="270" rx="18" fill="#09231e" stroke="#a4ba91" stroke-opacity=".25"/>
+<text x="20" y="32" fill="#799487" font-size="16">02</text>
+<ellipse cx="167" cy="170" rx="92" ry="13" fill="#03130f" opacity=".55"/>
+<g transform="translate(102 46) rotate(-5 65 65)"><rect width="130" height="130" rx="4" fill="url(#wood)"/>
+<path d="M9 9h108M9 9v108" stroke="#77572c" stroke-width="1"/>
+<path d="M9 27h108M27 9v108" stroke="#77572c" stroke-width="1"/>
+<path d="M9 45h108M45 9v108" stroke="#77572c" stroke-width="1"/>
+<path d="M9 63h108M63 9v108" stroke="#77572c" stroke-width="1"/>
+<path d="M9 81h108M81 9v108" stroke="#77572c" stroke-width="1"/>
+<path d="M9 99h108M99 9v108" stroke="#77572c" stroke-width="1"/>
+<path d="M9 117h108M117 9v108" stroke="#77572c" stroke-width="1"/>
+<circle cx="27" cy="99" r="9" fill="#0c211b" stroke="#493f29" stroke-opacity=".3"/>
+<circle cx="45" cy="81" r="9" fill="#eee6d2" stroke="#493f29" stroke-opacity=".3"/>
+<circle cx="63" cy="63" r="9" fill="#0c211b" stroke="#493f29" stroke-opacity=".3"/>
+<circle cx="81" cy="45" r="9" fill="#eee6d2" stroke="#493f29" stroke-opacity=".3"/>
+<circle cx="99" cy="27" r="9" fill="#0c211b" stroke="#493f29" stroke-opacity=".3"/>
+</g>
+<text x="167" y="219" text-anchor="middle" fill="#f3ebd9" font-size="26" font-weight="bold">五子棋</text>
+<text x="167" y="250" text-anchor="middle" fill="#a5bdac" font-size="19">2 人好友房</text>
+</g>
+<g transform="translate(820 306)">
+<rect width="334" height="270" rx="18" fill="#09231e" stroke="#a4ba91" stroke-opacity=".25"/>
+<text x="20" y="32" fill="#799487" font-size="16">03</text>
+<ellipse cx="167" cy="170" rx="92" ry="13" fill="#03130f" opacity=".55"/>
+<g transform="translate(104 47) rotate(5 65 65)"><rect width="130" height="130" rx="6" fill="#3a2c1d"/>
+<rect x="10" y="10" width="24" height="24" rx="3" fill="url(#wood)"/>
+<rect x="39" y="10" width="24" height="24" rx="3" fill="url(#wood)"/>
+<rect x="68" y="10" width="24" height="24" rx="3" fill="url(#wood)"/>
+<rect x="97" y="10" width="24" height="24" rx="3" fill="url(#wood)"/>
+<rect x="10" y="39" width="24" height="24" rx="3" fill="url(#wood)"/>
+<rect x="39" y="39" width="24" height="24" rx="3" fill="url(#wood)"/>
+<rect x="68" y="39" width="24" height="24" rx="3" fill="url(#wood)"/>
+<rect x="97" y="39" width="24" height="24" rx="3" fill="url(#wood)"/>
+<rect x="10" y="68" width="24" height="24" rx="3" fill="url(#wood)"/>
+<rect x="39" y="68" width="24" height="24" rx="3" fill="url(#wood)"/>
+<rect x="68" y="68" width="24" height="24" rx="3" fill="url(#wood)"/>
+<rect x="97" y="68" width="24" height="24" rx="3" fill="url(#wood)"/>
+<rect x="10" y="97" width="24" height="24" rx="3" fill="url(#wood)"/>
+<rect x="39" y="97" width="24" height="24" rx="3" fill="url(#wood)"/>
+<rect x="68" y="97" width="24" height="24" rx="3" fill="url(#wood)"/>
+<rect x="97" y="97" width="24" height="24" rx="3" fill="url(#wood)"/>
+<path d="M39 65h52M68 95h52" stroke="#f0ce84" stroke-width="5" stroke-linecap="round"/><circle cx="22" cy="22" r="10" fill="#4eaa88"/><circle cx="109" cy="108" r="10" fill="#efe7d1"/></g>
+<text x="167" y="219" text-anchor="middle" fill="#f3ebd9" font-size="26" font-weight="bold">路墙棋</text>
+<text x="167" y="250" text-anchor="middle" fill="#a5bdac" font-size="19">2 人好友房</text>
+</g>
+<g transform="translate(1194 306)">
+<rect width="334" height="270" rx="18" fill="#09231e" stroke="#a4ba91" stroke-opacity=".25"/>
+<text x="20" y="32" fill="#799487" font-size="16">04</text>
+<ellipse cx="167" cy="170" rx="92" ry="13" fill="#03130f" opacity=".55"/>
+<g transform="translate(63 68) rotate(-16 32 48)" fill="#192723" font-family="Georgia, serif"><rect width="64" height="96" rx="6" fill="url(#paper)" stroke="#c4b797"/><text x="5" y="17" font-size="15">6</text><text x="5" y="31" font-size="13">♠</text>
+<text x="22" y="29" text-anchor="middle" font-size="19">♠</text>
+<text x="42" y="29" text-anchor="middle" font-size="19">♠</text>
+<text x="22" y="53" text-anchor="middle" font-size="19">♠</text>
+<text x="42" y="53" text-anchor="middle" font-size="19">♠</text>
+<text x="22" y="77" text-anchor="middle" font-size="19">♠</text>
+<text x="42" y="77" text-anchor="middle" font-size="19">♠</text>
+<g transform="translate(64 96) rotate(180)"><text x="5" y="17" font-size="15">6</text><text x="5" y="31" font-size="13">♠</text></g></g>
+<g transform="translate(108 52) rotate(-5 32 48)" fill="#b52e3e" font-family="Georgia, serif"><rect width="64" height="96" rx="6" fill="url(#paper)" stroke="#c4b797"/><text x="5" y="17" font-size="15">6</text><text x="5" y="31" font-size="13">♥</text>
+<text x="22" y="29" text-anchor="middle" font-size="19">♥</text>
+<text x="42" y="29" text-anchor="middle" font-size="19">♥</text>
+<text x="22" y="53" text-anchor="middle" font-size="19">♥</text>
+<text x="42" y="53" text-anchor="middle" font-size="19">♥</text>
+<text x="22" y="77" text-anchor="middle" font-size="19">♥</text>
+<text x="42" y="77" text-anchor="middle" font-size="19">♥</text>
+<g transform="translate(64 96) rotate(180)"><text x="5" y="17" font-size="15">6</text><text x="5" y="31" font-size="13">♥</text></g></g>
+<g transform="translate(153 52) rotate(5 32 48)" fill="#192723" font-family="Georgia, serif"><rect width="64" height="96" rx="6" fill="url(#paper)" stroke="#c4b797"/><text x="5" y="17" font-size="15">6</text><text x="5" y="31" font-size="13">♣</text>
+<text x="22" y="29" text-anchor="middle" font-size="19">♣</text>
+<text x="42" y="29" text-anchor="middle" font-size="19">♣</text>
+<text x="22" y="53" text-anchor="middle" font-size="19">♣</text>
+<text x="42" y="53" text-anchor="middle" font-size="19">♣</text>
+<text x="22" y="77" text-anchor="middle" font-size="19">♣</text>
+<text x="42" y="77" text-anchor="middle" font-size="19">♣</text>
+<g transform="translate(64 96) rotate(180)"><text x="5" y="17" font-size="15">6</text><text x="5" y="31" font-size="13">♣</text></g></g>
+<g transform="translate(198 68) rotate(16 32 48)" fill="#b52e3e" font-family="Georgia, serif"><rect width="64" height="96" rx="6" fill="url(#paper)" stroke="#c4b797"/><text x="5" y="17" font-size="15">6</text><text x="5" y="31" font-size="13">♦</text>
+<text x="22" y="29" text-anchor="middle" font-size="19">♦</text>
+<text x="42" y="29" text-anchor="middle" font-size="19">♦</text>
+<text x="22" y="53" text-anchor="middle" font-size="19">♦</text>
+<text x="42" y="53" text-anchor="middle" font-size="19">♦</text>
+<text x="22" y="77" text-anchor="middle" font-size="19">♦</text>
+<text x="42" y="77" text-anchor="middle" font-size="19">♦</text>
+<g transform="translate(64 96) rotate(180)"><text x="5" y="17" font-size="15">6</text><text x="5" y="31" font-size="13">♦</text></g></g>
+<text x="167" y="219" text-anchor="middle" fill="#f3ebd9" font-size="26" font-weight="bold">24 点速度对决</text>
+<text x="167" y="250" text-anchor="middle" fill="#a5bdac" font-size="19">2 人好友房</text>
+</g>
+</g></svg>

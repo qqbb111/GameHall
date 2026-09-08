@@ -1,5 +1,7 @@
 # GameHall
 
+![GameHall：今晚，和朋友开一局。璀璨宝石支持 2–4 人，五子棋、路墙棋和 24 点速度对决支持 2 人好友联机。](docs/assets/gamehall-banner.png)
+
 `GameHall` 是一个完全独立的好友联机棋牌桌游网站，不复用也不依赖 GameLobby。提供 2–4 人经典基础版璀璨宝石、五子棋、标准双人路墙棋和 24 点速度对决；围棋、关牌、炸金花、罗松、牛牛只显示“开发中”。
 
 ## 首版能力
@@ -22,6 +24,7 @@ packages/game-core       四款游戏的纯函数规则引擎
 packages/protocol        Zod 协议校验、事件和共享类型
 render.yaml              单实例免费 Render Web Service（临时试玩）
 apps/web/public/og.png    GameHall 分享预览图与页面社交元数据
+docs/assets/             README 宣传横幅 PNG 与可编辑 SVG 源稿
 ```
 
 要求 Node.js 24.15+、pnpm 11.19+。
