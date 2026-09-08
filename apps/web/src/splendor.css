@@ -142,7 +142,3 @@
   .featured-card .game-art > .splendor-home-gems { animation: none !important; }
   .splendor-home-gems .gem-mark { transition: none; }
 }
-@media (prefers-reduced-motion: reduce) {
-  .effect-twenty-four, .effect-twenty-four * { animation: none !important; transition: none !important; }
-  .effect-twenty-four .calculation-result { opacity: 0; }
-}

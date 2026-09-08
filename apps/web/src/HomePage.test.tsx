@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { GameHallClient } from './gamehall-client';
 import { HomePage } from './HomePage';
 import { NICKNAME_STORAGE_KEY } from './client-preferences';
+import splendorStyles from './splendor.css?raw';
 
 function clientStub(overrides: Partial<GameHallClient> = {}): GameHallClient {
   return {
@@ -127,6 +128,8 @@ describe('HomePage', () => {
   });
 
   it('保留旧游戏的动态效果，新增璀璨宝石遵循系统减少动画偏好', () => {
+    // Splendor's reduced-motion stylesheet must not override legacy game effects.
+    expect(splendorStyles).not.toMatch(/\.effect-(twenty-four|gomoku|quoridor)|\.calculation-/);
     const { container } = render(<HomePage client={clientStub()} />);
     const reveals = container.querySelectorAll('.reveal');
     expect(reveals.length).toBeGreaterThan(0);
