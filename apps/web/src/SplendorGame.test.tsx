@@ -57,7 +57,11 @@ describe('璀璨宝石操作', () => {
 
   it('卡牌详情默认普通宝石优先，允许手动用黄金替代', async () => {
     const state = createSplendorState({ playerCount: 2, startingPlayer: 0 });
-    state.market[1][0] = SPLENDOR_CARDS.find((card) => card.id === 'L1-01')!;
+    const paymentCard = SPLENDOR_CARDS.find((card) => card.id === 'L1-01')!;
+    const tierOne = [paymentCard, ...SPLENDOR_CARDS.filter((card) => card.tier === 1 && card.id !== paymentCard.id)];
+    state.market[1] = tierOne.slice(0, 4);
+    state.decks[1] = tierOne.slice(4);
+    expect(new Set([...state.market[1], ...state.decks[1]].map(card => card.id)).size).toBe(40);
     state.players[0]!.tokens.red = 2; state.players[0]!.tokens.black = 1; state.players[0]!.tokens.gold = 1;
     const { onAction } = setup(state);
     fireEvent.click(screen.getByRole('button', { name: /L1-01，/ }));
