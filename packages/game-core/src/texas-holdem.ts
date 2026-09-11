@@ -233,7 +233,7 @@ function finishWithWinners(state: TexasHoldemState, winnersByPot: Array<{ pot: P
   const potResults: PokerPotResult[] = winnersByPot.map(({ pot, winners }) => {
     const each = Math.floor(pot.amount / winners.length);
     let remainder = pot.amount - each * winners.length;
-    const orderedWinners = order.filter((seat) => winners.includes(seat));
+    const orderedWinners = [...order.slice(1), order[0]!].filter((seat) => winners.includes(seat));
     for (const seat of orderedWinners) {
       payouts.set(seat, (payouts.get(seat) ?? 0) + each + (remainder > 0 ? 1 : 0));
       if (remainder > 0) remainder -= 1;
