@@ -6,6 +6,8 @@ import {
   type Player,
   type QuoridorView,
   type TwentyFourView,
+  type TexasHoldemView,
+  type PokerCard,
   type WallOrientation,
 } from '@gamehall/game-core';
 import type { GameActionCommand } from '@gamehall/protocol';
@@ -298,6 +300,77 @@ export function TwentyFourGame({ state, mySeat, active, serverNowMs, onAction }:
           {state.phase === 'revealing' && <p>下一题即将开始…</p>}
         </div>
       )}
+    </section>
+  );
+}
+
+const pokerRankLabels: Record<number, string> = { 14: 'A', 13: 'K', 12: 'Q', 11: 'J' };
+const pokerSuitSymbols: Record<PokerCard['suit'], string> = { S: '♠', H: '♥', D: '♦', C: '♣' };
+
+function pokerCardLabel(card: PokerCard): string {
+  return `${pokerRankLabels[card.rank] ?? card.rank}${pokerSuitSymbols[card.suit]}`;
+}
+
+function PokerCardView({ card, hidden = false }: { card: PokerCard | null; hidden?: boolean }) {
+  if (hidden || !card) return <span className="poker-card is-hidden" aria-label="盖牌">◆</span>;
+  return <span className={`poker-card ${card.suit === 'H' || card.suit === 'D' ? 'is-red' : ''}`} aria-label={pokerCardLabel(card)}><b>{pokerRankLabels[card.rank] ?? card.rank}</b><i>{pokerSuitSymbols[card.suit]}</i></span>;
+}
+
+export function TexasHoldemGame({ state, mySeat, active, onAction }: { state: TexasHoldemView; mySeat: number; active: boolean; onAction: ActionHandler }) {
+  const me = state.players.find((player) => player.seat === mySeat);
+  const [wager, setWager] = useState(0);
+  const canAct = Boolean(active && me?.seat === state.turn && me.availableActions.length > 0);
+  const wagerMin = me?.minimumWager ?? 0;
+  const wagerMax = me?.maximumWager ?? 0;
+  const wagerType = me?.availableActions.includes('bet') ? 'bet' : 'raise';
+
+  function submitWager() {
+    const target = wager || wagerMin;
+    if (!me || !canAct || !me.availableActions.includes(wagerType) || target < wagerMin || target > wagerMax) return;
+    void onAction({ type: wagerType, amount: Math.round(target) });
+  }
+
+  return (
+    <section className="game-surface texas-holdem-surface" aria-label="德州扑克牌桌">
+      <div className="surface-title poker-title">
+        <div><span>无限注 · 盲注 10 / 20 · 每人 1000</span><h2 aria-live="polite">{state.phase === 'finished' ? '本手结束' : state.turn === mySeat ? '轮到你行动' : '等待好友行动'}</h2></div>
+        <div className="poker-pot-summary"><small>底池</small><strong>{state.pot}</strong></div>
+      </div>
+      <div className="poker-community" aria-label={`公共牌，共 ${state.communityCards.length} 张`}>
+        {state.communityCards.map((card) => <PokerCardView key={card.id} card={card} />)}
+        {Array.from({ length: 5 - state.communityCards.length }, (_, index) => <PokerCardView key={`empty-${index}`} card={null} hidden />)}
+      </div>
+      <div className="poker-seats" aria-label="玩家座位">
+        {state.players.map((player) => {
+          const isMine = player.seat === mySeat;
+          const isTurn = player.seat === state.turn;
+          return (
+            <article className={`poker-seat ${isMine ? 'is-mine' : ''} ${isTurn ? 'is-turn' : ''} ${player.folded ? 'is-folded' : ''}`} key={player.seat}>
+              <div className="poker-seat-heading"><strong>{isMine ? '你' : `玩家 ${player.seat + 1}`}</strong><span>{player.allIn ? 'All-in' : player.folded ? '已弃牌' : `筹码 ${player.stack}`}</span></div>
+              <div className="poker-hole-cards" aria-label={isMine ? '你的手牌' : '对手手牌'}>
+                {player.holeCards ? player.holeCards.map((card) => <PokerCardView key={card.id} card={card} />) : <><PokerCardView card={null} hidden /><PokerCardView card={null} hidden /></>}
+              </div>
+              <small>投入 {player.totalCommitted}{player.seat === state.dealerSeat ? ' · 庄' : ''}{player.seat === state.smallBlindSeat ? ' · 小盲' : ''}{player.seat === state.bigBlindSeat ? ' · 大盲' : ''}</small>
+            </article>
+          );
+        })}
+      </div>
+      {canAct && me && (
+        <div className="poker-actions" role="toolbar" aria-label="德州扑克操作">
+          {me.availableActions.includes('fold') && <button type="button" className="is-muted" onClick={() => void onAction({ type: 'fold' })}>弃牌</button>}
+          {me.availableActions.includes('check') && <button type="button" onClick={() => void onAction({ type: 'check' })}>过牌</button>}
+          {me.availableActions.includes('call') && <button type="button" onClick={() => void onAction({ type: 'call' })}>跟注 {me.toCall}</button>}
+          {me.availableActions.includes('allIn') && <button type="button" className="is-danger" onClick={() => void onAction({ type: 'allIn' })}>All-in</button>}
+          {(me.availableActions.includes('bet') || me.availableActions.includes('raise')) && (
+            <div className="poker-wager-control">
+              <label htmlFor="poker-wager">{wagerType === 'bet' ? '下注至' : '加注至'}</label>
+              <input id="poker-wager" type="number" min={wagerMin} max={wagerMax} step={1} value={wager || wagerMin} onChange={(event) => setWager(Number(event.target.value))} />
+              <button type="button" onClick={submitWager}>{wagerType === 'bet' ? '下注' : '加注'}</button>
+            </div>
+          )}
+        </div>
+      )}
+      <p className="poker-help">目标金额包含你本轮已经投入的筹码；出现平局时底池按规则分配。</p>
     </section>
   );
 }

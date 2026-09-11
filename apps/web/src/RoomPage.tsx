@@ -1,9 +1,9 @@
 import { Check, Clipboard, DoorOpen, Flag, Link2, LoaderCircle, LogOut, RotateCcw, Send, ShieldCheck, TriangleAlert, Wifi, WifiOff, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { requireBinaryPlayer, type GomokuState, type QuoridorView, type TwentyFourView, type SplendorView } from '@gamehall/game-core';
+import { requireBinaryPlayer, type GomokuState, type QuoridorView, type TwentyFourView, type SplendorView, type TexasHoldemView } from '@gamehall/game-core';
 import type { GameId, RoomMemberView } from '@gamehall/protocol';
 import type { GameHallClient } from './gamehall-client';
-import { GomokuGame, QuoridorGame, TwentyFourGame } from './game-components';
+import { GomokuGame, QuoridorGame, TexasHoldemGame, TwentyFourGame } from './game-components';
 import { ClickSpark, Reveal } from './motion-primitives';
 import { resultMessage } from './room-result';
 import { SplendorGame } from './SplendorGame';
@@ -13,6 +13,7 @@ const gameNames: Record<GameId, string> = {
   gomoku: '五子棋',
   quoridor: '路墙棋',
   'twenty-four': '24 点速度对决',
+  'texas-holdem': '德州扑克',
 };
 
 const quickMessages = ['👍', '👏', '😄', '🤔', '🔥', '🎉', '😮', '😭'] as const;
@@ -150,7 +151,7 @@ export function RoomPage({ client }: { client: GameHallClient }) {
 
   if (!room) return null;
   const currentRoom = room;
-  const multiplayer = room.gameId === 'splendor';
+  const multiplayer = room.gameId === 'splendor' || room.gameId === 'texas-holdem';
   const isHost = room.mySeat === room.hostSeat;
   const hostStartLabel = starting ? '正在开局…' : client.connection !== 'online' ? '等待连接恢复' : room.members.length < 2 ? '等待好友加入'
     : room.members.some((member) => !member.online) ? '等待成员上线'
@@ -212,7 +213,7 @@ export function RoomPage({ client }: { client: GameHallClient }) {
   }
 
   return (
-    <div className={`room-shell room-status-${room.status} ${multiplayer ? 'splendor-room' : ''}`}>
+    <div className={`room-shell room-status-${room.status} ${room.gameId === 'splendor' ? 'splendor-room' : room.gameId === 'texas-holdem' ? 'poker-room' : ''}`}>
       <header className="room-topbar">
         <div className="room-topbar-left">
           <button className="brand room-brand-button" type="button" aria-label="返回主界面并离开房间" onClick={(event) => openConfirmation('leave', event.currentTarget)}>
@@ -294,6 +295,7 @@ export function RoomPage({ client }: { client: GameHallClient }) {
               {room.gameId === 'gomoku' && <GomokuGame state={game.view as GomokuState} mySeat={requireBinaryPlayer(room.mySeat)} active={canPlay} onAction={client.submitGameAction} />}
               {room.gameId === 'quoridor' && <QuoridorGame state={game.view as QuoridorView} mySeat={requireBinaryPlayer(room.mySeat)} active={canPlay} onAction={client.submitGameAction} />}
               {room.gameId === 'twenty-four' && <TwentyFourGame key={(game.view as TwentyFourView).round} state={game.view as TwentyFourView} mySeat={requireBinaryPlayer(room.mySeat)} active={canPlay} serverNowMs={gameClockNow} onAction={client.submitGameAction} />}
+              {room.gameId === 'texas-holdem' && <TexasHoldemGame state={game.view as TexasHoldemView} mySeat={room.mySeat} active={canPlay} onAction={client.submitGameAction} />}
               {result && (
                 <Reveal className="result-reveal" distance={20} key={result}>
                   <div className="result-panel" role="status">

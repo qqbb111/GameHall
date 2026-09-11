@@ -4,10 +4,12 @@ import {
   createGomokuState,
   createQuoridorState,
   createTwentyFourState,
+  createTexasHoldemState,
   quoridorDefinition,
+  texasHoldemDefinition,
   viewTwentyFourState,
 } from '@gamehall/game-core';
-import { GomokuGame, QuoridorGame, TwentyFourGame } from './game-components';
+import { GomokuGame, QuoridorGame, TexasHoldemGame, TwentyFourGame } from './game-components';
 
 describe('game components', () => {
   it('五子棋支持方向键移动与 Enter 落子', () => {
@@ -96,5 +98,17 @@ describe('game components', () => {
     fireEvent.change(input, { target: { value: '6*(12-6-1)' } });
     fireEvent.click(screen.getByRole('button', { name: '提交答案' }));
     expect(onAction).toHaveBeenCalledWith({ type: 'submit', expression: '6*(12-6-1)' });
+  });
+
+  it('德州扑克只展示自己的手牌并提交跟注/弃牌操作', () => {
+    const onAction = vi.fn().mockResolvedValue(undefined);
+    const state = createTexasHoldemState({ seats: [0, 1], dealerSeat: 0, rng: () => 0.2 });
+    const view = texasHoldemDefinition.viewFor(state, 0, 0);
+    render(<TexasHoldemGame state={view} mySeat={0} active onAction={onAction} />);
+    expect(screen.getByLabelText('你的手牌').querySelectorAll('.poker-card:not(.is-hidden)')).toHaveLength(2);
+    expect(screen.getByLabelText('对手手牌').querySelectorAll('.poker-card.is-hidden')).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: /跟注/ }));
+    expect(onAction).toHaveBeenCalledWith({ type: 'call' });
+    expect(screen.getByRole('button', { name: '弃牌' })).toBeInTheDocument();
   });
 });

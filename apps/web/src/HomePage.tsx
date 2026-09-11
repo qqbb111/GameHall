@@ -93,7 +93,7 @@ function TableOpeningGuide({ nickname, onChooseGame }: { nickname: string; onCho
         </li>
         <li className={`opening-step ${hasNickname ? 'is-active' : 'is-pending'}`} aria-current={hasNickname ? 'step' : undefined}>
           <span className="opening-step-index"><Gamepad2 size={18} /><small>02</small></span>
-          <span className="opening-step-copy"><b>挑一张桌</b><strong>璀璨宝石 · 五子棋 · 路墙棋 · 24 点</strong><small>点击游戏卡，房间立即创建</small></span>
+          <span className="opening-step-copy"><b>挑一张桌</b><strong>璀璨宝石 · 德州扑克 · 五子棋 · 24 点</strong><small>点击游戏卡，房间立即创建</small></span>
           <button type="button" onClick={onChooseGame} disabled={!hasNickname}>去选游戏 <ArrowRight size={15} /></button>
         </li>
         <li className="opening-step is-pending">
@@ -228,13 +228,13 @@ export function HomePage({ client }: { client: GameHallClient }) {
             </Reveal>
             <CinematicHeroTitle />
             <Reveal delayMs={1_180} distance={26} respectReducedMotion={false}>
-              <p className="hero-description">无需注册，一个邀请码就能坐上牌桌。规则清楚、操作顺手，让胜负留在棋盘上。</p>
+          <p className="hero-description">无需注册，一个邀请码就能坐上牌桌。规则清楚、操作顺手，让胜负留在牌桌上。</p>
             </Reveal>
             <Reveal delayMs={1_310} distance={20} respectReducedMotion={false}>
               <div className="trust-row">
                 <span><Users size={16} /> 2–4 人好友房</span>
                 <span><Timer size={16} /> 断线 60 秒重连</span>
-                <span><LockKeyhole size={16} /> 无充值与筹码</span>
+                <span><LockKeyhole size={16} /> 无充值与现金筹码</span>
               </div>
             </Reveal>
           </div>
@@ -261,7 +261,7 @@ export function HomePage({ client }: { client: GameHallClient }) {
           <Reveal distance={22} respectReducedMotion={false}>
             <div className="section-heading">
               <div><span>FEATURED TABLES</span><h2 id="catalog-title">今晚玩什么？</h2></div>
-              <p>四张桌已经亮灯。选一局，把邀请码发给好友。</p>
+              <p>五张桌已经亮灯。选一局，把邀请码发给好友。</p>
             </div>
           </Reveal>
 
@@ -294,7 +294,7 @@ export function HomePage({ client }: { client: GameHallClient }) {
                       <div className="game-number">0{index + 1}</div>
                       <div className={`game-art accent-${game.accent}`}><span className="game-art-orbit" aria-hidden="true" /><GameGlyph kind={game.icon} /></div>
                     <div className="game-info">
-                      <div className="status-line"><span className="status-live">可开局 · {game.id === 'splendor' ? '2–4' : '2'} 人</span></div>
+                      <div className="status-line"><span className="status-live">可开局 · {game.id === 'splendor' || game.id === 'texas-holdem' ? '2–4' : '2'} 人</span></div>
                       <h3>{game.name}</h3><p>{game.subtitle}</p>
                     </div>
                     <button type="button" aria-label={`创建${game.name}房间`} disabled={pendingGameId !== null || joinPending || client.connection !== 'online'} onClick={() => void createRoom(game.id as GameId)}>
