@@ -1,0 +1,96 @@
+import { describe, expect, it } from 'vitest';
+import {
+  applyTexasHoldemAction,
+  buildTexasHoldemPots,
+  createTexasHoldemState,
+  evaluatePokerHand,
+  texasHoldemDefinition,
+  type PokerCard,
+  type PokerPlayer,
+  type TexasHoldemState,
+} from '../src';
+
+const card = (id: number, suit: PokerCard['suit'], rank: number): PokerCard => ({ id, suit, rank });
+
+function step(state: TexasHoldemState, seat: 0 | 1 | 2 | 3, action: Parameters<typeof applyTexasHoldemAction>[2]): TexasHoldemState {
+  const result = applyTexasHoldemAction(state, seat, action);
+  if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`);
+  return result.state;
+}
+
+function checkAroundToShowdown(): TexasHoldemState {
+  let state = createTexasHoldemState({ seats: [0, 1], dealerSeat: 0, rng: () => 0.1 });
+  state = step(state, 0, { type: 'call' });
+  state = step(state, 1, { type: 'check' });
+  for (let street = 0; street < 3; street += 1) {
+    state = step(state, state.turn!, { type: 'check' });
+    state = step(state, state.turn!, { type: 'check' });
+  }
+  return state;
+}
+
+describe('Texas Hold’em rules', () => {
+  it('creates a unique deck, deals private cards, and sets heads-up blinds/order', () => {
+    const state = createTexasHoldemState({ seats: [0, 1], dealerSeat: 0, rng: () => 0.25 });
+    const ids = [...state.players.flatMap((player) => player.holeCards), ...state.deck].map((item) => item.id);
+    expect(new Set(ids).size).toBe(52);
+    expect(state.smallBlindSeat).toBe(0);
+    expect(state.bigBlindSeat).toBe(1);
+    expect(state.turn).toBe(0);
+    expect(state.pot).toBe(30);
+    expect(state.players.map((player) => player.stack)).toEqual([990, 980]);
+  });
+
+  it('advances through all streets and evaluates the showdown', () => {
+    const state = checkAroundToShowdown();
+    expect(state.phase).toBe('finished');
+    expect(state.communityCards).toHaveLength(5);
+    expect(state.result?.type).toBe('completed');
+    expect(state.result?.reason).toBe('showdown');
+  });
+
+  it('enforces check/call, minimum raises, and accepts a short all-in', () => {
+    let state = createTexasHoldemState({ seats: [0, 1], dealerSeat: 0, rng: () => 0.1 });
+    expect(applyTexasHoldemAction(state, 0, { type: 'check' })).toMatchObject({ ok: false, error: { code: 'CHECK_NOT_ALLOWED' } });
+    expect(applyTexasHoldemAction(state, 0, { type: 'raise', amount: 30 })).toMatchObject({ ok: false, error: { code: 'MIN_RAISE' } });
+    state = step(state, 0, { type: 'call' });
+    state.players[1]!.stack = 5;
+    expect(applyTexasHoldemAction(state, 1, { type: 'raise', amount: 24 })).toMatchObject({ ok: false, error: { code: 'MIN_RAISE' } });
+    state = step(state, 1, { type: 'allIn' });
+    expect(state.players[1]!.allIn).toBe(true);
+  });
+
+  it('fold awards the committed pot without revealing folded hands', () => {
+    let state = createTexasHoldemState({ seats: [0, 1], dealerSeat: 0, rng: () => 0.1 });
+    state = step(state, 0, { type: 'fold' });
+    expect(state.result).toMatchObject({ type: 'completed', reason: 'fold', winners: [1] });
+    const view = texasHoldemDefinition.viewFor(state, 1, 0);
+    expect(view.players.find((player) => player.seat === 0)?.holeCards).toBeNull();
+    expect(view.players.find((player) => player.seat === 1)?.holeCards).toHaveLength(2);
+  });
+
+  it('keeps opponents private during play and reveals active hands at showdown', () => {
+    const state = checkAroundToShowdown();
+    const viewer = texasHoldemDefinition.viewFor(state, 0, 0);
+    expect(viewer.players.find((player) => player.seat === 0)?.holeCards).toHaveLength(2);
+    expect(viewer.players.find((player) => player.seat === 1)?.holeCards).toHaveLength(2);
+    expect('deck' in viewer).toBe(false);
+  });
+
+  it('builds main and side pots and splits ties deterministically', () => {
+    const player = (seat: 0 | 1 | 2 | 3, totalCommitted: number, folded = false): PokerPlayer => ({
+      seat, stack: 0, holeCards: [card(seat * 2, 'S', 2), card(seat * 2 + 1, 'H', 3)], folded, allIn: true, totalCommitted, streetCommitted: totalCommitted, actedThisRound: true,
+    });
+    expect(buildTexasHoldemPots([player(0, 100), player(1, 100), player(2, 60), player(3, 100, true)])).toEqual([
+      { amount: 240, eligibleSeats: [0, 1, 2] },
+      { amount: 120, eligibleSeats: [0, 1] },
+    ]);
+  });
+
+  it('recognizes ace-low straights and preserves state on serialization', () => {
+    const cards = [card(0, 'S', 14), card(1, 'H', 2), card(2, 'D', 3), card(3, 'C', 4), card(4, 'S', 5), card(5, 'H', 9), card(6, 'D', 13)];
+    expect(evaluatePokerHand(cards).category).toBe('straight');
+    const state = createTexasHoldemState({ seats: [0, 1], rng: () => 0.2 });
+    expect(texasHoldemDefinition.deserialize(texasHoldemDefinition.serialize(state))).toEqual(state);
+  });
+});

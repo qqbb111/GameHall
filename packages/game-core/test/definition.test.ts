@@ -3,6 +3,7 @@ import {
   gomokuDefinition,
   quoridorDefinition,
   twentyFourDefinition,
+  texasHoldemDefinition,
   type FourCards,
 } from '../src';
 
@@ -14,7 +15,7 @@ const cards: FourCards = [
 ];
 
 describe('统一 GameDefinition 合约', () => {
-  it('三款游戏都可初始化、严格校验动作并无损序列化', () => {
+  it('四款规则引擎都可初始化、严格校验动作并无损序列化', () => {
     const gomoku = gomokuDefinition.initialize(0);
     expect(gomokuDefinition.deserialize(gomokuDefinition.serialize(gomoku))).toEqual(gomoku);
     expect(gomokuDefinition.validateAction({ type: 'place', row: 1, col: 2 })).toMatchObject({ ok: true });
@@ -33,6 +34,11 @@ describe('统一 GameDefinition 合约', () => {
     expect(twentyFourDefinition.deserialize(JSON.stringify(legacyTwentyFour)).finishReason).toBeNull();
     expect(twentyFourDefinition.validateAction({ type: 'submit', expression: '1*2*3*4' })).toMatchObject({ ok: true });
     expect(twentyFourDefinition.validateAction({ type: 'submit', expression: '1*2*3*4', answer: 24 })).toEqual({ ok: false, message: '24 点操作格式不合法' });
+
+    const texasHoldem = texasHoldemDefinition.initialize({ seats: [0, 1], rng: () => 0.1 });
+    expect(texasHoldemDefinition.deserialize(texasHoldemDefinition.serialize(texasHoldem))).toEqual(texasHoldem);
+    expect(texasHoldemDefinition.validateAction({ type: 'raise', amount: 40 })).toMatchObject({ ok: true });
+    expect(texasHoldemDefinition.validateAction({ type: 'raise', amount: 40, extra: true })).toEqual({ ok: false, message: '德州扑克操作格式不合法' });
   });
 
   it('统一推进与结果接口由具体规则引擎负责', () => {
