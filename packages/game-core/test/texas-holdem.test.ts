@@ -72,6 +72,16 @@ describe('Texas Hold’em rules', () => {
     expect(view.players.find((player) => player.seat === 1)?.holeCards).toHaveLength(2);
   });
 
+  it('ends only the hand when an opponent folds against an all-in', () => {
+    let state = createTexasHoldemState({ seats: [0, 1], dealerSeat: 0, rng: () => 0.1 });
+    state = step(state, 0, { type: 'allIn' });
+    state = step(state, 1, { type: 'fold' });
+    expect(state.phase).toBe('hand-complete');
+    expect(state.result).toBeNull();
+    expect(state.lastHandResult).toMatchObject({ reason: 'fold', winners: [0] });
+    expect(state.players.map((player) => player.stack)).toEqual([1_020, 980]);
+  });
+
   it('keeps opponents private during play and reveals active hands at showdown', () => {
     const state = checkAroundToShowdown();
     const viewer = texasHoldemDefinition.viewFor(state, 0, 0);

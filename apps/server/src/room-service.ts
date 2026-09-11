@@ -10,6 +10,7 @@ import {
   quoridorDefinition,
   splendorDefinition,
   texasHoldemDefinition,
+  applyTexasHoldemAction,
   abortSplendorState,
   type PokerSeat,
   startNextTwentyFourRound,
@@ -209,7 +210,7 @@ function validateAndAdvance(state: GameState, actor: PlayerSeat, input: unknown,
   if (state.kind === 'texas-holdem') {
     const validation = texasHoldemDefinition.validateAction(input);
     return validation.ok
-      ? { ok: true, result: texasHoldemDefinition.advance(state, actor, validation.action, nowMs) }
+      ? { ok: true, result: applyTexasHoldemAction(state, actor, validation.action, gameRandom) }
       : validation;
   }
   if (actor > 1) return { ok: false, message: '双人游戏不支持此座位' };

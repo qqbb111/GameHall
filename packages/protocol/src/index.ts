@@ -53,8 +53,9 @@ const transportActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('check') }).strict(),
   z.object({ type: z.literal('call') }).strict(),
   z.object({ type: z.literal('allIn') }).strict(),
-  z.object({ type: z.literal('bet'), amount: z.number().int().min(1).max(1_000) }).strict(),
-  z.object({ type: z.literal('raise'), amount: z.number().int().min(1).max(1_000) }).strict(),
+  z.object({ type: z.literal('readyNextHand') }).strict(),
+  z.object({ type: z.literal('bet'), amount: z.number().int().min(1).max(4_000) }).strict(),
+  z.object({ type: z.literal('raise'), amount: z.number().int().min(1).max(4_000) }).strict(),
 ]);
 export const gameActionSchema = z.object({
   actionId: z.string().uuid(),

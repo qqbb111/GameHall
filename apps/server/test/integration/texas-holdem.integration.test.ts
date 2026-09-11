@@ -35,7 +35,7 @@ afterEach(async () => {
 });
 
 describe('Texas Hold’em real clients', () => {
-  it('supports a 2–4 player private table, server-authoritative actions, fold settlement and host reopen', async () => {
+  it('keeps the room active between hands, confirms the next hand, and finishes only with one survivor', async () => {
     const running = await server();
     const players = await Promise.all([0, 1, 2, 3].map(() => peer(running)));
     const created = await createRoom(players[0]!, '庄家', 'texas-holdem');
@@ -68,13 +68,43 @@ describe('Texas Hold’em real clients', () => {
 
     for (let turn = 0; turn < 3; turn += 1) {
       const current = read(running, roomId);
-      if (current.state.phase === 'finished') break;
+      if (current.state.phase === 'hand-complete') break;
       const actor = bySeat.get(current.state.turn!);
       if (!actor) throw new Error('next actor not found');
       expect(await gameAction(actor, roomId, current.version, { type: 'fold' })).toMatchObject({ ok: true });
     }
+    await waitFor(() => players.every((player) => player.room?.status === 'active'));
+    const completedHand = read(running, roomId);
+    expect(completedHand.state.phase).toBe('hand-complete');
+    expect(completedHand.state.result).toBeNull();
+    expect(completedHand.state.lastHandResult).toMatchObject({ reason: 'fold' });
+
+    for (const player of players) {
+      const current = read(running, roomId);
+      expect(await gameAction(player, roomId, current.version, { type: 'readyNextHand' })).toMatchObject({ ok: true });
+    }
+    await waitFor(() => players.every((player) => (player.game?.view as TexasHoldemView | undefined)?.handNumber === 2));
+    const secondHand = read(running, roomId);
+    expect(secondHand.status).toBe('active');
+    expect(secondHand.state.phase).toBe('preflop');
+    expect(secondHand.state.dealerSeat).not.toBe(initial.state.dealerSeat);
+    expect(secondHand.state.players.reduce((sum, player) => sum + player.stack + player.totalCommitted, 0)).toBe(4_000);
+
+    const loserSeat = secondHand.state.turn!;
+    const winnerSeat = secondHand.state.players.find((player) => player.seat !== loserSeat)!.seat;
+    const forced = {
+      ...secondHand.state,
+      players: secondHand.state.players.map((player) => player.seat === winnerSeat
+        ? { ...player, stack: 1_000, eliminated: false, folded: false, allIn: false }
+        : player.seat === loserSeat
+          ? { ...player, stack: 0, eliminated: false, folded: false, allIn: false }
+          : { ...player, stack: 0, eliminated: true, folded: true, allIn: false }),
+      turn: loserSeat,
+    };
+    running.database.raw.prepare('UPDATE rooms SET state_json=? WHERE id=?').run(JSON.stringify(forced), roomId);
+    expect(await gameAction(bySeat.get(loserSeat)!, roomId, secondHand.version, { type: 'fold' })).toMatchObject({ ok: true });
     await waitFor(() => players.every((player) => player.room?.status === 'finished'));
-    expect(read(running, roomId).state.result).toMatchObject({ type: 'completed', reason: 'fold' });
+    expect(read(running, roomId).state.result).toMatchObject({ type: 'completed', winner: winnerSeat });
 
     const finishedVersion = read(running, roomId).version;
     expect(await command(players[0]!, 'room:reopen', roomId, finishedVersion)).toMatchObject({ ok: true, code });
