@@ -157,7 +157,16 @@ export function buildTexasHoldemPots(players: readonly PokerPlayer[]): PokerPot[
     const contributors = players.filter((player) => player.totalCommitted >= level).length;
     const amount = (level - previous) * contributors;
     const eligibleSeats = players.filter((player) => !player.folded && player.totalCommitted >= level).map((player) => player.seat);
-    if (amount > 0 && eligibleSeats.length > 0) pots.push({ amount, eligibleSeats });
+    if (amount > 0 && eligibleSeats.length > 0) {
+      pots.push({ amount, eligibleSeats });
+    } else if (amount > 0 && pots.length > 0) {
+      // A contribution layer containing only folded players is dead money. It
+      // belongs to the nearest lower pot instead of disappearing from play.
+      pots[pots.length - 1]!.amount += amount;
+    } else if (amount > 0) {
+      const remainingSeats = players.filter((player) => !player.folded).map((player) => player.seat);
+      if (remainingSeats.length > 0) pots.push({ amount, eligibleSeats: remainingSeats });
+    }
     previous = level;
   }
   return pots;

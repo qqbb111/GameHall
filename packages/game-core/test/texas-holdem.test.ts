@@ -103,6 +103,9 @@ describe('Texas Hold’em rules', () => {
       { amount: 240, eligibleSeats: [0, 1, 2] },
       { amount: 120, eligibleSeats: [0, 1] },
     ]);
+    const deadMoney = buildTexasHoldemPots([player(0, 100, true), player(1, 50)]);
+    expect(deadMoney).toEqual([{ amount: 150, eligibleSeats: [1] }]);
+    expect(deadMoney.reduce((sum, pot) => sum + pot.amount, 0)).toBe(150);
   });
 
   it('recognizes ace-low straights and preserves state on serialization', () => {
@@ -141,7 +144,7 @@ describe('Texas Hold’em rules', () => {
     expect(state.players[0]!.eliminated).toBe(true);
     expect(state.result).toEqual({
       type: 'completed', winner: 1, handsPlayed: 1,
-      finalStacks: [{ seat: 0, amount: 0 }, { seat: 1, amount: 1_020 }],
+      finalStacks: [{ seat: 0, amount: 0 }, { seat: 1, amount: 2_000 }],
     });
   });
 
