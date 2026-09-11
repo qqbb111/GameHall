@@ -300,9 +300,9 @@ export function HomePage({ client }: { client: GameHallClient }) {
           {createError && <p className="catalog-error" role="alert">{createError}</p>}
           <div className="featured-grid">
             {onlineGames.map((game, index) => (
-              <Reveal className="game-card-reveal" delayMs={index * 85} distance={36} key={game.id} respectReducedMotion={game.id === 'splendor'}>
-                <ClickSpark className="featured-spark" respectReducedMotion={game.id === 'splendor'}>
-                  <SpotlightSurface className="game-card-surface" color="rgba(240, 206, 139, 0.28)" tilt respectReducedMotion={game.id === 'splendor'}>
+              <Reveal className="game-card-reveal" delayMs={index * 85} distance={36} key={game.id} respectReducedMotion={game.id === 'splendor' || game.id === 'texas-holdem'}>
+                <ClickSpark className="featured-spark" respectReducedMotion={game.id === 'splendor' || game.id === 'texas-holdem'}>
+                  <SpotlightSurface className="game-card-surface" color="rgba(240, 206, 139, 0.28)" tilt respectReducedMotion={game.id === 'splendor' || game.id === 'texas-holdem'}>
                     <article className="game-card featured-card">
                       <div className="game-number">0{index + 1}</div>
                       <div className={`game-art accent-${game.accent}`}><span className="game-art-orbit" aria-hidden="true" /><GameGlyph kind={game.icon} /></div>

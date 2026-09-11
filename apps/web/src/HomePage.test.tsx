@@ -141,10 +141,10 @@ describe('HomePage', () => {
     const { container } = render(<HomePage client={clientStub()} />);
     const reveals = container.querySelectorAll('.reveal');
     expect(reveals.length).toBeGreaterThan(0);
-    expect(container.querySelectorAll('.reveal[data-reduced-motion="ignore"]')).toHaveLength(reveals.length - 1);
-    expect(container.querySelectorAll('.game-card-surface[data-reduced-motion="ignore"]')).toHaveLength(4);
-    expect(container.querySelectorAll('.featured-spark[data-reduced-motion="ignore"]')).toHaveLength(4);
-    expect(container.querySelectorAll('.game-card-surface[data-reduced-motion="respect"]')).toHaveLength(1);
+    expect(container.querySelectorAll('.reveal[data-reduced-motion="ignore"]')).toHaveLength(reveals.length - 2);
+    expect(container.querySelectorAll('.game-card-surface[data-reduced-motion="ignore"]')).toHaveLength(3);
+    expect(container.querySelectorAll('.featured-spark[data-reduced-motion="ignore"]')).toHaveLength(3);
+    expect(container.querySelectorAll('.game-card-surface[data-reduced-motion="respect"]')).toHaveLength(2);
     expect(screen.getAllByText('可开局 · 2–4 人')).toHaveLength(2);
   });
 
