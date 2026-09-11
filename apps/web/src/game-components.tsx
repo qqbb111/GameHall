@@ -10,7 +10,7 @@ import {
   type PokerCard,
   type WallOrientation,
 } from '@gamehall/game-core';
-import type { GameActionCommand } from '@gamehall/protocol';
+import type { GameActionCommand, RoomMemberView } from '@gamehall/protocol';
 
 type ActionHandler = (action: GameActionCommand['action']) => Promise<unknown>;
 const GOMOKU_STAR_POINTS = new Set(['3,3', '3,11', '7,7', '11,3', '11,11']);
@@ -311,44 +311,103 @@ function pokerCardLabel(card: PokerCard): string {
   return `${pokerRankLabels[card.rank] ?? card.rank}${pokerSuitSymbols[card.suit]}`;
 }
 
-function PokerCardView({ card, hidden = false }: { card: PokerCard | null; hidden?: boolean }) {
-  if (hidden || !card) return <span className="poker-card is-hidden" aria-label="盖牌">◆</span>;
-  return <span className={`poker-card ${card.suit === 'H' || card.suit === 'D' ? 'is-red' : ''}`} aria-label={pokerCardLabel(card)}><b>{pokerRankLabels[card.rank] ?? card.rank}</b><i>{pokerSuitSymbols[card.suit]}</i></span>;
+function PokerCardView({ card, hidden = false, placeholder = false, highlighted = false }: { card: PokerCard | null; hidden?: boolean; placeholder?: boolean; highlighted?: boolean }) {
+  if (placeholder) return <span className="poker-card is-placeholder" aria-hidden="true" />;
+  if (hidden || !card) return <span className="poker-card is-hidden" aria-label="盖牌"><i className="poker-card-back" /></span>;
+  const rank = pokerRankLabels[card.rank] ?? card.rank;
+  const suit = pokerSuitSymbols[card.suit];
+  return <span className={`poker-card ${card.suit === 'H' || card.suit === 'D' ? 'is-red' : ''} ${highlighted ? 'is-highlighted' : ''}`} aria-label={`${pokerCardLabel(card)}${highlighted ? '，最佳五张牌' : ''}`}>
+    <span className="poker-card-corner"><b>{rank}</b><i>{suit}</i></span><strong>{suit}</strong><span className="poker-card-corner is-bottom"><b>{rank}</b><i>{suit}</i></span>
+  </span>;
 }
 
-export function TexasHoldemGame({ state, mySeat, active, onAction }: { state: TexasHoldemView; mySeat: number; active: boolean; onAction: ActionHandler }) {
+const chipValues = [1, 5, 10, 25, 100, 500] as const;
+
+function chipsFor(amount: number): number[] {
+  const chips: number[] = [];
+  let remaining = amount;
+  for (const value of [...chipValues].reverse()) while (remaining >= value) { chips.push(value); remaining -= value; }
+  return chips;
+}
+
+function Chip({ value, small = false }: { value: number; small?: boolean }) {
+  return <span className={`poker-chip chip-${value} ${small ? 'is-small' : ''}`} aria-hidden="true"><i>{value}</i></span>;
+}
+
+function pokerSeatName(seat: number, mySeat: number, members: RoomMemberView[]): string {
+  if (seat === mySeat) return '你';
+  return members.find((member) => member.seat === seat)?.nickname ?? `玩家 ${seat + 1}`;
+}
+
+export function TexasHoldemGame({ state, mySeat, active, members = [], onAction }: { state: TexasHoldemView; mySeat: number; active: boolean; members?: RoomMemberView[]; onAction: ActionHandler }) {
   const me = state.players.find((player) => player.seat === mySeat);
-  const [wager, setWager] = useState(0);
-  const canAct = Boolean(active && me?.seat === state.turn && me.availableActions.length > 0);
+  const [selectedChips, setSelectedChips] = useState<number[]>([]);
+  const selectedAmount = selectedChips.reduce((sum, value) => sum + value, 0);
+  const canAct = Boolean(active && me?.seat === state.turn && me.availableActions.some((action) => action !== 'readyNextHand'));
   const wagerMin = me?.minimumWager ?? 0;
   const wagerMax = me?.maximumWager ?? 0;
   const wagerType = me?.availableActions.includes('bet') ? 'bet' : 'raise';
+  const minimumAdditional = Math.max(0, wagerMin - (me?.streetCommitted ?? 0));
+  const maximumAdditional = Math.max(0, wagerMax - (me?.streetCommitted ?? 0));
+  const selectedTarget = (me?.streetCommitted ?? 0) + selectedAmount;
+  const wagerValid = selectedAmount >= minimumAdditional && selectedAmount <= maximumAdditional;
 
   function submitWager() {
-    const target = wager || wagerMin;
-    if (!me || !canAct || !me.availableActions.includes(wagerType) || target < wagerMin || target > wagerMax) return;
-    void onAction({ type: wagerType, amount: Math.round(target) });
+    if (!me || !canAct || !me.availableActions.includes(wagerType) || !wagerValid) return;
+    void onAction({ type: wagerType, amount: selectedTarget });
   }
+
+  const settlement = state.lastHandResult;
+  const winningCardIds = new Set(settlement?.hands.flatMap((hand) => hand.value.bestFive.map((card) => card.id)) ?? []);
+  const readyCount = state.players.filter((player) => !player.eliminated && player.readyForNextHand).length;
+  const liveCount = state.players.filter((player) => !player.eliminated).length;
 
   return (
     <section className="game-surface texas-holdem-surface" aria-label="德州扑克牌桌">
       <div className="surface-title poker-title">
-        <div><span>无限注 · 盲注 10 / 20 · 每人 1000</span><h2 aria-live="polite">{state.phase === 'finished' ? '本手结束' : state.turn === mySeat ? '轮到你行动' : '等待好友行动'}</h2></div>
+        <div><span>第 {state.handNumber} 手 · 无限注 · 固定盲注 10 / 20</span><h2 aria-live="polite">{state.phase === 'finished' ? '整局结束' : state.phase === 'hand-complete' ? '本手结算' : state.turn === mySeat ? '轮到你行动' : '等待好友行动'}</h2></div>
         <div className="poker-pot-summary"><small>底池</small><strong>{state.pot}</strong></div>
       </div>
+      {settlement && ['hand-complete', 'finished'].includes(state.phase) && (
+        <section className="poker-settlement" aria-label={`第 ${settlement.handNumber} 手结算`}>
+          <div className="poker-settlement-heading">
+            <div><span>HAND {String(settlement.handNumber).padStart(2, '0')}</span><h3>{settlement.reason === 'fold' ? `${pokerSeatName(settlement.winners[0]!, mySeat, members)} 收下底池` : `${settlement.winners.map((seat) => pokerSeatName(seat, mySeat, members)).join('、')} 摊牌获胜`}</h3></div>
+            <strong>{settlement.payouts.map((payout) => `${pokerSeatName(payout.seat, mySeat, members)} +${payout.amount}`).join(' · ')}</strong>
+          </div>
+          {settlement.reason === 'fold' ? <p className="poker-fold-result">其他玩家均已弃牌，未弃牌玩家直接获得底池；未摊牌的手牌继续保密。</p> : (
+            <div className="poker-showdown-list">
+              {settlement.hands.map((hand) => {
+                const player = state.players.find((item) => item.seat === hand.seat);
+                const winner = settlement.winners.includes(hand.seat);
+                return <article className={winner ? 'is-winner' : ''} key={hand.seat}>
+                  <div><strong>{pokerSeatName(hand.seat, mySeat, members)}</strong><span>{hand.value.label}</span><small>比较值 {hand.value.tiebreakers.map((rank) => pokerRankLabels[rank] ?? rank).join(' · ')}</small></div>
+                  <div className="poker-result-cards">{player?.holeCards?.map((card) => <PokerCardView key={card.id} card={card} highlighted={winningCardIds.has(card.id)} />)}</div>
+                </article>;
+              })}
+            </div>
+          )}
+          <div className="poker-pot-results">{settlement.pots.map((pot, index) => <span key={`${pot.amount}-${index}`}><small>{index === 0 ? '主池' : `边池 ${index}`}</small><b>{pot.amount}</b><em>→ {pot.winners.map((seat) => pokerSeatName(seat, mySeat, members)).join('、')}</em></span>)}</div>
+          {state.phase === 'hand-complete' && <div className="poker-next-hand">
+            <span>下一手确认 <b>{readyCount}/{liveCount}</b></span>
+            {state.players.filter((player) => !player.eliminated).map((player) => <small className={player.readyForNextHand ? 'is-ready' : ''} key={player.seat}>{pokerSeatName(player.seat, mySeat, members)} · {player.readyForNextHand ? '已确认' : '等待确认'}</small>)}
+            {me?.availableActions.includes('readyNextHand') && <button type="button" disabled={!active} onClick={() => void onAction({ type: 'readyNextHand' })}>准备下一手</button>}
+            {me?.readyForNextHand && <strong>已确认，等待其他玩家</strong>}
+          </div>}
+        </section>
+      )}
       <div className="poker-community" aria-label={`公共牌，共 ${state.communityCards.length} 张`}>
-        {state.communityCards.map((card) => <PokerCardView key={card.id} card={card} />)}
-        {Array.from({ length: 5 - state.communityCards.length }, (_, index) => <PokerCardView key={`empty-${index}`} card={null} hidden />)}
+        {state.communityCards.map((card) => <PokerCardView key={card.id} card={card} highlighted={winningCardIds.has(card.id)} />)}
+        {Array.from({ length: 5 - state.communityCards.length }, (_, index) => <PokerCardView key={`empty-${index}`} card={null} placeholder />)}
       </div>
       <div className="poker-seats" aria-label="玩家座位">
         {state.players.map((player) => {
           const isMine = player.seat === mySeat;
           const isTurn = player.seat === state.turn;
           return (
-            <article className={`poker-seat ${isMine ? 'is-mine' : ''} ${isTurn ? 'is-turn' : ''} ${player.folded ? 'is-folded' : ''}`} key={player.seat}>
-              <div className="poker-seat-heading"><strong>{isMine ? '你' : `玩家 ${player.seat + 1}`}</strong><span>{player.allIn ? 'All-in' : player.folded ? '已弃牌' : `筹码 ${player.stack}`}</span></div>
+            <article className={`poker-seat ${isMine ? 'is-mine' : ''} ${isTurn ? 'is-turn' : ''} ${player.folded ? 'is-folded' : ''} ${player.eliminated ? 'is-eliminated' : ''}`} key={player.seat}>
+              <div className="poker-seat-heading"><strong>{pokerSeatName(player.seat, mySeat, members)}</strong><span>{player.eliminated ? '已淘汰' : player.allIn ? 'All-in' : player.folded ? '已弃牌' : `筹码 ${player.stack}`}</span></div>
               <div className="poker-hole-cards" aria-label={isMine ? '你的手牌' : '对手手牌'}>
-                {player.holeCards ? player.holeCards.map((card) => <PokerCardView key={card.id} card={card} />) : <><PokerCardView card={null} hidden /><PokerCardView card={null} hidden /></>}
+                {player.eliminated ? <span className="poker-eliminated-mark">OUT</span> : player.holeCards ? player.holeCards.map((card) => <PokerCardView key={card.id} card={card} highlighted={winningCardIds.has(card.id)} />) : <><PokerCardView card={null} hidden /><PokerCardView card={null} hidden /></>}
               </div>
               <small>投入 {player.totalCommitted}{player.seat === state.dealerSeat ? ' · 庄' : ''}{player.seat === state.smallBlindSeat ? ' · 小盲' : ''}{player.seat === state.bigBlindSeat ? ' · 大盲' : ''}</small>
             </article>
@@ -363,14 +422,23 @@ export function TexasHoldemGame({ state, mySeat, active, onAction }: { state: Te
           {me.availableActions.includes('allIn') && <button type="button" className="is-danger" onClick={() => void onAction({ type: 'allIn' })}>All-in</button>}
           {(me.availableActions.includes('bet') || me.availableActions.includes('raise')) && (
             <div className="poker-wager-control">
-              <label htmlFor="poker-wager">{wagerType === 'bet' ? '下注至' : '加注至'}</label>
-              <input id="poker-wager" type="number" min={wagerMin} max={wagerMax} step={1} value={wager || wagerMin} onChange={(event) => setWager(Number(event.target.value))} />
-              <button type="button" onClick={submitWager}>{wagerType === 'bet' ? '下注' : '加注'}</button>
+              <div className="poker-wager-summary" aria-live="polite"><span>本次投入 <b>{selectedAmount}</b></span><span>本轮下注至 <b>{selectedTarget}</b></span></div>
+              <div className="poker-chip-tray" aria-label="选择筹码">
+                {chipValues.map((value) => <button type="button" key={value} aria-label={`添加 ${value} 筹码`} disabled={selectedAmount + value > maximumAdditional} onClick={() => setSelectedChips((chips) => [...chips, value])}><Chip value={value} /></button>)}
+              </div>
+              <div className="poker-selected-stack" aria-label={`已选择 ${selectedAmount} 筹码`}>{selectedChips.slice(-9).map((value, index) => <Chip key={`${value}-${index}`} value={value} small />)}</div>
+              <div className="poker-wager-buttons">
+                <button type="button" className="is-secondary" disabled={selectedChips.length === 0} onClick={() => setSelectedChips((chips) => chips.slice(0, -1))}>撤回一枚</button>
+                <button type="button" className="is-secondary" disabled={selectedChips.length === 0} onClick={() => setSelectedChips([])}>清空</button>
+                <button type="button" className="is-secondary" onClick={() => setSelectedChips(chipsFor(minimumAdditional))}>最小{wagerType === 'bet' ? '下注' : '加注'}</button>
+                <button type="button" disabled={!wagerValid} onClick={submitWager}>{wagerType === 'bet' ? '推入下注' : '推入加注'} {selectedTarget}</button>
+              </div>
+              {!wagerValid && <small className="poker-wager-hint">至少再投入 {minimumAdditional}，最多 {maximumAdditional}</small>}
             </div>
           )}
         </div>
       )}
-      <p className="poker-help">目标金额包含你本轮已经投入的筹码；出现平局时底池按规则分配。</p>
+      <p className="poker-help">点击筹码表示本次追加投入；系统会换算成本轮目标总额。平局与边池均由服务端结算。</p>
     </section>
   );
 }

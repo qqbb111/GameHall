@@ -71,6 +71,19 @@ function GameGlyph({ kind }: { kind: GameCardInfo['icon'] }) {
       </div>
     );
   }
+  if (kind === 'texas-holdem') {
+    return (
+      <div className="gameplay-effect effect-poker" aria-hidden="true">
+        <div className="mini-poker-table">
+          <span className="mini-poker-pot"><i className="mini-chip chip-gold" /><i className="mini-chip chip-red" /><i className="mini-chip chip-blue" /></span>
+          <span className="mini-poker-hole hole-one">A<small>♠</small></span>
+          <span className="mini-poker-hole hole-two">K<small>♠</small></span>
+          {['Q♠', 'J♠', '10♠', '4♥', '2♣'].map((label, index) => <span className={`mini-poker-board board-${index + 1}`} key={label}><b>{label.slice(0, -1)}</b><small>{label.slice(-1)}</small></span>)}
+          <strong className="mini-poker-win">同花顺</strong>
+        </div>
+      </div>
+    );
+  }
   if (kind === 'go') return <CircleDot aria-hidden="true" />;
   return <span className="suit-glyph" aria-hidden="true">♣</span>;
 }

@@ -28,10 +28,11 @@ export function resultMessage(gameId: GameId, view: unknown, mySeat: number): st
     if (!result) return null;
     if (result.type === 'aborted') {
       const reason = { disconnect: '断线恢复超时', leave: '玩家离开', restart_timeout: '服务恢复等待超时' }[result.reason];
-      return `${reason}，本手中止，不计胜负。`;
+      return `${reason}，整局中止，不计胜负。`;
     }
-    if (result.winners.includes(mySeat as PokerSeat)) return result.winners.length > 1 ? '你与好友平分底池！' : `你赢下了这手牌（${result.reason === 'showdown' ? '摊牌' : '弃牌获胜'}）！`;
-    return '这手牌已经结算，再来一局？';
+    return result.winner === (mySeat as PokerSeat)
+      ? `你赢得了整局，共完成 ${result.handsPlayed} 手！`
+      : `整局结束，玩家 ${result.winner + 1} 成为最终冠军。`;
   }
   const state = view as GomokuState | QuoridorView;
   if (state.phase !== 'finished' || !state.result) return null;

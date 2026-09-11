@@ -116,6 +116,7 @@ export function RoomPage({ client }: { client: GameHallClient }) {
   const opponent = room?.members.find((member) => member.seat !== room.mySeat);
   const inviteUrl = room ? `${window.location.origin}${window.location.pathname}?room=${room.code}` : '';
   const result = room && game ? resultMessage(room.gameId, game.view, room.mySeat) : null;
+  const pokerBetweenHands = room?.gameId === 'texas-holdem' && (game?.view as TexasHoldemView | undefined)?.phase === 'hand-complete';
   const pauseDeadline = room?.pauseReason === 'restart'
     ? room.restartDeadlineMs
     : room?.members.find((member) => !member.online)?.disconnectDeadlineMs;
@@ -221,7 +222,7 @@ export function RoomPage({ client }: { client: GameHallClient }) {
             <span><strong>GameHall</strong><small>好友棋牌桌游馆</small></span>
           </button>
           <div className="room-top-actions">
-            {(room.status === 'active' || room.status === 'paused') && (
+            {(room.status === 'active' || room.status === 'paused') && !pokerBetweenHands && (
               <button className="room-top-action is-resign" type="button" onClick={(event) => openConfirmation('resign', event.currentTarget)} disabled={pending || client.connection !== 'online'} aria-label="认输">
                 <Flag size={18} /><span>认输</span>
               </button>
@@ -295,7 +296,7 @@ export function RoomPage({ client }: { client: GameHallClient }) {
               {room.gameId === 'gomoku' && <GomokuGame state={game.view as GomokuState} mySeat={requireBinaryPlayer(room.mySeat)} active={canPlay} onAction={client.submitGameAction} />}
               {room.gameId === 'quoridor' && <QuoridorGame state={game.view as QuoridorView} mySeat={requireBinaryPlayer(room.mySeat)} active={canPlay} onAction={client.submitGameAction} />}
               {room.gameId === 'twenty-four' && <TwentyFourGame key={(game.view as TwentyFourView).round} state={game.view as TwentyFourView} mySeat={requireBinaryPlayer(room.mySeat)} active={canPlay} serverNowMs={gameClockNow} onAction={client.submitGameAction} />}
-              {room.gameId === 'texas-holdem' && <TexasHoldemGame state={game.view as TexasHoldemView} mySeat={room.mySeat} active={canPlay} onAction={client.submitGameAction} />}
+              {room.gameId === 'texas-holdem' && <TexasHoldemGame key={game.version} state={game.view as TexasHoldemView} mySeat={room.mySeat} active={canPlay} members={room.members} onAction={client.submitGameAction} />}
               {result && (
                 <Reveal className="result-reveal" distance={20} key={result}>
                   <div className="result-panel" role="status">

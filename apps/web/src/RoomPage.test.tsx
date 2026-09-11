@@ -120,6 +120,13 @@ describe('RoomPage result copy', () => {
     expect(resultMessage('twenty-four', { ...base, phase: 'finished', winner: null, finishReason: 'restart_timeout' }, 0)).toContain('和局');
   });
 
+  it('德州扑克只在整局冠军产生后显示终局文案', () => {
+    expect(resultMessage('texas-holdem', { result: null }, 0)).toBeNull();
+    expect(resultMessage('texas-holdem', { result: { type: 'completed', winner: 0, handsPlayed: 6, finalStacks: [] } }, 0)).toContain('6 手');
+    expect(resultMessage('texas-holdem', { result: { type: 'completed', winner: 1, handsPlayed: 6, finalStacks: [] } }, 0)).toContain('最终冠军');
+    expect(resultMessage('texas-holdem', { result: { type: 'aborted', reason: 'disconnect' } }, 0)).toContain('整局中止');
+  });
+
   it.each([
     ['gomoku', '五子棋对局'],
     ['quoridor', '路墙棋对局'],

@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  applyTexasHoldemAction,
   createGomokuState,
   createQuoridorState,
   createTwentyFourState,
@@ -110,5 +111,36 @@ describe('game components', () => {
     fireEvent.click(screen.getByRole('button', { name: /跟注/ }));
     expect(onAction).toHaveBeenCalledWith({ type: 'call' });
     expect(screen.getByRole('button', { name: '弃牌' })).toBeInTheDocument();
+  });
+
+  it('德州扑克使用实体筹码组合加注并换算本轮目标额', () => {
+    const onAction = vi.fn().mockResolvedValue(undefined);
+    const state = createTexasHoldemState({ seats: [0, 1], dealerSeat: 0, rng: () => 0.2 });
+    const view = texasHoldemDefinition.viewFor(state, 0, 0);
+    render(<TexasHoldemGame state={view} mySeat={0} active onAction={onAction} />);
+    expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '添加 25 筹码' }));
+    fireEvent.click(screen.getByRole('button', { name: '添加 5 筹码' }));
+    fireEvent.click(screen.getByRole('button', { name: '推入加注 40' }));
+    expect(onAction).toHaveBeenCalledWith({ type: 'raise', amount: 40 });
+  });
+
+  it('德州扑克单手结算保持牌面可见并由存活玩家确认下一手', () => {
+    const onAction = vi.fn().mockResolvedValue(undefined);
+    let state = createTexasHoldemState({ seats: [0, 1], dealerSeat: 0, rng: () => 0.2 });
+    const folded = applyTexasHoldemAction(state, 0, { type: 'fold' });
+    if (!folded.ok) throw new Error(folded.error.message);
+    state = folded.state;
+    const view = texasHoldemDefinition.viewFor(state, 0, 0);
+    const { container } = render(<TexasHoldemGame state={view} mySeat={0} active members={[
+      { seat: 0, nickname: '北风', ready: true, rematchReady: false, online: true, disconnectedAtMs: null, disconnectDeadlineMs: null },
+      { seat: 1, nickname: '南山', ready: true, rematchReady: false, online: true, disconnectedAtMs: null, disconnectDeadlineMs: null },
+    ]} onAction={onAction} />);
+    expect(screen.getByLabelText('第 1 手结算')).toHaveTextContent('南山 收下底池');
+    expect(screen.getByText(/未摊牌的手牌继续保密/)).toBeInTheDocument();
+    expect(container.querySelectorAll('.poker-community .poker-card')).toHaveLength(5);
+    expect(screen.getByLabelText('对手手牌').querySelectorAll('.poker-card.is-hidden')).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: '准备下一手' }));
+    expect(onAction).toHaveBeenCalledWith({ type: 'readyNextHand' });
   });
 });

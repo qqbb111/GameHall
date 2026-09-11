@@ -36,7 +36,7 @@ describe('HomePage', () => {
     window.history.replaceState(null, '', '/');
   });
 
-  it('四款已确认游戏均可进入，开发中卡片不可点击', () => {
+  it('五款已确认游戏均可进入，开发中卡片不可点击', () => {
     const { container } = render(<HomePage client={clientStub()} />);
     expect(screen.getByRole('button', { name: '围棋尚未开放' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '关牌尚未开放' })).toBeDisabled();
@@ -45,7 +45,7 @@ describe('HomePage', () => {
     expect(screen.getByRole('button', { name: '牛牛尚未开放' })).toBeDisabled();
     expect(screen.getAllByText('开发中')).toHaveLength(5);
     expect(container.querySelector('.mini-quoridor')).toBeInTheDocument();
-    for (const name of ['璀璨宝石', '五子棋', '路墙棋', '24 点速度对决']) expect(screen.getByRole('button', { name: `创建${name}房间` })).toBeEnabled();
+    for (const name of ['璀璨宝石', '五子棋', '路墙棋', '24 点速度对决', '德州扑克']) expect(screen.getByRole('button', { name: `创建${name}房间` })).toBeEnabled();
   });
 
   it('24 点四张六点牌有完整花色、六个牌面点数和双角标', () => {
@@ -115,7 +115,7 @@ describe('HomePage', () => {
     expect(Number.parseFloat(characters[4]?.style.getPropertyValue('--char-delay') ?? '')).toBeLessThan(Number.parseFloat(characters[0]?.style.getPropertyValue('--char-delay') ?? ''));
   });
 
-  it('三款在线游戏渲染各自的玩法动效结构', () => {
+  it('在线游戏渲染各自的玩法动效结构', () => {
     const { container } = render(<HomePage client={clientStub()} />);
     expect(container.querySelector('.effect-gomoku')).toBeInTheDocument();
     expect(container.querySelectorAll('.effect-gomoku .winning-stone')).toHaveLength(5);
@@ -129,6 +129,10 @@ describe('HomePage', () => {
     expect(container.querySelector('.effect-twenty-four .calculation-ring')).toBeInTheDocument();
     expect(container.querySelectorAll('.effect-twenty-four .calculation-card')).toHaveLength(4);
     expect(container.querySelector('.effect-twenty-four .calculation-result')).toHaveTextContent('24');
+    expect(container.querySelector('.effect-poker .mini-poker-table')).toBeInTheDocument();
+    expect(container.querySelectorAll('.effect-poker .mini-poker-board')).toHaveLength(5);
+    expect(container.querySelectorAll('.effect-poker .mini-chip')).toHaveLength(3);
+    expect(container.querySelector('.effect-poker .mini-poker-win')).toHaveTextContent('同花顺');
   });
 
   it('保留旧游戏的动态效果，新增璀璨宝石遵循系统减少动画偏好', () => {
