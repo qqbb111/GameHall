@@ -43,10 +43,11 @@ describe('Texas Hold’em rules', () => {
 
   it('advances through all streets and evaluates the showdown', () => {
     const state = checkAroundToShowdown();
-    expect(state.phase).toBe('finished');
+    expect(state.phase).toBe('hand-complete');
     expect(state.communityCards).toHaveLength(5);
-    expect(state.result?.type).toBe('completed');
-    expect(state.result?.reason).toBe('showdown');
+    expect(state.result).toBeNull();
+    expect(state.lastHandResult?.reason).toBe('showdown');
+    expect(state.lastHandResult?.hands.every((hand) => hand.value.bestFive.length === 5)).toBe(true);
   });
 
   it('enforces check/call, minimum raises, and accepts a short all-in', () => {
@@ -63,7 +64,9 @@ describe('Texas Hold’em rules', () => {
   it('fold awards the committed pot without revealing folded hands', () => {
     let state = createTexasHoldemState({ seats: [0, 1], dealerSeat: 0, rng: () => 0.1 });
     state = step(state, 0, { type: 'fold' });
-    expect(state.result).toMatchObject({ type: 'completed', reason: 'fold', winners: [1] });
+    expect(state.phase).toBe('hand-complete');
+    expect(state.result).toBeNull();
+    expect(state.lastHandResult).toMatchObject({ reason: 'fold', winners: [1] });
     const view = texasHoldemDefinition.viewFor(state, 1, 0);
     expect(view.players.find((player) => player.seat === 0)?.holeCards).toBeNull();
     expect(view.players.find((player) => player.seat === 1)?.holeCards).toHaveLength(2);
@@ -79,7 +82,7 @@ describe('Texas Hold’em rules', () => {
 
   it('builds main and side pots and splits ties deterministically', () => {
     const player = (seat: 0 | 1 | 2 | 3, totalCommitted: number, folded = false): PokerPlayer => ({
-      seat, stack: 0, holeCards: [card(seat * 2, 'S', 2), card(seat * 2 + 1, 'H', 3)], folded, allIn: true, totalCommitted, streetCommitted: totalCommitted, actedThisRound: true,
+      seat, stack: 0, holeCards: [card(seat * 2, 'S', 2), card(seat * 2 + 1, 'H', 3)], folded, allIn: true, eliminated: false, totalCommitted, streetCommitted: totalCommitted, actedThisRound: true,
     });
     expect(buildTexasHoldemPots([player(0, 100), player(1, 100), player(2, 60), player(3, 100, true)])).toEqual([
       { amount: 240, eligibleSeats: [0, 1, 2] },
@@ -92,5 +95,66 @@ describe('Texas Hold’em rules', () => {
     expect(evaluatePokerHand(cards).category).toBe('straight');
     const state = createTexasHoldemState({ seats: [0, 1], rng: () => 0.2 });
     expect(texasHoldemDefinition.deserialize(texasHoldemDefinition.serialize(state))).toEqual(state);
+  });
+
+  it('keeps stacks across hands and starts only after every live player confirms', () => {
+    let state = createTexasHoldemState({ seats: [0, 1], dealerSeat: 0, rng: () => 0.1 });
+    state = step(state, 0, { type: 'fold' });
+    expect(state.players.map((player) => player.stack)).toEqual([990, 1_010]);
+    state = step(state, 0, { type: 'readyNextHand' });
+    expect(state.phase).toBe('hand-complete');
+    expect(state.nextHandReadySeats).toEqual([0]);
+    expect(applyTexasHoldemAction(state, 0, { type: 'readyNextHand' })).toMatchObject({ ok: false, error: { code: 'ALREADY_READY' } });
+    const started = applyTexasHoldemAction(state, 1, { type: 'readyNextHand' }, () => 0.3);
+    if (!started.ok) throw new Error(started.error.message);
+    state = started.state;
+    expect(state.phase).toBe('preflop');
+    expect(state.handNumber).toBe(2);
+    expect(state.dealerSeat).toBe(1);
+    expect(state.players.map((player) => player.stack)).toEqual([970, 1_000]);
+    expect(state.players.every((player) => player.holeCards.length === 2)).toBe(true);
+  });
+
+  it('ends the match only when one player still has chips', () => {
+    let state = createTexasHoldemState({ seats: [0, 1], dealerSeat: 0, rng: () => 0.1 });
+    const loser = state.players[0]!;
+    loser.stack = 0;
+    loser.streetCommitted = 1_000;
+    loser.totalCommitted = 1_000;
+    state = step(state, 0, { type: 'fold' });
+    expect(state.phase).toBe('finished');
+    expect(state.players[0]!.eliminated).toBe(true);
+    expect(state.result).toEqual({
+      type: 'completed', winner: 1, handsPlayed: 1,
+      finalStacks: [{ seat: 0, amount: 0 }, { seat: 1, amount: 1_020 }],
+    });
+  });
+
+  it('skips eliminated seats when rotating dealer and posting blinds', () => {
+    let state = createTexasHoldemState({ seats: [0, 1, 2], dealerSeat: 0, rng: () => 0.1 });
+    state.players[1]!.eliminated = true;
+    state.players[1]!.stack = 0;
+    state.phase = 'hand-complete';
+    state.lastHandResult = { handNumber: 1, reason: 'fold', winners: [0], payouts: [], pots: [], hands: [] };
+    state = step(state, 0, { type: 'readyNextHand' });
+    const started = applyTexasHoldemAction(state, 2, { type: 'readyNextHand' }, () => 0.4);
+    if (!started.ok) throw new Error(started.error.message);
+    expect(started.state.dealerSeat).toBe(2);
+    expect(started.state.smallBlindSeat).toBe(2);
+    expect(started.state.bigBlindSeat).toBe(0);
+    expect(started.state.players[1]!.holeCards).toEqual([]);
+  });
+
+  it('normalizes version-one snapshots without exposing folded cards', () => {
+    const current = createTexasHoldemState({ seats: [0, 1], dealerSeat: 0, rng: () => 0.2 });
+    const legacy = JSON.parse(JSON.stringify(current)) as Record<string, unknown>;
+    delete legacy.handNumber;
+    delete legacy.nextHandReadySeats;
+    delete legacy.lastHandResult;
+    for (const player of legacy.players as Array<Record<string, unknown>>) delete player.eliminated;
+    const restored = texasHoldemDefinition.deserialize(JSON.stringify(legacy));
+    expect(restored.handNumber).toBe(1);
+    expect(restored.nextHandReadySeats).toEqual([]);
+    expect(restored.players.every((player) => !player.eliminated)).toBe(true);
   });
 });
