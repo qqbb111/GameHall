@@ -35,7 +35,7 @@ function fixture() {
 }
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
 
-describe('SQLite v3 → v4 file upgrade', () => {
+describe('SQLite v3 → current file upgrade', () => {
   it('保留全部旧游戏、成员、消息、回执、索引和外键，重复启动不再迁移', () => {
     const { file, before } = fixture();
     for (let startup = 0; startup < 2; startup++) {
@@ -48,7 +48,7 @@ describe('SQLite v3 → v4 file upgrade', () => {
         }
         expect(db.raw.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
         expect(db.raw.prepare('PRAGMA integrity_check').get()).toEqual({ integrity_check: 'ok' });
-        expect(db.raw.prepare('SELECT MAX(version) AS version, COUNT(*) AS count FROM schema_migrations').get()).toEqual({ version: 4, count: 4 });
+        expect(db.raw.prepare('SELECT MAX(version) AS version, COUNT(*) AS count FROM schema_migrations').get()).toEqual({ version: 5, count: 5 });
         expect(db.raw.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'").all()).toHaveLength(6);
         const rooms = db.raw.prepare('SELECT state_json FROM rooms ORDER BY id').all() as { state_json: string }[];
         expect(rooms.map((room) => JSON.parse(room.state_json))).toEqual(states);

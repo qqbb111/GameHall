@@ -9,7 +9,9 @@ import {
   requireBinaryPlayer,
   quoridorDefinition,
   splendorDefinition,
+  texasHoldemDefinition,
   abortSplendorState,
+  type PokerSeat,
   startNextTwentyFourRound,
   twentyFourDefinition,
   type ApplyResult,
@@ -21,6 +23,8 @@ import {
   type SplendorState,
   type SplendorResult,
   type TwentyFourState,
+  type TexasHoldemResult,
+  type TexasHoldemState,
 } from '@gamehall/game-core';
 import type {
   ClientToServerEvents,
@@ -85,7 +89,7 @@ type MemberRow = {
   restart_rejoined_at_ms: number | null;
 };
 
-type GameState = GomokuState | QuoridorState | TwentyFourState | SplendorState;
+type GameState = GomokuState | QuoridorState | TwentyFourState | SplendorState | TexasHoldemState;
 
 const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const WAITING_TTL_MS = 2 * 60 * 60_000;
@@ -117,6 +121,7 @@ function parseGameState(room: RoomRow): GameState | null {
   if (room.game_id === 'gomoku') return gomokuDefinition.deserialize(room.state_json);
   if (room.game_id === 'quoridor') return quoridorDefinition.deserialize(room.state_json);
   if (room.game_id === 'splendor') return splendorDefinition.deserialize(room.state_json);
+  if (room.game_id === 'texas-holdem') return texasHoldemDefinition.deserialize(room.state_json);
   const state = twentyFourDefinition.deserialize(room.state_json);
   if (room.state_schema_version >= 2 || state.phase !== 'finished') return state;
   if (room.finish_reason === 'restart_timeout') return { ...state, winner: null, finishReason: 'restart_timeout' };
@@ -130,6 +135,7 @@ function gameStateSchemaVersion(gameId: GameId): number {
   if (gameId === 'gomoku') return gomokuDefinition.stateSchemaVersion;
   if (gameId === 'quoridor') return quoridorDefinition.stateSchemaVersion;
   if (gameId === 'splendor') return splendorDefinition.stateSchemaVersion;
+  if (gameId === 'texas-holdem') return texasHoldemDefinition.stateSchemaVersion;
   return twentyFourDefinition.stateSchemaVersion;
 }
 
@@ -137,6 +143,7 @@ function serializeGameState(state: GameState): string {
   if (state.kind === 'gomoku') return gomokuDefinition.serialize(state);
   if (state.kind === 'quoridor') return quoridorDefinition.serialize(state);
   if (state.kind === 'splendor') return splendorDefinition.serialize(state);
+  if (state.kind === 'texas-holdem') return texasHoldemDefinition.serialize(state);
   return twentyFourDefinition.serialize(state);
 }
 
@@ -147,14 +154,18 @@ function createInitialGame(gameId: GameId, nowMs: number, role?: Player, seats?:
     const splendorSeats = (seats ?? [0, 1]) as SplendorSeat[];
     return splendorDefinition.initialize({ playerCount: splendorSeats.length as 2 | 3 | 4, seats: splendorSeats, rng: gameRandom });
   }
+  if (gameId === 'texas-holdem') {
+    return texasHoldemDefinition.initialize({ seats: (seats ?? [0, 1]) as PokerSeat[], rng: gameRandom });
+  }
   const round = drawSolvableCards(gameRandom);
   return twentyFourDefinition.initialize({ cards: round.cards, canonicalSolution: round.solution, nowMs });
 }
 
-function gameResult(state: GameState): GameResult | SplendorResult | null {
+function gameResult(state: GameState): GameResult | SplendorResult | TexasHoldemResult | null {
   if (state.kind === 'gomoku') return gomokuDefinition.result(state);
   if (state.kind === 'quoridor') return quoridorDefinition.result(state);
   if (state.kind === 'splendor') return splendorDefinition.result(state);
+  if (state.kind === 'texas-holdem') return texasHoldemDefinition.result(state);
   return twentyFourDefinition.result(state);
 }
 
@@ -162,6 +173,7 @@ function viewForPlayer(state: GameState, player: PlayerSeat, nowMs: number, paus
   if (state.kind === 'gomoku') return gomokuDefinition.viewFor(state, requireBinaryPlayer(player), nowMs);
   if (state.kind === 'quoridor') return quoridorDefinition.viewFor(state, requireBinaryPlayer(player), nowMs);
   if (state.kind === 'splendor') return splendorDefinition.viewFor(state, player, nowMs);
+  if (state.kind === 'texas-holdem') return texasHoldemDefinition.viewFor(state, player, nowMs);
   const view = twentyFourDefinition.viewFor(state, requireBinaryPlayer(player), nowMs);
   // A paused timed round publishes a synthetic deadline anchored to this
   // snapshot. The client can freeze that server-time anchor until play resumes
@@ -194,6 +206,12 @@ function validateAndAdvance(state: GameState, actor: PlayerSeat, input: unknown,
       ? { ok: true, result: splendorDefinition.advance(state, actor, validation.action, nowMs) }
       : validation;
   }
+  if (state.kind === 'texas-holdem') {
+    const validation = texasHoldemDefinition.validateAction(input);
+    return validation.ok
+      ? { ok: true, result: texasHoldemDefinition.advance(state, actor, validation.action, nowMs) }
+      : validation;
+  }
   if (actor > 1) return { ok: false, message: '双人游戏不支持此座位' };
   const validation = twentyFourDefinition.validateAction(input);
   return validation.ok
@@ -203,6 +221,7 @@ function validateAndAdvance(state: GameState, actor: PlayerSeat, input: unknown,
 
 function finishStateByForfeit(state: GameState, loser: PlayerSeat, reason: 'disconnect' | 'leave'): GameState {
   if (state.kind === 'splendor') return abortSplendorState(state, reason);
+  if (state.kind === 'texas-holdem') return { ...state, phase: 'finished', turn: null, result: { type: 'aborted', reason } };
   if (loser > 1) throw new Error('binary game contains invalid seat');
   const winner = otherPlayer(requireBinaryPlayer(loser));
   if (state.kind === 'twenty-four') return { ...state, phase: 'finished', winner, finishReason: reason };
@@ -211,6 +230,7 @@ function finishStateByForfeit(state: GameState, loser: PlayerSeat, reason: 'disc
 
 function finishStateAfterRestartTimeout(state: GameState): GameState {
   if (state.kind === 'splendor') return abortSplendorState(state, 'restart_timeout');
+  if (state.kind === 'texas-holdem') return { ...state, phase: 'finished', turn: null, result: { type: 'aborted', reason: 'restart_timeout' } };
   if (state.kind === 'twenty-four') return { ...state, phase: 'finished', winner: null, finishReason: 'restart_timeout' };
   return { ...state, phase: 'finished', result: { type: 'draw' } };
 }
@@ -286,7 +306,7 @@ export class RoomService {
       for (const membership of memberships) this.handleReconnect(sessionId, membership.id, nowMs);
     }
     for (const membership of memberships) {
-      if (this.transferSplendorHost(membership.id)) this.database.raw.prepare('UPDATE rooms SET version=version+1 WHERE id=?').run(membership.id);
+      if (this.transferMultiplayerHost(membership.id)) this.database.raw.prepare('UPDATE rooms SET version=version+1 WHERE id=?').run(membership.id);
       this.emitSnapshots(membership.id);
       this.emitMessageHistoryToSession(membership.id, sessionId);
     }
@@ -312,7 +332,7 @@ export class RoomService {
           this.database.raw.prepare('UPDATE room_members SET disconnected_at_ms=?, rematch_ready=0 WHERE room_id=? AND session_id=?')
             .run(nowMs, room.id, sessionId);
         }
-        if (this.transferSplendorHost(room.id)) this.database.raw.prepare('UPDATE rooms SET version=version+1 WHERE id=?').run(room.id);
+        if (this.transferMultiplayerHost(room.id)) this.database.raw.prepare('UPDATE rooms SET version=version+1 WHERE id=?').run(room.id);
         this.emitSnapshots(room.id);
         continue;
       }
@@ -389,7 +409,7 @@ export class RoomService {
     if (existing) return errorAck('room:join', command.commandId, 'ALREADY_IN_ROOM', `你已在房间 ${existing.code} 中`);
     if (room.status !== 'waiting') return errorAck('room:join', command.commandId, 'ROOM_NOT_JOINABLE', '这个房间已经开局或结束');
     const members = this.getMembers(room.id);
-    const capacity = room.game_id === 'splendor' ? 4 : 2;
+    const capacity = room.game_id === 'splendor' || room.game_id === 'texas-holdem' ? 4 : 2;
     if (members.length >= capacity) return errorAck('room:join', command.commandId, 'ROOM_FULL', '房间已经坐满');
     const seat = Array.from({ length: capacity }, (_, index) => index).find((index) => !members.some((item) => item.seat === index))!;
     if (members.some((member) => member.nickname_key === normalized.key)) {
@@ -423,7 +443,7 @@ export class RoomService {
       this.database.raw.prepare('UPDATE room_members SET ready=? WHERE room_id=? AND session_id=?')
         .run(command.ready ? 1 : 0, room.id, sessionId);
       const members = this.getMembers(room.id);
-      if (room.game_id !== 'splendor' && members.length === 2 && members.every((item) => item.ready === 1 && this.isOnline(item.session_id))) {
+      if (room.game_id !== 'splendor' && room.game_id !== 'texas-holdem' && members.length === 2 && members.every((item) => item.ready === 1 && this.isOnline(item.session_id))) {
         const state = createInitialGame(room.game_id, nowMs);
         this.database.raw.prepare(`
           UPDATE rooms SET status='active', version=?, round_no=1, state_json=?, state_schema_version=?, pause_reason=NULL,
@@ -443,17 +463,17 @@ export class RoomService {
       const room = this.getRoom(command.roomId);
       const member = room && this.getMember(room.id, sessionId);
       if (!room || !member) return errorAck('room:start', command.commandId, 'NOT_A_MEMBER', '你不在这个房间');
-      if (room.game_id !== 'splendor' || room.host_seat !== member.seat) return errorAck('room:start', command.commandId, 'HOST_ONLY', '仅璀璨宝石房主可以开始对局');
+      if ((room.game_id !== 'splendor' && room.game_id !== 'texas-holdem') || room.host_seat !== member.seat) return errorAck('room:start', command.commandId, 'HOST_ONLY', '仅多人牌桌房主可以开始对局');
       if (room.version !== command.expectedVersion) return errorAck('room:start', command.commandId, 'VERSION_CONFLICT', '房间已更新，请重试', true, room.version);
       if (room.status !== 'waiting') return errorAck('room:start', command.commandId, 'ROOM_ALREADY_STARTED', '当前不能开始对局');
       const members = this.getMembers(room.id);
       if (members.length < 2 || members.length > 4 || !members.every((item) => this.isOnline(item.session_id) && (item.seat === room.host_seat || item.ready))) return errorAck('room:start', command.commandId, 'PLAYERS_NOT_READY', '至少两位玩家在线且其他成员均已准备后才可开始');
       this.database.raw.prepare('UPDATE room_members SET ready=1 WHERE room_id=? AND seat=?').run(room.id, room.host_seat);
       const nowMs = Date.now();
-      const state = createInitialGame('splendor', nowMs, undefined, members.map((item) => item.seat));
+      const state = createInitialGame(room.game_id, nowMs, undefined, members.map((item) => item.seat));
       this.database.raw.prepare(`UPDATE rooms SET status='active', version=version+1, round_no=round_no+1,
         state_json=?, state_schema_version=?, pause_reason=NULL, finish_reason=NULL,
-        last_activity_ms=?, cleanup_at_ms=? WHERE id=?`).run(serializeGameState(state), gameStateSchemaVersion('splendor'), nowMs, nowMs + WAITING_TTL_MS, room.id);
+        last_activity_ms=?, cleanup_at_ms=? WHERE id=?`).run(serializeGameState(state), gameStateSchemaVersion(room.game_id), nowMs, nowMs + WAITING_TTL_MS, room.id);
       return { ok: true, roomId: room.id, version: room.version + 1 };
     });
     this.emitSnapshots(command.roomId);
@@ -465,7 +485,7 @@ export class RoomService {
       const room = this.getRoom(command.roomId);
       const member = room && this.getMember(room.id, sessionId);
       if (!room || !member) return errorAck('room:reopen', command.commandId, 'NOT_A_MEMBER', '你不在这个房间');
-      if (room.game_id !== 'splendor' || room.host_seat !== member.seat) return errorAck('room:reopen', command.commandId, 'HOST_ONLY', '仅房主可以返回等待区');
+      if ((room.game_id !== 'splendor' && room.game_id !== 'texas-holdem') || room.host_seat !== member.seat) return errorAck('room:reopen', command.commandId, 'HOST_ONLY', '仅多人牌桌房主可以返回等待区');
       if (room.version !== command.expectedVersion) return errorAck('room:reopen', command.commandId, 'VERSION_CONFLICT', '房间已更新，请重试', true, room.version);
       if (room.status !== 'finished') return errorAck('room:reopen', command.commandId, 'GAME_NOT_FINISHED', '本局结束后才可返回等待区');
       for (const item of this.getMembers(room.id)) {
@@ -506,17 +526,18 @@ export class RoomService {
     const member = this.getMember(room.id, sessionId);
     if (!member) return errorAck('room:leave', command.commandId, 'NOT_A_MEMBER', '你不在这个房间');
     const nowMs = Date.now();
-    if (room.game_id === 'splendor') {
+    if (room.game_id === 'splendor' || room.game_id === 'texas-holdem') {
       this.database.transaction(() => {
         const state = parseGameState(room);
-        const aborted = state?.kind === 'splendor' && room.status !== 'finished' ? abortSplendorState(state, 'leave') : state;
+        const aborted = state?.kind === 'splendor' && room.status !== 'finished' ? abortSplendorState(state, 'leave')
+          : state?.kind === 'texas-holdem' && room.status !== 'finished' ? finishStateByForfeit(state, member.seat, 'leave') : state;
         this.database.raw.prepare('DELETE FROM room_members WHERE room_id=? AND session_id=?').run(room.id, sessionId);
         this.database.raw.prepare(`UPDATE rooms SET status=?, state_json=?, version=version+1, last_activity_ms=?, cleanup_at_ms=?,
           pause_reason=NULL, paused_remaining_ms=NULL, restart_deadline_ms=NULL, next_round_at_ms=NULL WHERE id=?`)
           .run(room.status === 'waiting' ? 'waiting' : 'finished', aborted ? serializeGameState(aborted) : null,
             nowMs, nowMs + (room.status === 'waiting' ? WAITING_TTL_MS : FINISHED_TTL_MS), room.id);
         this.database.raw.prepare('UPDATE room_members SET disconnect_deadline_ms=NULL, disconnect_order=NULL WHERE room_id=?').run(room.id);
-        this.transferSplendorHost(room.id);
+        this.transferMultiplayerHost(room.id);
       });
       this.leaveSessionSockets(sessionId, room.id);
       if (this.getMembers(room.id).length === 0) this.closeRoom(room.id, 'room_closed');
@@ -550,7 +571,7 @@ export class RoomService {
     if (!room) return errorAck('game:rematch', command.commandId, 'ROOM_NOT_FOUND', '房间不存在');
     const member = this.getMember(room.id, sessionId);
     if (!member) return errorAck('game:rematch', command.commandId, 'NOT_A_MEMBER', '你不在这个房间');
-    if (room.game_id === 'splendor' || room.status !== 'finished' || this.getMembers(room.id).length !== 2) {
+    if (room.game_id === 'splendor' || room.game_id === 'texas-holdem' || room.status !== 'finished' || this.getMembers(room.id).length !== 2) {
       return errorAck('game:rematch', command.commandId, 'REMATCH_UNAVAILABLE', '当前不能发起复赛');
     }
     const nowMs = Date.now();
@@ -636,7 +657,7 @@ export class RoomService {
                   last_activity_ms=?, cleanup_at_ms=? WHERE id=? AND version=?
               `).run(serializeGameState(nextState), gameStateSchemaVersion(room.game_id), status, resultingVersion, nextRoundAt, finished ? 'game_result' : null, nowMs, cleanupAt, room.id, room.version);
               if (updated.changes !== 1) throw new Error('room version changed during transaction');
-              if (finished && nextState.kind === 'splendor') {
+              if (finished && (nextState.kind === 'splendor' || nextState.kind === 'texas-holdem')) {
                 this.database.raw.prepare('UPDATE rooms SET pause_reason=NULL, paused_remaining_ms=NULL, restart_deadline_ms=NULL WHERE id=?').run(room.id);
                 this.database.raw.prepare('UPDATE room_members SET disconnect_deadline_ms=NULL, disconnect_order=NULL WHERE room_id=?').run(room.id);
               }
@@ -648,7 +669,7 @@ export class RoomService {
           }
         }
       }
-      this.transferSplendorHost(room.id);
+      this.transferMultiplayerHost(room.id);
       this.database.raw.prepare(`
         INSERT INTO processed_actions(session_id, action_id, room_id, request_hash, expected_version,
           outcome_json, resulting_version, created_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -872,7 +893,7 @@ export class RoomService {
     this.resolveExpiredRestart(roomId, nowMs);
     this.database.transaction(() => {
       let room = this.getRoom(roomId);
-      if (!room || (room.status === 'finished' && room.game_id !== 'splendor')) return;
+      if (!room || (room.status === 'finished' && room.game_id !== 'splendor' && room.game_id !== 'texas-holdem')) return;
       this.database.raw.prepare(`
         UPDATE room_members SET disconnected_at_ms=NULL, disconnect_deadline_ms=NULL,
           disconnect_order=NULL, restart_rejoined_at_ms=? WHERE room_id=? AND session_id=?
@@ -902,9 +923,9 @@ export class RoomService {
     });
   }
 
-  private transferSplendorHost(roomId: string): boolean {
+  private transferMultiplayerHost(roomId: string): boolean {
     const room = this.getRoom(roomId);
-    if (!room || room.game_id !== 'splendor' || (room.status !== 'waiting' && room.status !== 'finished')) return false;
+    if (!room || (room.game_id !== 'splendor' && room.game_id !== 'texas-holdem') || (room.status !== 'waiting' && room.status !== 'finished')) return false;
     const members = this.getMembers(roomId);
     if (members.some((member) => member.seat === room.host_seat && this.isOnline(member.session_id))) return false;
     const successor = members.filter((member) => this.isOnline(member.session_id))
@@ -923,7 +944,7 @@ export class RoomService {
     `).get(roomId, nowMs) as MemberRow | undefined;
     if (!expired || this.isOnline(expired.session_id)) return;
     this.finishWithLoser(room, expired.seat, 'disconnect_forfeit', nowMs);
-    this.transferSplendorHost(roomId);
+    this.transferMultiplayerHost(roomId);
     this.emitSnapshots(roomId);
   }
 
@@ -938,7 +959,7 @@ export class RoomService {
         restart_deadline_ms=NULL, next_round_at_ms=NULL, finish_reason='restart_timeout',
         version=version+1, cleanup_at_ms=?, last_activity_ms=? WHERE id=?
     `).run(finishedState ? serializeGameState(finishedState) : null, gameStateSchemaVersion(room.game_id), nowMs + FINISHED_TTL_MS, nowMs, roomId);
-    this.transferSplendorHost(roomId);
+    this.transferMultiplayerHost(roomId);
     this.emitSnapshots(roomId);
   }
 
@@ -954,7 +975,7 @@ export class RoomService {
       this.database.raw.prepare(`
         UPDATE room_members SET disconnect_deadline_ms=NULL, disconnect_order=NULL WHERE room_id=?
       `).run(room.id);
-      this.transferSplendorHost(room.id);
+    this.transferMultiplayerHost(room.id);
     });
   }
 

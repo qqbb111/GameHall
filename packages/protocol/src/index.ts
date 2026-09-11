@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const gameIds = ['gomoku', 'quoridor', 'twenty-four', 'splendor'] as const;
+export const gameIds = ['gomoku', 'quoridor', 'twenty-four', 'splendor', 'texas-holdem'] as const;
 export type GameId = (typeof gameIds)[number];
 export type PlayerSeat = 0 | 1 | 2 | 3;
 export type RoomStatus = 'waiting' | 'active' | 'paused' | 'finished';
@@ -49,6 +49,12 @@ const transportActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('returnTokens'), tokens: z.object({ white: z.number().int().min(0).max(10), blue: z.number().int().min(0).max(10), green: z.number().int().min(0).max(10), red: z.number().int().min(0).max(10), black: z.number().int().min(0).max(10), gold: z.number().int().min(0).max(10) }).strict() }).strict(),
   z.object({ type: z.literal('chooseNoble'), nobleId: z.string().max(16) }).strict(),
   z.object({ type: z.literal('pass') }).strict(),
+  z.object({ type: z.literal('fold') }).strict(),
+  z.object({ type: z.literal('check') }).strict(),
+  z.object({ type: z.literal('call') }).strict(),
+  z.object({ type: z.literal('allIn') }).strict(),
+  z.object({ type: z.literal('bet'), amount: z.number().int().min(1).max(1_000) }).strict(),
+  z.object({ type: z.literal('raise'), amount: z.number().int().min(1).max(1_000) }).strict(),
 ]);
 export const gameActionSchema = z.object({
   actionId: z.string().uuid(),

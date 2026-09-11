@@ -195,6 +195,92 @@ const migrations = [
       DROP TABLE messages_v4_backup;
     `,
   },
+  {
+    version: 5,
+    name: 'texas_holdem_rooms',
+    sql: `
+      CREATE TABLE rooms_v5_backup AS SELECT * FROM rooms;
+      CREATE TABLE members_v5_backup AS SELECT * FROM room_members;
+      CREATE TABLE actions_v5_backup AS SELECT * FROM processed_actions;
+      CREATE TABLE messages_v5_backup AS SELECT * FROM room_messages;
+
+      DROP TABLE room_messages;
+      DROP TABLE processed_actions;
+      DROP TABLE room_members;
+      DROP TABLE rooms;
+
+      CREATE TABLE rooms (
+        id TEXT PRIMARY KEY,
+        code TEXT NOT NULL UNIQUE,
+        game_id TEXT NOT NULL CHECK (game_id IN ('gomoku', 'quoridor', 'twenty-four', 'splendor', 'texas-holdem')),
+        status TEXT NOT NULL CHECK (status IN ('waiting', 'active', 'paused', 'finished')),
+        version INTEGER NOT NULL DEFAULT 0,
+        round_no INTEGER NOT NULL DEFAULT 0,
+        state_schema_version INTEGER NOT NULL DEFAULT 1,
+        state_json TEXT,
+        pause_reason TEXT CHECK (pause_reason IS NULL OR pause_reason IN ('disconnect', 'restart')),
+        paused_remaining_ms INTEGER,
+        restart_deadline_ms INTEGER,
+        next_round_at_ms INTEGER,
+        finish_reason TEXT,
+        host_seat INTEGER NOT NULL DEFAULT 0 CHECK (host_seat IN (0, 1, 2, 3)),
+        created_at_ms INTEGER NOT NULL,
+        last_activity_ms INTEGER NOT NULL,
+        cleanup_at_ms INTEGER NOT NULL
+      ) STRICT;
+      CREATE TABLE room_members (
+        room_id TEXT NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+        seat INTEGER NOT NULL CHECK (seat IN (0, 1, 2, 3)),
+        session_id TEXT NOT NULL REFERENCES guest_sessions(id) ON DELETE RESTRICT,
+        nickname TEXT NOT NULL,
+        nickname_key TEXT NOT NULL,
+        ready INTEGER NOT NULL DEFAULT 0 CHECK (ready IN (0, 1)),
+        rematch_ready INTEGER NOT NULL DEFAULT 0 CHECK (rematch_ready IN (0, 1)),
+        joined_at_ms INTEGER NOT NULL,
+        disconnected_at_ms INTEGER,
+        disconnect_deadline_ms INTEGER,
+        disconnect_order INTEGER,
+        restart_rejoined_at_ms INTEGER,
+        PRIMARY KEY (room_id, seat), UNIQUE (room_id, session_id), UNIQUE (room_id, nickname_key)
+      ) STRICT;
+      CREATE TABLE processed_actions (
+        session_id TEXT NOT NULL REFERENCES guest_sessions(id) ON DELETE CASCADE,
+        action_id TEXT NOT NULL,
+        room_id TEXT NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+        request_hash TEXT NOT NULL,
+        expected_version INTEGER NOT NULL,
+        outcome_json TEXT NOT NULL,
+        resulting_version INTEGER NOT NULL,
+        created_at_ms INTEGER NOT NULL,
+        PRIMARY KEY (session_id, action_id)
+      ) STRICT;
+      CREATE TABLE room_messages (
+        sequence INTEGER PRIMARY KEY,
+        message_id TEXT NOT NULL UNIQUE,
+        room_id TEXT NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+        sender_session_id TEXT NOT NULL,
+        seat INTEGER NOT NULL CHECK (seat IN (0, 1, 2, 3)),
+        nickname TEXT NOT NULL,
+        content TEXT NOT NULL,
+        sent_at_ms INTEGER NOT NULL
+      ) STRICT;
+
+      INSERT INTO rooms SELECT * FROM rooms_v5_backup;
+      INSERT INTO room_members SELECT * FROM members_v5_backup;
+      INSERT INTO processed_actions SELECT * FROM actions_v5_backup;
+      INSERT INTO room_messages SELECT * FROM messages_v5_backup;
+
+      CREATE INDEX idx_rooms_cleanup ON rooms(status, cleanup_at_ms);
+      CREATE INDEX idx_members_session ON room_members(session_id);
+      CREATE INDEX idx_members_disconnect ON room_members(disconnect_deadline_ms);
+      CREATE INDEX idx_actions_room ON processed_actions(room_id);
+      CREATE INDEX idx_room_messages_room_sequence ON room_messages(room_id, sequence);
+      DROP TABLE rooms_v5_backup;
+      DROP TABLE members_v5_backup;
+      DROP TABLE actions_v5_backup;
+      DROP TABLE messages_v5_backup;
+    `,
+  },
 ] as const;
 
 export class GameHallDatabase {
