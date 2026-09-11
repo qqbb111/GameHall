@@ -59,6 +59,11 @@ describe('Texas Hold’em rules', () => {
     expect(applyTexasHoldemAction(state, 1, { type: 'raise', amount: 24 })).toMatchObject({ ok: false, error: { code: 'MIN_RAISE' } });
     state = step(state, 1, { type: 'allIn' });
     expect(state.players[1]!.allIn).toBe(true);
+    const view = texasHoldemDefinition.viewFor(state, 0, 0);
+    expect(view.players[0]!.availableActions).toContain('call');
+    expect(view.players[0]!.availableActions).not.toContain('raise');
+    expect(view.players[0]!.availableActions).not.toContain('allIn');
+    expect(applyTexasHoldemAction(state, 0, { type: 'raise', amount: 45 })).toMatchObject({ ok: false, error: { code: 'RAISE_NOT_REOPENED' } });
   });
 
   it('fold awards the committed pot without revealing folded hands', () => {
@@ -153,6 +158,20 @@ describe('Texas Hold’em rules', () => {
     expect(started.state.smallBlindSeat).toBe(2);
     expect(started.state.bigBlindSeat).toBe(0);
     expect(started.state.players[1]!.holeCards).toEqual([]);
+  });
+
+  it('runs all five board cards and settles when a short blind is automatically all-in', () => {
+    let state = createTexasHoldemState({ seats: [0, 1], dealerSeat: 0, rng: () => 0.1 });
+    state = step(state, 0, { type: 'fold' });
+    state.players[0]!.stack = 5;
+    state.players[1]!.stack = 1_995;
+    state = step(state, 0, { type: 'readyNextHand' });
+    const started = applyTexasHoldemAction(state, 1, { type: 'readyNextHand' }, () => 0.4);
+    if (!started.ok) throw new Error(started.error.message);
+    expect(['hand-complete', 'finished']).toContain(started.state.phase);
+    expect(started.state.communityCards).toHaveLength(5);
+    expect(started.state.lastHandResult?.reason).toBe('showdown');
+    expect(started.state.turn).toBeNull();
   });
 
   it('normalizes version-one snapshots without exposing folded cards', () => {

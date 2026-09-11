@@ -357,7 +357,7 @@ function beginHand(state: TexasHoldemState, dealerSeat: PokerSeat, rng: () => nu
   if (activePlayers(next).length <= 1 && remainingPlayers(next).length > 1) {
     let runout = next;
     while (runout.communityCards.length < 5 && runout.phase !== 'hand-complete' && runout.phase !== 'finished') runout = nextStreet(runout);
-    return runout;
+    return runout.phase === 'hand-complete' || runout.phase === 'finished' ? runout : finishByShowdown(runout);
   }
   return next;
 }
@@ -418,6 +418,7 @@ export function applyTexasHoldemAction(state: TexasHoldemState, actor: PokerSeat
   } else if (action.type === 'allIn' || action.type === 'bet' || action.type === 'raise') {
     const target = action.type === 'allIn' ? current.streetCommitted + current.stack : (action as { type: 'bet' | 'raise'; amount: number }).amount;
     if (!Number.isInteger(target) || target <= current.streetCommitted || target > current.streetCommitted + current.stack) return ruleError('INVALID_WAGER', '下注金额不合法');
+    if (current.actedThisRound && target > next.currentBet) return ruleError('RAISE_NOT_REOPENED', '短全押没有重新开放加注');
     const increase = target - next.currentBet;
     const fullRaise = increase >= next.minRaise;
     if (action.type === 'bet' && next.currentBet !== 0) return ruleError('BET_NOT_ALLOWED', '当前已有下注，请使用加注');
@@ -462,11 +463,12 @@ function visibleActions(state: TexasHoldemState, player: PokerPlayer): { actions
   if (state.phase === 'finished' || state.turn !== player.seat || player.eliminated || player.folded || player.allIn) return { actions: [], toCall: 0, minimumWager: null, maximumWager: null };
   const toCall = Math.max(0, state.currentBet - player.streetCommitted);
   const max = player.streetCommitted + player.stack;
-  const actions: PokerActionType[] = ['fold', 'allIn'];
+  const actions: PokerActionType[] = ['fold'];
+  if (!player.actedThisRound || max <= state.currentBet) actions.push('allIn');
   if (toCall === 0) actions.push('check');
   else if (player.stack >= toCall) actions.push('call');
   const minimum = state.currentBet === 0 ? state.minRaise : state.currentBet + state.minRaise;
-  if (max > state.currentBet && max >= minimum) actions.push(state.currentBet === 0 ? 'bet' : 'raise');
+  if (!player.actedThisRound && max > state.currentBet && max >= minimum) actions.push(state.currentBet === 0 ? 'bet' : 'raise');
   return { actions, toCall, minimumWager: actions.includes('bet') || actions.includes('raise') ? minimum : null, maximumWager: max };
 }
 
