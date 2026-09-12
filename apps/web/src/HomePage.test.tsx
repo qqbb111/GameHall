@@ -130,9 +130,13 @@ describe('HomePage', () => {
     expect(container.querySelectorAll('.effect-twenty-four .calculation-card')).toHaveLength(4);
     expect(container.querySelector('.effect-twenty-four .calculation-result')).toHaveTextContent('24');
     expect(container.querySelector('.effect-poker .mini-poker-table')).toBeInTheDocument();
+    expect(container.querySelector('.effect-poker .mini-poker-table-line')).toBeInTheDocument();
+    expect(container.querySelector('.effect-poker .mini-poker-community')).toBeInTheDocument();
+    expect(container.querySelectorAll('.effect-poker .mini-poker-hole')).toHaveLength(2);
     expect(container.querySelectorAll('.effect-poker .mini-poker-board')).toHaveLength(5);
     expect(container.querySelectorAll('.effect-poker .mini-chip')).toHaveLength(3);
     expect(container.querySelector('.effect-poker .mini-poker-win')).toHaveTextContent('同花顺');
+    expect(container.querySelectorAll('.featured-card[data-opening-motion="rotate"]')).toHaveLength(5);
   });
 
   it('保留旧游戏的动态效果，新增璀璨宝石遵循系统减少动画偏好', () => {

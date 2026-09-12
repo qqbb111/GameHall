@@ -75,10 +75,13 @@ function GameGlyph({ kind }: { kind: GameCardInfo['icon'] }) {
     return (
       <div className="gameplay-effect effect-poker" aria-hidden="true">
         <div className="mini-poker-table">
+          <span className="mini-poker-table-line" />
           <span className="mini-poker-pot"><i className="mini-chip chip-gold" /><i className="mini-chip chip-red" /><i className="mini-chip chip-blue" /></span>
           <span className="mini-poker-hole hole-one">A<small>♠</small></span>
           <span className="mini-poker-hole hole-two">K<small>♠</small></span>
-          {['Q♠', 'J♠', '10♠', '4♥', '2♣'].map((label, index) => <span className={`mini-poker-board board-${index + 1}`} key={label}><b>{label.slice(0, -1)}</b><small>{label.slice(-1)}</small></span>)}
+          <span className="mini-poker-community">
+            {['Q♠', 'J♠', '10♠', '4♥', '2♣'].map((label, index) => <span className={`mini-poker-board board-${index + 1}`} key={label}><b>{label.slice(0, -1)}</b><small>{label.slice(-1)}</small></span>)}
+          </span>
           <strong className="mini-poker-win">同花顺</strong>
         </div>
       </div>
@@ -303,7 +306,7 @@ export function HomePage({ client }: { client: GameHallClient }) {
               <Reveal className="game-card-reveal" delayMs={index * 85} distance={36} key={game.id} respectReducedMotion={game.id === 'splendor' || game.id === 'texas-holdem'}>
                 <ClickSpark className="featured-spark" respectReducedMotion={game.id === 'splendor' || game.id === 'texas-holdem'}>
                   <SpotlightSurface className="game-card-surface" color="rgba(240, 206, 139, 0.28)" tilt respectReducedMotion={game.id === 'splendor' || game.id === 'texas-holdem'}>
-                    <article className="game-card featured-card">
+                    <article className="game-card featured-card" data-opening-motion="rotate">
                       <div className="game-number">0{index + 1}</div>
                       <div className={`game-art accent-${game.accent}`}><span className="game-art-orbit" aria-hidden="true" /><GameGlyph kind={game.icon} /></div>
                     <div className="game-info">
