@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { GameHallClient } from './gamehall-client';
 import { HomePage } from './HomePage';
 import { NICKNAME_STORAGE_KEY } from './client-preferences';
-import splendorStyles from './splendor.css?raw';
 
 function clientStub(overrides: Partial<GameHallClient> = {}): GameHallClient {
   return {
@@ -122,6 +121,7 @@ describe('HomePage', () => {
     expect(container.querySelector('.gomoku-grid')).toHaveAttribute('viewBox', '0 0 89 89');
     expect(container.querySelectorAll('.gomoku-grid path')).toHaveLength(5);
     expect(container.querySelector('.splendor-gem-aura')).toBeInTheDocument();
+    expect(container.querySelector('.splendor-home-gems')).toHaveAttribute('data-motion', 'hover-replay');
     expect(container.querySelectorAll('.splendor-gem-dust i')).toHaveLength(6);
     expect(container.querySelector('.effect-gomoku .gomoku-win-guide')).toBeInTheDocument();
     expect(container.querySelector('.effect-quoridor .quoridor-wall')).toBeInTheDocument();
@@ -130,19 +130,21 @@ describe('HomePage', () => {
     expect(container.querySelectorAll('.effect-twenty-four .calculation-card')).toHaveLength(4);
     expect(container.querySelector('.effect-twenty-four .calculation-result')).toHaveTextContent('24');
     expect(container.querySelector('.effect-poker .mini-poker-table')).toBeInTheDocument();
+    expect(container.querySelector('.effect-poker')).toHaveAttribute('data-motion', 'hover-replay');
+    expect(container.querySelector('.effect-poker')).toHaveAttribute('data-community-cards', '5');
     expect(container.querySelector('.effect-poker .mini-poker-table-line')).toBeInTheDocument();
     expect(container.querySelector('.effect-poker .mini-poker-community')).toBeInTheDocument();
     expect(container.querySelectorAll('.effect-poker .mini-poker-hole')).toHaveLength(2);
-    expect([...container.querySelectorAll('.effect-poker .mini-poker-board')].map((card) => card.textContent)).toEqual(['Q♠', 'J♠', '10♠']);
+    expect([...container.querySelectorAll('.effect-poker .mini-poker-board')].map((card) => card.textContent)).toEqual(['4♥', '2♣', 'Q♠', 'J♠', '10♠']);
+    expect(container.querySelectorAll('.effect-poker .mini-poker-board.is-royal-card')).toHaveLength(3);
     expect(container.querySelectorAll('.effect-poker .mini-chip')).toHaveLength(3);
     expect(container.querySelectorAll('.effect-poker .mini-poker-win-burst i')).toHaveLength(8);
     expect(container.querySelector('.effect-poker .mini-poker-win')).toHaveTextContent('皇家同花顺');
-    expect(container.querySelectorAll('.featured-card[data-opening-motion="rotate"]')).toHaveLength(5);
+    expect(container.querySelectorAll('.featured-card[data-opening-motion="rotate"]')).toHaveLength(0);
+    [...container.querySelectorAll<HTMLElement>('.game-card-reveal')].forEach((card) => expect(card.style.getPropertyValue('--reveal-distance')).toBe('0px'));
   });
 
-  it('首页游戏卡在桌面和移动端均保留完整动效配置', () => {
-    // Splendor's reduced-motion stylesheet must not override legacy game effects.
-    expect(splendorStyles).not.toMatch(/\.effect-(twenty-four|gomoku|quoridor)|\.calculation-/);
+  it('首页游戏卡不启用系统减少动画降级', () => {
     const { container } = render(<HomePage client={clientStub()} />);
     const reveals = container.querySelectorAll('.reveal');
     expect(reveals.length).toBeGreaterThan(0);

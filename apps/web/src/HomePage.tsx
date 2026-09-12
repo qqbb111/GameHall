@@ -24,7 +24,7 @@ import { GemMark } from './GemMark';
 import './splendor.css';
 
 function GameGlyph({ kind }: { kind: GameCardInfo['icon'] }) {
-  if (kind === 'splendor') return <div className="splendor-home-gems" aria-hidden="true">
+  if (kind === 'splendor') return <div className="splendor-home-gems" data-motion="hover-replay" aria-hidden="true">
     <svg className="splendor-gem-aura" viewBox="0 0 240 160" focusable="false"><ellipse cx="120" cy="87" rx="100" ry="48" /><ellipse cx="120" cy="87" rx="82" ry="37" /><path d="M120 2V25M120 139V158M8 87H28M212 87H232M34 25L50 40M190 134L208 150M205 24L188 40M30 150L48 134" /></svg>
     <span className="splendor-gem-dust">{Array.from({ length: 6 }, (_, index) => <i key={index} style={{ '--spark-index': index } as CSSProperties} />)}</span>
     <GemMark color="blue" detailed /><GemMark color="green" detailed /><GemMark color="gold" detailed />
@@ -73,14 +73,14 @@ function GameGlyph({ kind }: { kind: GameCardInfo['icon'] }) {
   }
   if (kind === 'texas-holdem') {
     return (
-      <div className="gameplay-effect effect-poker" aria-hidden="true">
+      <div className="gameplay-effect effect-poker" data-motion="hover-replay" data-community-cards="5" aria-hidden="true">
         <div className="mini-poker-table">
           <span className="mini-poker-table-line" />
           <span className="mini-poker-pot"><i className="mini-chip chip-gold" /><i className="mini-chip chip-red" /><i className="mini-chip chip-blue" /></span>
           <span className="mini-poker-hole hole-one">A<small>♠</small></span>
           <span className="mini-poker-hole hole-two">K<small>♠</small></span>
           <span className="mini-poker-community">
-            {['Q♠', 'J♠', '10♠'].map((label, index) => <span className={`mini-poker-board board-${index + 1}`} key={label}><b>{label.slice(0, -1)}</b><small>{label.slice(-1)}</small></span>)}
+            {['4♥', '2♣', 'Q♠', 'J♠', '10♠'].map((label, index) => <span className={`mini-poker-board board-${index + 1} ${index >= 2 ? 'is-royal-card' : 'is-base-card'}`} key={label}><b>{label.slice(0, -1)}</b><small>{label.slice(-1)}</small></span>)}
           </span>
           <span className="mini-poker-win-burst">{Array.from({ length: 8 }, (_, index) => <i key={index} style={{ '--burst-index': index } as CSSProperties} />)}</span>
           <strong className="mini-poker-win">皇家同花顺</strong>
@@ -304,10 +304,10 @@ export function HomePage({ client }: { client: GameHallClient }) {
           {createError && <p className="catalog-error" role="alert">{createError}</p>}
           <div className="featured-grid">
             {onlineGames.map((game, index) => (
-              <Reveal className="game-card-reveal" delayMs={index * 85} distance={36} key={game.id} respectReducedMotion={false}>
+              <Reveal className="game-card-reveal" delayMs={index * 85} distance={0} key={game.id} respectReducedMotion={false}>
                 <ClickSpark className="featured-spark" respectReducedMotion={false}>
                   <SpotlightSurface className="game-card-surface" color="rgba(240, 206, 139, 0.28)" tilt respectReducedMotion={false}>
-                    <article className="game-card featured-card" data-opening-motion="rotate">
+                    <article className="game-card featured-card">
                       <div className="game-number">0{index + 1}</div>
                       <div className={`game-art accent-${game.accent}`}><span className="game-art-orbit" aria-hidden="true" /><GameGlyph kind={game.icon} /></div>
                     <div className="game-info">
