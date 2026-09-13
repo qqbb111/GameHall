@@ -144,6 +144,7 @@ describe('game components', () => {
     expect(screen.getByLabelText('第 1 手结算')).toHaveTextContent('南山 收下底池');
     expect(screen.getByText(/未摊牌的手牌继续保密/)).toBeInTheDocument();
     expect(container.querySelectorAll('.poker-community .poker-card')).toHaveLength(5);
+    expect(container.querySelector('.poker-pot-stack')).toBeNull();
     expect(screen.getByLabelText('对手手牌').querySelectorAll('.poker-card.is-hidden')).toHaveLength(2);
     fireEvent.click(screen.getByRole('button', { name: '准备下一手' }));
     expect(onAction).toHaveBeenCalledWith({ type: 'readyNextHand' });
@@ -167,13 +168,30 @@ describe('game components', () => {
     expect(screen.getByText('翻牌发牌中')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '跟注 0' })).not.toBeInTheDocument();
 
-    act(() => { vi.advanceTimersByTime(220); });
+    act(() => { vi.advanceTimersByTime(300); });
     expect(container.querySelectorAll('.poker-community .poker-card:not(.is-placeholder)')).toHaveLength(1);
     expect(container.querySelector('.poker-community .poker-card.is-dealing')).not.toBeNull();
-    act(() => { vi.advanceTimersByTime(1_800); });
+    act(() => { vi.advanceTimersByTime(900); });
+    expect(container.querySelectorAll('.poker-community .poker-card:not(.is-placeholder)')).toHaveLength(2);
+    expect(container.querySelectorAll('.poker-community .poker-card.is-dealing')).toHaveLength(1);
+    act(() => { vi.advanceTimersByTime(900); });
     expect(container.querySelectorAll('.poker-community .poker-card:not(.is-placeholder)')).toHaveLength(3);
-    act(() => { vi.advanceTimersByTime(800); });
+    expect(container.querySelectorAll('.poker-community .poker-card.is-dealing')).toHaveLength(1);
+    act(() => { vi.advanceTimersByTime(1_000); });
+    expect(container.querySelector('.poker-community .poker-card.is-dealing')).toBeNull();
     expect(screen.getByText('等待好友行动')).toBeInTheDocument();
+  });
+
+  it('德州扑克底池托盘按权威金额组合筹码且不会覆盖公共牌', () => {
+    const initialState = createTexasHoldemState({ seats: [0, 1], dealerSeat: 0, rng: () => 0.2 });
+    const called = applyTexasHoldemAction(initialState, initialState.turn!, { type: 'call' });
+    if (!called.ok) throw new Error(called.error.message);
+    const { container } = render(<TexasHoldemGame state={texasHoldemDefinition.viewFor(called.state, 0, 0)} mySeat={0} active onAction={vi.fn()} />);
+    const pot = screen.getByLabelText('底池筹码 40');
+    expect(pot).toHaveAttribute('data-pot-amount', '40');
+    expect([...pot.querySelectorAll('[data-chip-value]')].map((chip) => Number(chip.getAttribute('data-chip-value')))).toEqual([25, 10, 5]);
+    expect(container.querySelector('.poker-community .poker-chip')).toBeNull();
+    expect(screen.getByLabelText('当前底池 40')).toContainElement(pot);
   });
 
   it('双方 all-in 时公共牌一张一张跑完后才揭晓结算', () => {
@@ -193,22 +211,25 @@ describe('game components', () => {
     expect(screen.queryByLabelText(/第 1 手结算/)).not.toBeInTheDocument();
     expect(container.querySelectorAll('.poker-community .poker-card:not(.is-placeholder)')).toHaveLength(0);
     expect(screen.getByLabelText('对手手牌').querySelectorAll('.poker-card.is-hidden')).toHaveLength(2);
+    expect(screen.queryByText('已淘汰')).not.toBeInTheDocument();
+    expect(screen.queryByText('筹码 2000')).not.toBeInTheDocument();
+    expect(screen.getAllByText('All-in')).toHaveLength(2);
+    const allInPot = screen.getByLabelText('底池筹码 2000');
+    expect([...allInPot.querySelectorAll('[data-chip-value]')].map((chip) => Number(chip.getAttribute('data-chip-value')))).toEqual([500, 500, 500, 500]);
 
-    act(() => { vi.advanceTimersByTime(2_900); });
+    act(() => { vi.advanceTimersByTime(4_000); });
     expect(container.querySelectorAll('.poker-community .poker-card:not(.is-placeholder)')).toHaveLength(4);
     expect(screen.queryByLabelText(/第 1 手结算/)).not.toBeInTheDocument();
-    act(() => { vi.advanceTimersByTime(2_600); });
+    act(() => { vi.advanceTimersByTime(3_300); });
     expect(container.querySelectorAll('.poker-community .poker-card:not(.is-placeholder)')).toHaveLength(5);
     expect(screen.getByLabelText(/第 1 手结算/)).toBeInTheDocument();
     expect(screen.getByText(/摊牌获胜|收下底池/)).toBeInTheDocument();
+    expect(container.querySelector('.poker-pot-stack')).toBeNull();
+    expect(screen.getByLabelText('底池筹码已结算')).toBeInTheDocument();
   });
 
-  it('德州扑克音效可以持久化静音偏好', () => {
+  it('德州扑克不再提供牌桌音效控制', () => {
     render(<TexasHoldemGame state={texasHoldemDefinition.viewFor(createTexasHoldemState({ seats: [0, 1], dealerSeat: 0, rng: () => 0.2 }), 0, 0)} mySeat={0} active onAction={vi.fn()} />);
-    const soundToggle = screen.getByRole('button', { name: '牌桌音效：开' });
-    fireEvent.click(soundToggle);
-    expect(soundToggle).toHaveAttribute('aria-pressed', 'false');
-    expect(window.localStorage.getItem('gamehall:poker-sound-enabled')).toBe('off');
-    expect(screen.getByRole('button', { name: '牌桌音效：静音' })).toBeInTheDocument();
+    expect(screen.queryByText(/牌桌音效/)).not.toBeInTheDocument();
   });
 });

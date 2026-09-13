@@ -1491,17 +1491,18 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
 .texas-holdem-surface { position: relative; overflow: hidden; background: radial-gradient(ellipse at 50% 36%, rgba(45,139,101,.44), transparent 47%), radial-gradient(circle at 14% 10%, rgba(235,199,121,.08), transparent 28%), var(--poker-felt); color: #f7efd8; border: 1px solid rgba(231,196,124,.2); border-radius: 30px; padding: clamp(18px,3vw,34px); box-shadow: inset 0 0 0 7px rgba(4,27,23,.32), inset 0 0 80px rgba(0,0,0,.22), 0 24px 60px rgba(8,28,26,.22); }
 .texas-holdem-surface::after { content: ''; pointer-events: none; position: absolute; inset: 8px; border: 1px dashed rgba(240,206,139,.18); border-radius: 23px; }
 .poker-title { position: relative; z-index: 2; align-items: flex-start; }
+.poker-title > div:first-child { flex: 1; }
 .poker-title h2 { color: #fff8e6; }
-.poker-sound-toggle { align-self: center; min-height: 34px; padding: 7px 10px; border: 1px solid rgba(240,206,139,.25); border-radius: 99px; color: rgba(247,239,216,.78); background: rgba(4,22,19,.42); font-size: .68rem; cursor: pointer; }
-.poker-sound-toggle[aria-pressed=true] { color: #ffe7a6; border-color: rgba(240,206,139,.55); box-shadow: 0 0 16px rgba(240,206,139,.12); }
 .poker-pot-summary { display: grid; gap: 2px; min-width: 90px; padding: 10px 14px; border: 1px solid rgba(240,206,139,.4); border-radius: 14px; text-align: right; background: rgba(4,22,19,.48); box-shadow: inset 0 1px rgba(255,255,255,.08); }
 .poker-pot-summary small { color: #e9cf92; font-size: .72rem; }
 .poker-pot-summary strong { font: 700 1.35rem/1 Georgia,serif; color: #fff2bf; }
 .poker-community { position: relative; z-index: 2; display: flex; justify-content: center; gap: 10px; min-height: 104px; margin: 24px 0 28px; align-items: center; perspective: 700px; }
 .poker-card { position: relative; display: inline-grid; flex: 0 0 auto; place-items: center; width: 54px; height: 76px; padding: 5px; box-sizing: border-box; overflow: hidden; border: 1px solid rgba(80,57,30,.3); border-radius: 9px; background: linear-gradient(145deg,#fffdf3 0%,#f5ecd8 64%,#d9c9aa 100%); color: #182523; box-shadow: inset 0 0 0 2px rgba(255,255,255,.72), inset 0 -7px 13px rgba(110,80,39,.1), 0 7px 13px rgba(0,0,0,.3); font-family: Georgia,serif; transform-style: preserve-3d; animation: none; }
-.poker-card.is-dealing { animation: poker-card-deal .68s cubic-bezier(.16,1,.3,1) both; }
-.poker-card.is-dealing::before { content: ''; position: absolute; z-index: 3; inset: 0; border-radius: 8px; border: 2px solid rgba(231,219,192,.9); background: repeating-linear-gradient(45deg,rgba(240,206,139,.2) 0 2px,transparent 2px 6px), repeating-linear-gradient(-45deg,rgba(240,206,139,.12) 0 2px,transparent 2px 6px), linear-gradient(145deg,#173f53,#245b6d 55%,#123342); animation: poker-card-back-cover .68s cubic-bezier(.16,1,.3,1) both; pointer-events: none; }
-.poker-card.is-dealing > * { animation: poker-card-face-reveal .68s cubic-bezier(.16,1,.3,1) both; }
+.poker-card.is-dealing { will-change: transform,opacity; animation: poker-card-deal .82s cubic-bezier(.2,.76,.25,1) both; }
+.texas-holdem-surface.is-runout .poker-card.is-dealing { animation-duration: .92s; }
+.poker-card.is-dealing::before { content: ''; position: absolute; z-index: 3; inset: 0; border-radius: 8px; border: 2px solid rgba(231,219,192,.9); background: repeating-linear-gradient(45deg,rgba(240,206,139,.2) 0 2px,transparent 2px 6px), repeating-linear-gradient(-45deg,rgba(240,206,139,.12) 0 2px,transparent 2px 6px), linear-gradient(145deg,#173f53,#245b6d 55%,#123342); transform-origin: left center; will-change: transform,opacity; animation: poker-card-back-cover .82s cubic-bezier(.2,.76,.25,1) both; pointer-events: none; }
+.texas-holdem-surface.is-runout .poker-card.is-dealing::before,.texas-holdem-surface.is-runout .poker-card.is-dealing > * { animation-duration: .92s; }
+.poker-card.is-dealing > * { will-change: transform,opacity; animation: poker-card-face-reveal .82s cubic-bezier(.2,.76,.25,1) both; }
 .poker-card::after { content: ''; position: absolute; inset: 3px; border: 1px solid rgba(84,62,31,.12); border-radius: 6px; pointer-events: none; }
 .poker-card > strong { font: 400 1.7rem/1 Georgia,serif; text-shadow: 0 1px rgba(255,255,255,.8); }
 .poker-card-corner { position: absolute; z-index: 1; top: 6px; left: 6px; display: grid; justify-items: center; font: 700 .72rem/1 Georgia,serif; }
@@ -1517,10 +1518,16 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
 .poker-deck-card { width: 32px; height: 46px; border: 2px solid rgba(237,205,129,.65); border-radius: 5px; background: repeating-linear-gradient(45deg,rgba(240,206,139,.2) 0 2px,transparent 2px 6px),repeating-linear-gradient(-45deg,rgba(240,206,139,.12) 0 2px,transparent 2px 6px),linear-gradient(145deg,#173f53,#245b6d 55%,#123342); box-shadow: -4px 5px 0 rgba(0,0,0,.15),0 7px 14px rgba(0,0,0,.28); }
 .poker-burn-card { position: absolute; z-index: 5; right: 17%; top: 50%; width: 32px; height: 46px; transform: translateY(-50%); animation: poker-burn-slide .36s cubic-bezier(.16,1,.3,1) both; }
 .poker-burn-card .poker-card-back { display: block; width: 100%; height: 100%; box-sizing: border-box; }
-.poker-pot-flight { position: absolute; z-index: 6; left: 50%; top: 145px; display: flex; gap: 4px; pointer-events: none; transform: translateX(-50%); animation: poker-chip-to-pot .82s cubic-bezier(.16,1,.3,1) both; }
-.poker-pot-flight .poker-chip { margin-left: -8px; }
 .texas-holdem-surface.is-presenting .poker-community { filter: drop-shadow(0 0 18px rgba(240,206,139,.14)); }
 .texas-holdem-surface.is-payout-active .poker-pot-summary { animation: poker-pot-pulse .6s ease-out both; }
+.poker-pot-tray { position: relative; z-index: 2; display: grid; place-items: center; min-height: 58px; margin: -17px auto 18px; pointer-events: none; }
+.poker-pot-tray::before { content: ''; position: absolute; width: min(280px,65%); height: 36px; border: 1px solid rgba(240,206,139,.13); border-radius: 50%; background: radial-gradient(ellipse,rgba(3,25,21,.34),transparent 70%); box-shadow: inset 0 7px 16px rgba(0,0,0,.12); }
+.poker-pot-tray.is-settled::before { opacity: .34; }
+.poker-pot-stack { position: relative; z-index: 1; display: flex; align-items: center; gap: 10px; min-width: 92px; min-height: 42px; padding: 5px 12px; border: 1px solid rgba(240,206,139,.17); border-radius: 99px; background: rgba(3,25,21,.68); box-shadow: 0 9px 18px rgba(0,0,0,.2),inset 0 1px rgba(255,255,255,.07); }
+.poker-pot-chips { display: flex; align-items: flex-end; min-width: 30px; padding: 0 5px 4px 9px; animation: poker-pot-stack-arrive .48s cubic-bezier(.16,1,.3,1) both; }
+.poker-pot-chips .poker-chip { margin-left: -9px; }
+.poker-pot-stack > strong { color: #ffe6a7; font: 800 .82rem/1 Georgia,serif; letter-spacing: .04em; }
+.poker-pot-stack.is-paying-out { animation: poker-pot-payout .48s cubic-bezier(.4,0,1,1) both; }
 .poker-seats { position: relative; z-index: 2; display: grid; grid-template-columns: repeat(auto-fit,minmax(190px,1fr)); gap: 12px; }
 .poker-seat { padding: 14px; border: 1px solid rgba(255,255,255,.13); border-radius: 16px; background: linear-gradient(145deg,rgba(8,30,27,.54),rgba(5,22,21,.34)); box-shadow: inset 0 1px rgba(255,255,255,.05); transition: border-color .2s ease,transform .2s ease; }
 .poker-seat.is-mine { border-color: rgba(240,206,139,.62); }
@@ -1591,11 +1598,12 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
 .game-card-surface:is(:hover,:focus-within) .mini-poker-win-burst::before { animation:poker-burst-ring .58s 1.08s ease-out both; }
 .game-card-surface:is(:hover,:focus-within) .mini-poker-win-burst i { animation:poker-burst-ray .62s calc(1.06s + var(--burst-index) * 14ms) ease-out both; }
 .game-card-surface:is(:hover,:focus-within) .mini-poker-win { animation:poker-win-explode .48s 1.1s cubic-bezier(.2,1.55,.38,1) both; }
-@keyframes poker-card-deal { 0% { opacity:0; transform:translate3d(130px,-15px,48px) rotateY(72deg) rotateZ(8deg) scale(.84); filter:blur(1.5px); } 58% { opacity:1; transform:translate3d(-8px,0,12px) rotateY(-7deg) rotateZ(-2deg) scale(1.03); filter:blur(0); } 100% { opacity:1; transform:translate3d(0,0,0) rotateY(0) rotateZ(0) scale(1); filter:blur(0); } }
-@keyframes poker-card-back-cover { 0%,45% { opacity:1; } 64%,100% { opacity:0; } }
-@keyframes poker-card-face-reveal { 0%,46% { opacity:0; } 68%,100% { opacity:1; } }
+@keyframes poker-card-deal { 0% { opacity:0; transform:translate3d(138px,-8px,0) rotateZ(3.5deg) scale(.97); } 16% { opacity:1; } 72% { opacity:1; transform:translate3d(0,0,0) rotateZ(.25deg) scale(1); } 88% { transform:translate3d(-2px,0,0) rotateZ(-.35deg) scale(1.006); } 100% { opacity:1; transform:translate3d(0,0,0) rotateZ(0) scale(1); } }
+@keyframes poker-card-back-cover { 0%,66% { opacity:1; transform:rotateY(0); } 100% { opacity:0; transform:rotateY(-88deg); } }
+@keyframes poker-card-face-reveal { 0%,66% { opacity:0; transform:rotateY(82deg); } 100% { opacity:1; transform:rotateY(0); } }
 @keyframes poker-burn-slide { from { opacity:0; transform:translate(20px,-50%) rotate(12deg) scale(.82); } 70% { opacity:1; transform:translate(-8px,-50%) rotate(-5deg) scale(1.02); } to { opacity:0; transform:translate(-32px,-50%) rotate(-9deg) scale(.9); } }
-@keyframes poker-chip-to-pot { from { opacity:0; transform:translate(-50%,50px) scale(.65) rotate(-14deg); } 32% { opacity:1; } to { opacity:0; transform:translate(-50%,-2px) scale(1) rotate(8deg); } }
+@keyframes poker-pot-stack-arrive { 0% { opacity:0; transform:translate3d(34px,12px,0) scale(.84); } 72% { opacity:1; transform:translate3d(-2px,-1px,0) scale(1.025); } 100% { opacity:1; transform:translate3d(0,0,0) scale(1); } }
+@keyframes poker-pot-payout { 0% { opacity:1; transform:translate3d(0,0,0) scale(1); } 42% { opacity:1; transform:translate3d(0,-4px,0) scale(1.06); } 100% { opacity:0; transform:translate3d(0,18px,0) scale(.72); } }
 @keyframes poker-pot-pulse { 0% { transform:scale(1); box-shadow:inset 0 1px rgba(255,255,255,.08); } 45% { transform:scale(1.08); box-shadow:0 0 0 8px rgba(240,206,139,0),0 0 28px rgba(240,206,139,.3),inset 0 1px rgba(255,255,255,.2); } 100% { transform:scale(1); } }
 @keyframes poker-winner-seat { 0% { transform:translateY(0) scale(.985); filter:brightness(.9); } 55% { transform:translateY(-5px) scale(1.018); filter:brightness(1.16); } 100% { transform:translateY(-2px) scale(1); filter:brightness(1); } }
 @keyframes poker-board-slide-in { 0% { opacity:0;transform:translate3d(86px,-4px,22px) rotateZ(8deg) scale(.84);filter:blur(2px); } 72% { opacity:1;transform:translate3d(-4px,0,8px) rotateZ(-2deg) scale(1.04);filter:blur(0); } 100% { opacity:1;transform:none;filter:blur(0); } }
@@ -1604,5 +1612,5 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
 @keyframes poker-win-explode { 0% { opacity:0;transform:translateX(-50%) scale(.35);filter:blur(4px); } 68% { opacity:1;transform:translateX(-50%) scale(1.18);filter:blur(0);box-shadow:0 0 28px rgba(255,222,145,.62); } 100% { opacity:1;transform:translateX(-50%) scale(1);filter:blur(0);box-shadow:0 0 18px rgba(241,205,126,.34); } }
 
 @media (max-width:620px) {
-  .poker-title{flex-wrap:wrap}.poker-title>div:first-child{flex:1 1 100%}.poker-sound-toggle{order:3}.poker-pot-summary{margin-left:auto}.poker-community{gap:5px}.poker-card{width:43px;height:62px}.poker-card>strong{font-size:1.25rem}.poker-card-corner{top:4px;left:4px}.poker-card-corner.is-bottom{inset:auto 4px 4px auto}.poker-card-corner b,.poker-card-corner i{font-size:.58rem}.poker-deck{right:0}.poker-burn-card{right:12%}.poker-pot-flight{top:132px}.poker-wager-control{grid-template-columns:1fr;width:100%;margin-left:0}.poker-chip-tray{grid-column:1;justify-content:flex-start;overflow-x:auto;padding:5px 0}.poker-selected-stack{position:absolute;right:13px;top:13px}.poker-wager-buttons{grid-column:1;justify-content:flex-start}.poker-wager-hint{grid-column:1;text-align:left}.poker-settlement-heading{display:grid}.poker-settlement-heading>strong{text-align:left}.poker-next-hand>span{width:100%}
+  .poker-title{flex-wrap:wrap}.poker-title>div:first-child{flex:1 1 calc(100% - 100px)}.poker-pot-summary{margin-left:auto}.poker-community{gap:5px}.poker-card{width:43px;height:62px}.poker-card>strong{font-size:1.25rem}.poker-card-corner{top:4px;left:4px}.poker-card-corner.is-bottom{inset:auto 4px 4px auto}.poker-card-corner b,.poker-card-corner i{font-size:.58rem}.poker-deck{right:0}.poker-burn-card{right:12%}.poker-pot-tray{margin-top:-19px;margin-bottom:14px}.poker-pot-tray::before{width:82%}.poker-wager-control{grid-template-columns:1fr;width:100%;margin-left:0}.poker-chip-tray{grid-column:1;justify-content:flex-start;overflow-x:auto;padding:5px 0}.poker-selected-stack{position:absolute;right:13px;top:13px}.poker-wager-buttons{grid-column:1;justify-content:flex-start}.poker-wager-hint{grid-column:1;text-align:left}.poker-settlement-heading{display:grid}.poker-settlement-heading>strong{text-align:left}.poker-next-hand>span{width:100%}
 }

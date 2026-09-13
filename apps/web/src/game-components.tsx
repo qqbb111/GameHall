@@ -331,7 +331,17 @@ function chipsFor(amount: number): number[] {
 }
 
 function Chip({ value, small = false }: { value: number; small?: boolean }) {
-  return <span className={`poker-chip chip-${value} ${small ? 'is-small' : ''}`} aria-hidden="true"><i>{value}</i></span>;
+  return <span className={`poker-chip chip-${value} ${small ? 'is-small' : ''}`} data-chip-value={value} aria-hidden="true"><i>{value}</i></span>;
+}
+
+function PokerChipStack({ amount, payingOut = false }: { amount: number; payingOut?: boolean }) {
+  const chips = chipsFor(amount);
+  return (
+    <div className={`poker-pot-stack ${payingOut ? 'is-paying-out' : ''}`} data-pot-amount={amount} aria-label={`底池筹码 ${amount}`}>
+      <div className="poker-pot-chips" key={amount}>{chips.map((value, index) => <Chip key={`${value}-${index}`} value={value} small />)}</div>
+      <strong>{amount}</strong>
+    </div>
+  );
 }
 
 function pokerSeatName(seat: number, mySeat: number, members: RoomMemberView[]): string {
@@ -339,47 +349,7 @@ function pokerSeatName(seat: number, mySeat: number, members: RoomMemberView[]):
   return members.find((member) => member.seat === seat)?.nickname ?? `玩家 ${seat + 1}`;
 }
 
-const POKER_SOUND_PREFERENCE = 'gamehall:poker-sound-enabled';
 type PokerPresentationStage = 'stable' | 'dealing' | 'runout' | 'showdown' | 'payout';
-type PokerSound = 'deal' | 'chip' | 'all-in' | 'payout';
-let pokerAudioContext: AudioContext | null = null;
-
-function pokerSoundPreference(): boolean {
-  if (typeof window === 'undefined') return true;
-  return window.localStorage.getItem(POKER_SOUND_PREFERENCE) !== 'off';
-}
-
-function playPokerSound(sound: PokerSound, enabled: boolean): void {
-  if (!enabled || typeof window === 'undefined') return;
-  try {
-    const AudioContextConstructor = window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextConstructor) return;
-    pokerAudioContext ??= new AudioContextConstructor();
-    const context = pokerAudioContext;
-    if (context.state === 'suspended') void context.resume();
-    const now = context.currentTime;
-    const settings: Record<PokerSound, { start: number; end: number; duration: number; volume: number; type: OscillatorType }> = {
-      deal: { start: 520, end: 260, duration: .14, volume: .018, type: 'triangle' },
-      chip: { start: 720, end: 420, duration: .11, volume: .022, type: 'square' },
-      'all-in': { start: 150, end: 82, duration: .34, volume: .028, type: 'sine' },
-      payout: { start: 440, end: 880, duration: .28, volume: .022, type: 'sine' },
-    };
-    const setting = settings[sound];
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
-    oscillator.type = setting.type;
-    oscillator.frequency.setValueAtTime(setting.start, now);
-    oscillator.frequency.exponentialRampToValueAtTime(setting.end, now + setting.duration);
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(setting.volume, now + .012);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + setting.duration);
-    oscillator.connect(gain).connect(context.destination);
-    oscillator.start(now);
-    oscillator.stop(now + setting.duration + .02);
-  } catch {
-    // Audio is an enhancement only. Browser policy must not affect play.
-  }
-}
 
 function pokerStreetForCount(count: number): 'flop' | 'turn' | 'river' | null {
   if (count >= 5) return 'river';
@@ -397,17 +367,17 @@ function pokerStreetLabel(street: 'flop' | 'turn' | 'river' | null): string {
 
 export function TexasHoldemGame({ state, snapshotVersion = 0, mySeat, active, members = [], onAction, onPresentationLockChange }: { state: TexasHoldemView; snapshotVersion?: number; mySeat: number; active: boolean; members?: RoomMemberView[]; onAction: ActionHandler; onPresentationLockChange?: (locked: boolean) => void }) {
   const me = state.players.find((player) => player.seat === mySeat);
+  const communityCount = state.communityCards.length;
+  const communityCardIds = state.communityCards.map((card) => card.id).join(',');
   const [selectedWager, setSelectedWager] = useState<{ snapshotVersion: number; chips: number[] }>({ snapshotVersion, chips: [] });
   const [displayedCommunityCount, setDisplayedCommunityCount] = useState(state.communityCards.length);
   const [presentationStage, setPresentationStage] = useState<PokerPresentationStage>('stable');
   const [presentationStreet, setPresentationStreet] = useState(pokerStreetForCount(state.communityCards.length));
-  const [dealingIndex, setDealingIndex] = useState(-1);
+  const [animatedCommunityCardIds, setAnimatedCommunityCardIds] = useState<Set<number>>(() => new Set());
   const [burning, setBurning] = useState(false);
   const [showdownVisible, setShowdownVisible] = useState(state.phase === 'hand-complete' || state.phase === 'finished');
   const [payoutActive, setPayoutActive] = useState(false);
-  const [potPulseKey, setPotPulseKey] = useState(0);
-  const [soundEnabled, setSoundEnabled] = useState(pokerSoundPreference);
-  const previousSnapshotRef = useRef({ version: snapshotVersion, handNumber: state.handNumber, phase: state.phase, communityCount: state.communityCards.length, pot: state.pot });
+  const previousSnapshotRef = useRef({ version: snapshotVersion, handNumber: state.handNumber, phase: state.phase, communityCount: state.communityCards.length });
   const timersRef = useRef<number[]>([]);
   // The ref is only the transition baseline; it is updated by the presentation effect below.
   /* eslint-disable react-hooks/refs */
@@ -449,24 +419,20 @@ export function TexasHoldemGame({ state, snapshotVersion = 0, mySeat, active, me
     };
     const previous = previousSnapshotRef.current;
     if (snapshotVersion === previous.version) return clearTimers;
-    previousSnapshotRef.current = { version: snapshotVersion, handNumber: state.handNumber, phase: state.phase, communityCount: state.communityCards.length, pot: state.pot };
+    previousSnapshotRef.current = { version: snapshotVersion, handNumber: state.handNumber, phase: state.phase, communityCount };
     clearTimers();
-    if (state.pot > previous.pot) {
-      setPotPulseKey((value) => value + 1);
-      playPokerSound('chip', soundEnabled);
-    }
     if (state.handNumber !== previous.handNumber) {
-      setDisplayedCommunityCount(state.communityCards.length);
-      setPresentationStreet(pokerStreetForCount(state.communityCards.length));
+      setDisplayedCommunityCount(communityCount);
+      setPresentationStreet(pokerStreetForCount(communityCount));
       setPresentationStage('stable');
       setShowdownVisible(state.phase === 'hand-complete' || state.phase === 'finished');
       setPayoutActive(false);
       setBurning(false);
-      setDealingIndex(-1);
+      setAnimatedCommunityCardIds(new Set());
       return clearTimers;
     }
     const addedFrom = previous.communityCount;
-    const addedTo = state.communityCards.length;
+    const addedTo = communityCount;
     const addedCards = addedTo > addedFrom;
     const showdown = state.lastHandResult?.reason === 'showdown' && ['hand-complete', 'finished'].includes(state.phase);
     const runout = showdown && addedCards;
@@ -477,39 +443,46 @@ export function TexasHoldemGame({ state, snapshotVersion = 0, mySeat, active, me
     setPayoutActive(false);
     setDisplayedCommunityCount(Math.min(addedFrom, addedTo));
     setPresentationStage(addedCards ? (runout ? 'runout' : 'dealing') : showdown ? 'showdown' : 'payout');
-    if (runout) playPokerSound('all-in', soundEnabled);
+    setAnimatedCommunityCardIds(new Set());
     let cursor = 0;
     let lastRevealAt = 0;
     for (let index = addedFrom; index < addedTo; index += 1) {
       const newStreet = index === 0 || index === 3 || index === 4;
       if (newStreet) {
         schedule(cursor, () => { setBurning(true); setPresentationStreet(pokerStreetForCount(index + 1)); });
-        cursor += 210;
+        cursor += 280;
         schedule(cursor, () => setBurning(false));
       }
       const revealAt = cursor;
       lastRevealAt = revealAt;
+      const cardId = Number(communityCardIds.split(',')[index]);
       schedule(revealAt, () => {
         setDisplayedCommunityCount(index + 1);
-        setDealingIndex(index);
-        playPokerSound('deal', soundEnabled);
+        if (cardId !== undefined) setAnimatedCommunityCardIds((ids) => new Set(ids).add(cardId));
       });
-      cursor += runout ? 620 : 520;
-      if (newStreet && index > addedFrom) cursor += runout ? 320 : 180;
+      schedule(revealAt + (runout ? 940 : 840), () => {
+        if (cardId !== undefined) setAnimatedCommunityCardIds((ids) => {
+          const next = new Set(ids);
+          next.delete(cardId);
+          return next;
+        });
+      });
+      cursor += runout ? 950 : 900;
+      if (runout && (index === 2 || index === 3)) cursor += 220;
     }
-    const boardFinishAt = addedCards ? lastRevealAt + (runout ? 820 : 700) : 260;
+    const boardFinishAt = addedCards ? lastRevealAt + (runout ? 1_000 : 900) : 260;
     if (showdown) {
       schedule(boardFinishAt, () => { setShowdownVisible(true); setPresentationStage('showdown'); });
-      schedule(boardFinishAt + 520, () => { setPayoutActive(true); setPresentationStage('payout'); playPokerSound('payout', soundEnabled); });
-      schedule(boardFinishAt + 1_000, () => { setPayoutActive(false); setPresentationStage('stable'); setDealingIndex(-1); });
+      schedule(boardFinishAt + 520, () => { setPayoutActive(true); setPresentationStage('payout'); });
+      schedule(boardFinishAt + 1_000, () => { setPayoutActive(false); setPresentationStage('stable'); });
     } else if (settlementArrived) {
-      schedule(boardFinishAt + 480, () => { setPayoutActive(true); setPresentationStage('payout'); playPokerSound('payout', soundEnabled); });
-      schedule(boardFinishAt + 860, () => { setPayoutActive(false); setPresentationStage('stable'); setDealingIndex(-1); });
+      schedule(boardFinishAt + 480, () => { setPayoutActive(true); setPresentationStage('payout'); });
+      schedule(boardFinishAt + 960, () => { setPayoutActive(false); setPresentationStage('stable'); });
     } else {
-      schedule(boardFinishAt, () => { setPresentationStage('stable'); setDealingIndex(-1); });
+      schedule(boardFinishAt, () => setPresentationStage('stable'));
     }
     return clearTimers;
-  }, [snapshotVersion, soundEnabled, state.communityCards.length, state.handNumber, state.lastHandResult?.reason, state.phase, state.pot]);
+  }, [communityCardIds, communityCount, snapshotVersion, state.handNumber, state.lastHandResult?.reason, state.phase]);
 
   useEffect(() => () => {
     for (const timer of timersRef.current) window.clearTimeout(timer);
@@ -521,23 +494,18 @@ export function TexasHoldemGame({ state, snapshotVersion = 0, mySeat, active, me
   const liveCount = state.players.filter((player) => !player.eliminated).length;
   const showSettlement = Boolean(settlement && ['hand-complete', 'finished'].includes(state.phase) && !presentationLocked && showdownVisible);
   const inferredRunout = pendingSnapshotPresentation && state.lastHandResult?.reason === 'showdown' && sameHandHasNewCards;
+  const runoutActive = presentationStage === 'runout' || inferredRunout;
+  const concealShowdownOutcome = Boolean(settlement?.reason === 'showdown' && presentationLocked);
+  const showPotChips = state.pot > 0 && !showSettlement;
   const stageLabel = presentationLocked
-    ? `${presentationStage === 'runout' || inferredRunout ? 'ALL-IN · ' : ''}${presentationStage === 'payout' ? '筹码结算中' : presentationStage === 'showdown' ? '摊牌揭晓' : `${pokerStreetLabel(presentationStreet ?? pokerStreetForCount(Math.max(3, displayedCommunityCount + 1)))}发牌中`}`
+    ? `${runoutActive ? 'ALL-IN · ' : ''}${presentationStage === 'payout' ? '筹码结算中' : presentationStage === 'showdown' ? '摊牌揭晓' : `${pokerStreetLabel(presentationStreet ?? pokerStreetForCount(Math.max(3, displayedCommunityCount + 1)))}发牌中`}`
     : state.phase === 'finished' ? '整局结束' : state.phase === 'hand-complete' ? '本手结算' : state.turn === mySeat ? '轮到你行动' : '等待好友行动';
 
-  function toggleSound() {
-    const next = !soundEnabled;
-    setSoundEnabled(next);
-    window.localStorage.setItem(POKER_SOUND_PREFERENCE, next ? 'on' : 'off');
-    if (next) playPokerSound('chip', true);
-  }
-
   return (
-    <section className={`game-surface texas-holdem-surface ${presentationLocked ? 'is-presenting' : ''} ${payoutActive ? 'is-payout-active' : ''}`} aria-label="德州扑克牌桌">
+    <section className={`game-surface texas-holdem-surface ${presentationLocked ? 'is-presenting' : ''} ${runoutActive ? 'is-runout' : ''} ${payoutActive ? 'is-payout-active' : ''}`} aria-label="德州扑克牌桌">
       <div className="surface-title poker-title">
         <div><span>第 {state.handNumber} 手 · 无限注 · 固定盲注 10 / 20</span><h2 aria-live="polite">{stageLabel}</h2></div>
-        <button className="poker-sound-toggle" type="button" aria-pressed={soundEnabled} onClick={toggleSound}>{soundEnabled ? '牌桌音效：开' : '牌桌音效：静音'}</button>
-        <div className="poker-pot-summary"><small>底池</small><strong>{state.pot}</strong></div>
+        <div className="poker-pot-summary"><small>{showSettlement ? '本手总池' : '底池'}</small><strong>{state.pot}</strong></div>
       </div>
       {showSettlement && settlement && (
         <section className="poker-settlement" aria-label={`第 ${settlement.handNumber} 手结算`}>
@@ -569,18 +537,22 @@ export function TexasHoldemGame({ state, snapshotVersion = 0, mySeat, active, me
       <div className="poker-community" aria-label={`公共牌，共 ${displayedCommunityCount} 张`}>
         <div className="poker-deck" aria-hidden="true"><span className="poker-deck-card" /><small>牌堆</small></div>
         {burning && <span className="poker-burn-card" aria-hidden="true"><i className="poker-card-back" /></span>}
-        {state.communityCards.slice(0, displayedCommunityCount).map((card, index) => <PokerCardView key={card.id} card={card} dealing={dealingIndex === index} highlighted={winningCardIds.has(card.id)} />)}
+        {state.communityCards.slice(0, displayedCommunityCount).map((card) => <PokerCardView key={card.id} card={card} dealing={animatedCommunityCardIds.has(card.id)} highlighted={winningCardIds.has(card.id)} />)}
         {Array.from({ length: 5 - displayedCommunityCount }, (_, index) => <PokerCardView key={`empty-${index}`} card={null} placeholder />)}
       </div>
-      {potPulseKey > 0 && <div className="poker-pot-flight" key={potPulseKey} aria-hidden="true"><Chip value={25} small /><Chip value={5} small /><Chip value={1} small /></div>}
+      <div className={`poker-pot-tray ${payoutActive ? 'is-paying-out' : ''} ${showPotChips ? '' : 'is-settled'}`} aria-label={showPotChips ? `当前底池 ${state.pot}` : '底池筹码已结算'}>
+        {showPotChips && <PokerChipStack amount={state.pot} payingOut={payoutActive} />}
+      </div>
       <div className="poker-seats" aria-label="玩家座位">
         {state.players.map((player) => {
           const isMine = player.seat === mySeat;
           const isTurn = player.seat === state.turn;
+          const isShowdownParticipant = settlement?.reason === 'showdown' && settlement.hands.some((hand) => hand.seat === player.seat);
+          const visuallyEliminated = player.eliminated && !concealShowdownOutcome;
           const revealHoleCards = isMine || !['hand-complete', 'finished'].includes(state.phase) || (showdownVisible && settlement?.reason === 'showdown');
           return (
-            <article className={`poker-seat ${isMine ? 'is-mine' : ''} ${isTurn ? 'is-turn' : ''} ${player.folded ? 'is-folded' : ''} ${player.eliminated ? 'is-eliminated' : ''} ${payoutActive && settlement?.winners.includes(player.seat) ? 'is-payout-target' : ''}`} key={player.seat}>
-              <div className="poker-seat-heading"><strong>{pokerSeatName(player.seat, mySeat, members)}</strong><span>{player.eliminated ? '已淘汰' : player.allIn ? 'All-in' : player.folded ? '已弃牌' : `筹码 ${player.stack}`}</span></div>
+            <article className={`poker-seat ${isMine ? 'is-mine' : ''} ${isTurn ? 'is-turn' : ''} ${player.folded ? 'is-folded' : ''} ${visuallyEliminated ? 'is-eliminated' : ''} ${payoutActive && settlement?.winners.includes(player.seat) ? 'is-payout-target' : ''}`} key={player.seat}>
+              <div className="poker-seat-heading"><strong>{pokerSeatName(player.seat, mySeat, members)}</strong><span>{concealShowdownOutcome && isShowdownParticipant ? 'All-in' : player.eliminated ? '已淘汰' : player.allIn ? 'All-in' : player.folded ? '已弃牌' : `筹码 ${player.stack}`}</span></div>
               <div className="poker-hole-cards" aria-label={isMine ? '你的手牌' : '对手手牌'}>
                 {player.holeCards && revealHoleCards ? player.holeCards.map((card) => <PokerCardView key={card.id} card={card} highlighted={winningCardIds.has(card.id)} />) : player.eliminated && !player.holeCards ? <span className="poker-eliminated-mark">OUT</span> : <><PokerCardView card={null} hidden /><PokerCardView card={null} hidden /></>}
               </div>
