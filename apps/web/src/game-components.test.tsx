@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   applyTexasHoldemAction,
   createGomokuState,
@@ -13,6 +13,11 @@ import {
 import { GomokuGame, QuoridorGame, TexasHoldemGame, TwentyFourGame } from './game-components';
 
 describe('game components', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    window.localStorage.clear();
+  });
+
   it('五子棋支持方向键移动与 Enter 落子', () => {
     const onAction = vi.fn().mockResolvedValue(undefined);
     render(<GomokuGame state={createGomokuState(0)} mySeat={0} active onAction={onAction} />);
@@ -142,5 +147,68 @@ describe('game components', () => {
     expect(screen.getByLabelText('对手手牌').querySelectorAll('.poker-card.is-hidden')).toHaveLength(2);
     fireEvent.click(screen.getByRole('button', { name: '准备下一手' }));
     expect(onAction).toHaveBeenCalledWith({ type: 'readyNextHand' });
+  });
+
+  it('德州扑克的新公共牌按发牌节奏逐张显现并暂时锁定操作', () => {
+    vi.useFakeTimers();
+    const onAction = vi.fn().mockResolvedValue(undefined);
+    const initialState = createTexasHoldemState({ seats: [0, 1], dealerSeat: 0, rng: () => 0.2 });
+    const firstAction = applyTexasHoldemAction(initialState, initialState.turn!, { type: 'call' });
+    if (!firstAction.ok) throw new Error(firstAction.error.message);
+    const flopAction = applyTexasHoldemAction(firstAction.state, firstAction.state.turn!, { type: 'check' });
+    if (!flopAction.ok) throw new Error(flopAction.error.message);
+    const initialView = texasHoldemDefinition.viewFor(initialState, 0, 0);
+    const flopView = texasHoldemDefinition.viewFor(flopAction.state, 0, 0);
+    const { container, rerender } = render(<TexasHoldemGame state={initialView} snapshotVersion={1} mySeat={0} active onAction={onAction} />);
+
+    expect(container.querySelector('.poker-deck')).toBeInTheDocument();
+    expect(container.querySelectorAll('.poker-community .poker-card:not(.is-placeholder)')).toHaveLength(0);
+    rerender(<TexasHoldemGame state={flopView} snapshotVersion={2} mySeat={0} active onAction={onAction} />);
+    expect(screen.getByText('翻牌发牌中')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '跟注 0' })).not.toBeInTheDocument();
+
+    act(() => { vi.advanceTimersByTime(220); });
+    expect(container.querySelectorAll('.poker-community .poker-card:not(.is-placeholder)')).toHaveLength(1);
+    expect(container.querySelector('.poker-community .poker-card.is-dealing')).not.toBeNull();
+    act(() => { vi.advanceTimersByTime(1_800); });
+    expect(container.querySelectorAll('.poker-community .poker-card:not(.is-placeholder)')).toHaveLength(3);
+    act(() => { vi.advanceTimersByTime(800); });
+    expect(screen.getByText('等待好友行动')).toBeInTheDocument();
+  });
+
+  it('双方 all-in 时公共牌一张一张跑完后才揭晓结算', () => {
+    vi.useFakeTimers();
+    const onAction = vi.fn().mockResolvedValue(undefined);
+    const initialState = createTexasHoldemState({ seats: [0, 1], dealerSeat: 0, rng: () => 0.2 });
+    const firstAllIn = applyTexasHoldemAction(initialState, initialState.turn!, { type: 'allIn' });
+    if (!firstAllIn.ok) throw new Error(firstAllIn.error.message);
+    const finalAction = applyTexasHoldemAction(firstAllIn.state, firstAllIn.state.turn!, { type: 'allIn' });
+    if (!finalAction.ok) throw new Error(finalAction.error.message);
+    const initialView = texasHoldemDefinition.viewFor(initialState, 0, 0);
+    const finalView = texasHoldemDefinition.viewFor(finalAction.state, 0, 0);
+    const { container, rerender } = render(<TexasHoldemGame state={initialView} snapshotVersion={1} mySeat={0} active onAction={onAction} />);
+
+    rerender(<TexasHoldemGame state={finalView} snapshotVersion={2} mySeat={0} active onAction={onAction} />);
+    expect(screen.getByText(/ALL-IN · 翻牌发牌中/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/第 1 手结算/)).not.toBeInTheDocument();
+    expect(container.querySelectorAll('.poker-community .poker-card:not(.is-placeholder)')).toHaveLength(0);
+    expect(screen.getByLabelText('对手手牌').querySelectorAll('.poker-card.is-hidden')).toHaveLength(2);
+
+    act(() => { vi.advanceTimersByTime(2_900); });
+    expect(container.querySelectorAll('.poker-community .poker-card:not(.is-placeholder)')).toHaveLength(4);
+    expect(screen.queryByLabelText(/第 1 手结算/)).not.toBeInTheDocument();
+    act(() => { vi.advanceTimersByTime(2_600); });
+    expect(container.querySelectorAll('.poker-community .poker-card:not(.is-placeholder)')).toHaveLength(5);
+    expect(screen.getByLabelText(/第 1 手结算/)).toBeInTheDocument();
+    expect(screen.getByText(/摊牌获胜|收下底池/)).toBeInTheDocument();
+  });
+
+  it('德州扑克音效可以持久化静音偏好', () => {
+    render(<TexasHoldemGame state={texasHoldemDefinition.viewFor(createTexasHoldemState({ seats: [0, 1], dealerSeat: 0, rng: () => 0.2 }), 0, 0)} mySeat={0} active onAction={vi.fn()} />);
+    const soundToggle = screen.getByRole('button', { name: '牌桌音效：开' });
+    fireEvent.click(soundToggle);
+    expect(soundToggle).toHaveAttribute('aria-pressed', 'false');
+    expect(window.localStorage.getItem('gamehall:poker-sound-enabled')).toBe('off');
+    expect(screen.getByRole('button', { name: '牌桌音效：静音' })).toBeInTheDocument();
   });
 });

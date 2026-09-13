@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import {
   canPlaceQuoridorWall,
   GOMOKU_SIZE,
@@ -311,12 +311,12 @@ function pokerCardLabel(card: PokerCard): string {
   return `${pokerRankLabels[card.rank] ?? card.rank}${pokerSuitSymbols[card.suit]}`;
 }
 
-function PokerCardView({ card, hidden = false, placeholder = false, highlighted = false }: { card: PokerCard | null; hidden?: boolean; placeholder?: boolean; highlighted?: boolean }) {
+function PokerCardView({ card, hidden = false, placeholder = false, highlighted = false, dealing = false }: { card: PokerCard | null; hidden?: boolean; placeholder?: boolean; highlighted?: boolean; dealing?: boolean }) {
   if (placeholder) return <span className="poker-card is-placeholder" aria-hidden="true" />;
   if (hidden || !card) return <span className="poker-card is-hidden" aria-label="盖牌"><i className="poker-card-back" /></span>;
   const rank = pokerRankLabels[card.rank] ?? card.rank;
   const suit = pokerSuitSymbols[card.suit];
-  return <span className={`poker-card ${card.suit === 'H' || card.suit === 'D' ? 'is-red' : ''} ${highlighted ? 'is-highlighted' : ''}`} aria-label={`${pokerCardLabel(card)}${highlighted ? '，最佳五张牌' : ''}`}>
+  return <span className={`poker-card ${card.suit === 'H' || card.suit === 'D' ? 'is-red' : ''} ${highlighted ? 'is-highlighted' : ''} ${dealing ? 'is-dealing' : ''}`} aria-label={`${pokerCardLabel(card)}${highlighted ? '，最佳五张牌' : ''}`}>
     <span className="poker-card-corner"><b>{rank}</b><i>{suit}</i></span><strong>{suit}</strong><span className="poker-card-corner is-bottom"><b>{rank}</b><i>{suit}</i></span>
   </span>;
 }
@@ -339,11 +339,88 @@ function pokerSeatName(seat: number, mySeat: number, members: RoomMemberView[]):
   return members.find((member) => member.seat === seat)?.nickname ?? `玩家 ${seat + 1}`;
 }
 
-export function TexasHoldemGame({ state, mySeat, active, members = [], onAction }: { state: TexasHoldemView; mySeat: number; active: boolean; members?: RoomMemberView[]; onAction: ActionHandler }) {
+const POKER_SOUND_PREFERENCE = 'gamehall:poker-sound-enabled';
+type PokerPresentationStage = 'stable' | 'dealing' | 'runout' | 'showdown' | 'payout';
+type PokerSound = 'deal' | 'chip' | 'all-in' | 'payout';
+let pokerAudioContext: AudioContext | null = null;
+
+function pokerSoundPreference(): boolean {
+  if (typeof window === 'undefined') return true;
+  return window.localStorage.getItem(POKER_SOUND_PREFERENCE) !== 'off';
+}
+
+function playPokerSound(sound: PokerSound, enabled: boolean): void {
+  if (!enabled || typeof window === 'undefined') return;
+  try {
+    const AudioContextConstructor = window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextConstructor) return;
+    pokerAudioContext ??= new AudioContextConstructor();
+    const context = pokerAudioContext;
+    if (context.state === 'suspended') void context.resume();
+    const now = context.currentTime;
+    const settings: Record<PokerSound, { start: number; end: number; duration: number; volume: number; type: OscillatorType }> = {
+      deal: { start: 520, end: 260, duration: .14, volume: .018, type: 'triangle' },
+      chip: { start: 720, end: 420, duration: .11, volume: .022, type: 'square' },
+      'all-in': { start: 150, end: 82, duration: .34, volume: .028, type: 'sine' },
+      payout: { start: 440, end: 880, duration: .28, volume: .022, type: 'sine' },
+    };
+    const setting = settings[sound];
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = setting.type;
+    oscillator.frequency.setValueAtTime(setting.start, now);
+    oscillator.frequency.exponentialRampToValueAtTime(setting.end, now + setting.duration);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(setting.volume, now + .012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + setting.duration);
+    oscillator.connect(gain).connect(context.destination);
+    oscillator.start(now);
+    oscillator.stop(now + setting.duration + .02);
+  } catch {
+    // Audio is an enhancement only. Browser policy must not affect play.
+  }
+}
+
+function pokerStreetForCount(count: number): 'flop' | 'turn' | 'river' | null {
+  if (count >= 5) return 'river';
+  if (count >= 4) return 'turn';
+  if (count >= 3) return 'flop';
+  return null;
+}
+
+function pokerStreetLabel(street: 'flop' | 'turn' | 'river' | null): string {
+  if (street === 'flop') return '翻牌';
+  if (street === 'turn') return '转牌';
+  if (street === 'river') return '河牌';
+  return '发牌';
+}
+
+export function TexasHoldemGame({ state, snapshotVersion = 0, mySeat, active, members = [], onAction, onPresentationLockChange }: { state: TexasHoldemView; snapshotVersion?: number; mySeat: number; active: boolean; members?: RoomMemberView[]; onAction: ActionHandler; onPresentationLockChange?: (locked: boolean) => void }) {
   const me = state.players.find((player) => player.seat === mySeat);
-  const [selectedChips, setSelectedChips] = useState<number[]>([]);
+  const [selectedWager, setSelectedWager] = useState<{ snapshotVersion: number; chips: number[] }>({ snapshotVersion, chips: [] });
+  const [displayedCommunityCount, setDisplayedCommunityCount] = useState(state.communityCards.length);
+  const [presentationStage, setPresentationStage] = useState<PokerPresentationStage>('stable');
+  const [presentationStreet, setPresentationStreet] = useState(pokerStreetForCount(state.communityCards.length));
+  const [dealingIndex, setDealingIndex] = useState(-1);
+  const [burning, setBurning] = useState(false);
+  const [showdownVisible, setShowdownVisible] = useState(state.phase === 'hand-complete' || state.phase === 'finished');
+  const [payoutActive, setPayoutActive] = useState(false);
+  const [potPulseKey, setPotPulseKey] = useState(0);
+  const [soundEnabled, setSoundEnabled] = useState(pokerSoundPreference);
+  const previousSnapshotRef = useRef({ version: snapshotVersion, handNumber: state.handNumber, phase: state.phase, communityCount: state.communityCards.length, pot: state.pot });
+  const timersRef = useRef<number[]>([]);
+  // The ref is only the transition baseline; it is updated by the presentation effect below.
+  /* eslint-disable react-hooks/refs */
+  const previousSnapshot = previousSnapshotRef.current;
+  const selectedChips = selectedWager.snapshotVersion === snapshotVersion ? selectedWager.chips : [];
   const selectedAmount = selectedChips.reduce((sum, value) => sum + value, 0);
-  const canAct = Boolean(active && me?.seat === state.turn && me.availableActions.some((action) => action !== 'readyNextHand'));
+  const isNewSnapshot = snapshotVersion !== previousSnapshot.version;
+  const sameHandHasNewCards = state.handNumber === previousSnapshot.handNumber && state.communityCards.length > previousSnapshot.communityCount;
+  const reachesSettlement = ['hand-complete', 'finished'].includes(state.phase) && !['hand-complete', 'finished'].includes(previousSnapshot.phase);
+  const pendingSnapshotPresentation = isNewSnapshot && (sameHandHasNewCards || reachesSettlement);
+  const presentationLocked = presentationStage !== 'stable' || pendingSnapshotPresentation;
+  /* eslint-enable react-hooks/refs */
+  const canAct = Boolean(!presentationLocked && active && me?.seat === state.turn && me.availableActions.some((action) => action !== 'readyNextHand'));
   const wagerMin = me?.minimumWager ?? 0;
   const wagerMax = me?.maximumWager ?? 0;
   const wagerType = me?.availableActions.includes('bet') ? 'bet' : 'raise';
@@ -357,18 +434,112 @@ export function TexasHoldemGame({ state, mySeat, active, members = [], onAction 
     void onAction({ type: wagerType, amount: selectedTarget });
   }
 
+  useLayoutEffect(() => {
+    onPresentationLockChange?.(presentationLocked);
+  }, [onPresentationLockChange, presentationLocked]);
+
+  useEffect(() => {
+    const clearTimers = () => {
+      for (const timer of timersRef.current) window.clearTimeout(timer);
+      timersRef.current = [];
+    };
+    const schedule = (delay: number, callback: () => void) => {
+      const timer = window.setTimeout(callback, delay);
+      timersRef.current.push(timer);
+    };
+    const previous = previousSnapshotRef.current;
+    if (snapshotVersion === previous.version) return clearTimers;
+    previousSnapshotRef.current = { version: snapshotVersion, handNumber: state.handNumber, phase: state.phase, communityCount: state.communityCards.length, pot: state.pot };
+    clearTimers();
+    if (state.pot > previous.pot) {
+      setPotPulseKey((value) => value + 1);
+      playPokerSound('chip', soundEnabled);
+    }
+    if (state.handNumber !== previous.handNumber) {
+      setDisplayedCommunityCount(state.communityCards.length);
+      setPresentationStreet(pokerStreetForCount(state.communityCards.length));
+      setPresentationStage('stable');
+      setShowdownVisible(state.phase === 'hand-complete' || state.phase === 'finished');
+      setPayoutActive(false);
+      setBurning(false);
+      setDealingIndex(-1);
+      return clearTimers;
+    }
+    const addedFrom = previous.communityCount;
+    const addedTo = state.communityCards.length;
+    const addedCards = addedTo > addedFrom;
+    const showdown = state.lastHandResult?.reason === 'showdown' && ['hand-complete', 'finished'].includes(state.phase);
+    const runout = showdown && addedCards;
+    const settlementArrived = ['hand-complete', 'finished'].includes(state.phase) && !['hand-complete', 'finished'].includes(previous.phase);
+    if (!addedCards && !settlementArrived) return clearTimers;
+
+    setShowdownVisible(!showdown);
+    setPayoutActive(false);
+    setDisplayedCommunityCount(Math.min(addedFrom, addedTo));
+    setPresentationStage(addedCards ? (runout ? 'runout' : 'dealing') : showdown ? 'showdown' : 'payout');
+    if (runout) playPokerSound('all-in', soundEnabled);
+    let cursor = 0;
+    let lastRevealAt = 0;
+    for (let index = addedFrom; index < addedTo; index += 1) {
+      const newStreet = index === 0 || index === 3 || index === 4;
+      if (newStreet) {
+        schedule(cursor, () => { setBurning(true); setPresentationStreet(pokerStreetForCount(index + 1)); });
+        cursor += 210;
+        schedule(cursor, () => setBurning(false));
+      }
+      const revealAt = cursor;
+      lastRevealAt = revealAt;
+      schedule(revealAt, () => {
+        setDisplayedCommunityCount(index + 1);
+        setDealingIndex(index);
+        playPokerSound('deal', soundEnabled);
+      });
+      cursor += runout ? 620 : 520;
+      if (newStreet && index > addedFrom) cursor += runout ? 320 : 180;
+    }
+    const boardFinishAt = addedCards ? lastRevealAt + (runout ? 820 : 700) : 260;
+    if (showdown) {
+      schedule(boardFinishAt, () => { setShowdownVisible(true); setPresentationStage('showdown'); });
+      schedule(boardFinishAt + 520, () => { setPayoutActive(true); setPresentationStage('payout'); playPokerSound('payout', soundEnabled); });
+      schedule(boardFinishAt + 1_000, () => { setPayoutActive(false); setPresentationStage('stable'); setDealingIndex(-1); });
+    } else if (settlementArrived) {
+      schedule(boardFinishAt + 480, () => { setPayoutActive(true); setPresentationStage('payout'); playPokerSound('payout', soundEnabled); });
+      schedule(boardFinishAt + 860, () => { setPayoutActive(false); setPresentationStage('stable'); setDealingIndex(-1); });
+    } else {
+      schedule(boardFinishAt, () => { setPresentationStage('stable'); setDealingIndex(-1); });
+    }
+    return clearTimers;
+  }, [snapshotVersion, soundEnabled, state.communityCards.length, state.handNumber, state.lastHandResult?.reason, state.phase, state.pot]);
+
+  useEffect(() => () => {
+    for (const timer of timersRef.current) window.clearTimeout(timer);
+  }, []);
+
   const settlement = state.lastHandResult;
-  const winningCardIds = new Set(settlement?.hands.flatMap((hand) => hand.value.bestFive.map((card) => card.id)) ?? []);
+  const winningCardIds = new Set(!presentationLocked && showdownVisible ? settlement?.hands.flatMap((hand) => hand.value.bestFive.map((card) => card.id)) ?? [] : []);
   const readyCount = state.players.filter((player) => !player.eliminated && player.readyForNextHand).length;
   const liveCount = state.players.filter((player) => !player.eliminated).length;
+  const showSettlement = Boolean(settlement && ['hand-complete', 'finished'].includes(state.phase) && !presentationLocked && showdownVisible);
+  const inferredRunout = pendingSnapshotPresentation && state.lastHandResult?.reason === 'showdown' && sameHandHasNewCards;
+  const stageLabel = presentationLocked
+    ? `${presentationStage === 'runout' || inferredRunout ? 'ALL-IN · ' : ''}${presentationStage === 'payout' ? '筹码结算中' : presentationStage === 'showdown' ? '摊牌揭晓' : `${pokerStreetLabel(presentationStreet ?? pokerStreetForCount(Math.max(3, displayedCommunityCount + 1)))}发牌中`}`
+    : state.phase === 'finished' ? '整局结束' : state.phase === 'hand-complete' ? '本手结算' : state.turn === mySeat ? '轮到你行动' : '等待好友行动';
+
+  function toggleSound() {
+    const next = !soundEnabled;
+    setSoundEnabled(next);
+    window.localStorage.setItem(POKER_SOUND_PREFERENCE, next ? 'on' : 'off');
+    if (next) playPokerSound('chip', true);
+  }
 
   return (
-    <section className="game-surface texas-holdem-surface" aria-label="德州扑克牌桌">
+    <section className={`game-surface texas-holdem-surface ${presentationLocked ? 'is-presenting' : ''} ${payoutActive ? 'is-payout-active' : ''}`} aria-label="德州扑克牌桌">
       <div className="surface-title poker-title">
-        <div><span>第 {state.handNumber} 手 · 无限注 · 固定盲注 10 / 20</span><h2 aria-live="polite">{state.phase === 'finished' ? '整局结束' : state.phase === 'hand-complete' ? '本手结算' : state.turn === mySeat ? '轮到你行动' : '等待好友行动'}</h2></div>
+        <div><span>第 {state.handNumber} 手 · 无限注 · 固定盲注 10 / 20</span><h2 aria-live="polite">{stageLabel}</h2></div>
+        <button className="poker-sound-toggle" type="button" aria-pressed={soundEnabled} onClick={toggleSound}>{soundEnabled ? '牌桌音效：开' : '牌桌音效：静音'}</button>
         <div className="poker-pot-summary"><small>底池</small><strong>{state.pot}</strong></div>
       </div>
-      {settlement && ['hand-complete', 'finished'].includes(state.phase) && (
+      {showSettlement && settlement && (
         <section className="poker-settlement" aria-label={`第 ${settlement.handNumber} 手结算`}>
           <div className="poker-settlement-heading">
             <div><span>HAND {String(settlement.handNumber).padStart(2, '0')}</span><h3>{settlement.reason === 'fold' ? `${pokerSeatName(settlement.winners[0]!, mySeat, members)} 收下底池` : `${settlement.winners.map((seat) => pokerSeatName(seat, mySeat, members)).join('、')} 摊牌获胜`}</h3></div>
@@ -395,19 +566,23 @@ export function TexasHoldemGame({ state, mySeat, active, members = [], onAction 
           </div>}
         </section>
       )}
-      <div className="poker-community" aria-label={`公共牌，共 ${state.communityCards.length} 张`}>
-        {state.communityCards.map((card) => <PokerCardView key={card.id} card={card} highlighted={winningCardIds.has(card.id)} />)}
-        {Array.from({ length: 5 - state.communityCards.length }, (_, index) => <PokerCardView key={`empty-${index}`} card={null} placeholder />)}
+      <div className="poker-community" aria-label={`公共牌，共 ${displayedCommunityCount} 张`}>
+        <div className="poker-deck" aria-hidden="true"><span className="poker-deck-card" /><small>牌堆</small></div>
+        {burning && <span className="poker-burn-card" aria-hidden="true"><i className="poker-card-back" /></span>}
+        {state.communityCards.slice(0, displayedCommunityCount).map((card, index) => <PokerCardView key={card.id} card={card} dealing={dealingIndex === index} highlighted={winningCardIds.has(card.id)} />)}
+        {Array.from({ length: 5 - displayedCommunityCount }, (_, index) => <PokerCardView key={`empty-${index}`} card={null} placeholder />)}
       </div>
+      {potPulseKey > 0 && <div className="poker-pot-flight" key={potPulseKey} aria-hidden="true"><Chip value={25} small /><Chip value={5} small /><Chip value={1} small /></div>}
       <div className="poker-seats" aria-label="玩家座位">
         {state.players.map((player) => {
           const isMine = player.seat === mySeat;
           const isTurn = player.seat === state.turn;
+          const revealHoleCards = isMine || !['hand-complete', 'finished'].includes(state.phase) || (showdownVisible && settlement?.reason === 'showdown');
           return (
-            <article className={`poker-seat ${isMine ? 'is-mine' : ''} ${isTurn ? 'is-turn' : ''} ${player.folded ? 'is-folded' : ''} ${player.eliminated ? 'is-eliminated' : ''}`} key={player.seat}>
+            <article className={`poker-seat ${isMine ? 'is-mine' : ''} ${isTurn ? 'is-turn' : ''} ${player.folded ? 'is-folded' : ''} ${player.eliminated ? 'is-eliminated' : ''} ${payoutActive && settlement?.winners.includes(player.seat) ? 'is-payout-target' : ''}`} key={player.seat}>
               <div className="poker-seat-heading"><strong>{pokerSeatName(player.seat, mySeat, members)}</strong><span>{player.eliminated ? '已淘汰' : player.allIn ? 'All-in' : player.folded ? '已弃牌' : `筹码 ${player.stack}`}</span></div>
               <div className="poker-hole-cards" aria-label={isMine ? '你的手牌' : '对手手牌'}>
-                {player.eliminated ? <span className="poker-eliminated-mark">OUT</span> : player.holeCards ? player.holeCards.map((card) => <PokerCardView key={card.id} card={card} highlighted={winningCardIds.has(card.id)} />) : <><PokerCardView card={null} hidden /><PokerCardView card={null} hidden /></>}
+                {player.holeCards && revealHoleCards ? player.holeCards.map((card) => <PokerCardView key={card.id} card={card} highlighted={winningCardIds.has(card.id)} />) : player.eliminated && !player.holeCards ? <span className="poker-eliminated-mark">OUT</span> : <><PokerCardView card={null} hidden /><PokerCardView card={null} hidden /></>}
               </div>
               <small>投入 {player.totalCommitted}{player.seat === state.dealerSeat ? ' · 庄' : ''}{player.seat === state.smallBlindSeat ? ' · 小盲' : ''}{player.seat === state.bigBlindSeat ? ' · 大盲' : ''}</small>
             </article>
@@ -424,13 +599,13 @@ export function TexasHoldemGame({ state, mySeat, active, members = [], onAction 
             <div className="poker-wager-control">
               <div className="poker-wager-summary" aria-live="polite"><span>本次投入 <b>{selectedAmount}</b></span><span>本轮下注至 <b>{selectedTarget}</b></span></div>
               <div className="poker-chip-tray" aria-label="选择筹码">
-                {chipValues.map((value) => <button type="button" key={value} aria-label={`添加 ${value} 筹码`} disabled={selectedAmount + value > maximumAdditional} onClick={() => setSelectedChips((chips) => [...chips, value])}><Chip value={value} /></button>)}
+                {chipValues.map((value) => <button type="button" key={value} aria-label={`添加 ${value} 筹码`} disabled={selectedAmount + value > maximumAdditional} onClick={() => setSelectedWager({ snapshotVersion, chips: [...selectedChips, value] })}><Chip value={value} /></button>)}
               </div>
               <div className="poker-selected-stack" aria-label={`已选择 ${selectedAmount} 筹码`}>{selectedChips.slice(-9).map((value, index) => <Chip key={`${value}-${index}`} value={value} small />)}</div>
               <div className="poker-wager-buttons">
-                <button type="button" className="is-secondary" disabled={selectedChips.length === 0} onClick={() => setSelectedChips((chips) => chips.slice(0, -1))}>撤回一枚</button>
-                <button type="button" className="is-secondary" disabled={selectedChips.length === 0} onClick={() => setSelectedChips([])}>清空</button>
-                <button type="button" className="is-secondary" onClick={() => setSelectedChips(chipsFor(minimumAdditional))}>最小{wagerType === 'bet' ? '下注' : '加注'}</button>
+                <button type="button" className="is-secondary" disabled={selectedChips.length === 0} onClick={() => setSelectedWager({ snapshotVersion, chips: selectedChips.slice(0, -1) })}>撤回一枚</button>
+                <button type="button" className="is-secondary" disabled={selectedChips.length === 0} onClick={() => setSelectedWager({ snapshotVersion, chips: [] })}>清空</button>
+                <button type="button" className="is-secondary" onClick={() => setSelectedWager({ snapshotVersion, chips: chipsFor(minimumAdditional) })}>最小{wagerType === 'bet' ? '下注' : '加注'}</button>
                 <button type="button" disabled={!wagerValid} onClick={submitWager}>{wagerType === 'bet' ? '推入下注' : '推入加注'} {selectedTarget}</button>
               </div>
               {!wagerValid && <small className="poker-wager-hint">至少再投入 {minimumAdditional}，最多 {maximumAdditional}</small>}

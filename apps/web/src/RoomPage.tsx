@@ -67,6 +67,7 @@ export function RoomPage({ client }: { client: GameHallClient }) {
   const confirmTriggerRef = useRef<HTMLElement | null>(null);
   const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
   const [messageDraft, setMessageDraft] = useState('');
+  const [pokerPresentationLocked, setPokerPresentationLocked] = useState(false);
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const followMessagesRef = useRef(true);
   const [now, setNow] = useState(room?.serverTimeMs ?? 0);
@@ -115,7 +116,7 @@ export function RoomPage({ client }: { client: GameHallClient }) {
   const me = room?.members.find((member) => member.seat === room.mySeat);
   const opponent = room?.members.find((member) => member.seat !== room.mySeat);
   const inviteUrl = room ? `${window.location.origin}${window.location.pathname}?room=${room.code}` : '';
-  const result = room && game ? resultMessage(room.gameId, game.view, room.mySeat) : null;
+  const result = !(room?.gameId === 'texas-holdem' && pokerPresentationLocked) && room && game ? resultMessage(room.gameId, game.view, room.mySeat) : null;
   const pokerBetweenHands = room?.gameId === 'texas-holdem' && (game?.view as TexasHoldemView | undefined)?.phase === 'hand-complete';
   const pauseDeadline = room?.pauseReason === 'restart'
     ? room.restartDeadlineMs
@@ -296,7 +297,7 @@ export function RoomPage({ client }: { client: GameHallClient }) {
               {room.gameId === 'gomoku' && <GomokuGame state={game.view as GomokuState} mySeat={requireBinaryPlayer(room.mySeat)} active={canPlay} onAction={client.submitGameAction} />}
               {room.gameId === 'quoridor' && <QuoridorGame state={game.view as QuoridorView} mySeat={requireBinaryPlayer(room.mySeat)} active={canPlay} onAction={client.submitGameAction} />}
               {room.gameId === 'twenty-four' && <TwentyFourGame key={(game.view as TwentyFourView).round} state={game.view as TwentyFourView} mySeat={requireBinaryPlayer(room.mySeat)} active={canPlay} serverNowMs={gameClockNow} onAction={client.submitGameAction} />}
-              {room.gameId === 'texas-holdem' && <TexasHoldemGame key={game.version} state={game.view as TexasHoldemView} mySeat={room.mySeat} active={canPlay} members={room.members} onAction={client.submitGameAction} />}
+              {room.gameId === 'texas-holdem' && <TexasHoldemGame snapshotVersion={game.version} state={game.view as TexasHoldemView} mySeat={room.mySeat} active={canPlay} members={room.members} onAction={client.submitGameAction} onPresentationLockChange={setPokerPresentationLocked} />}
               {result && (
                 <Reveal className="result-reveal" distance={20} key={result}>
                   <div className="result-panel" role="status">
