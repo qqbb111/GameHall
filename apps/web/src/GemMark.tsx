@@ -29,6 +29,8 @@ export function GemMark({ color, detailed = false }: { color: TokenColor; detail
         <linearGradient id={`${id}-body`} x1="0" y1="0" x2="1" y2="1"><stop stopColor={light} /><stop offset=".4" stopColor={body} /><stop offset="1" stopColor={dark} /></linearGradient>
         <linearGradient id={`${id}-table`} x1="0" y1="0" x2=".8" y2="1"><stop stopColor={light} stopOpacity=".95" /><stop offset=".35" stopColor={body} /><stop offset=".7" stopColor={dark} /><stop offset="1" stopColor={light} /></linearGradient>
         <linearGradient id={`${id}-edge`} x1="0" y1="0" x2="1" y2="1"><stop stopColor="#fff" stopOpacity=".9" /><stop offset=".5" stopColor={light} stopOpacity=".12" /><stop offset="1" stopColor={dark} /></linearGradient>
+        <linearGradient id={`${id}-shimmer`} x1="0" y1="0" x2="1" y2="0"><stop stopColor="#fff" stopOpacity="0" /><stop offset=".5" stopColor="#fff" stopOpacity=".82" /><stop offset="1" stopColor="#fff" stopOpacity="0" /></linearGradient>
+        <clipPath id={`${id}-shape`}><polygon points={points(outer)} /></clipPath>
       </defs>
       <polygon points={points(outer)} transform="translate(0 1.4)" fill={dark} />
       <polygon points={points(outer)} fill={`url(#${id}-body)`} />
@@ -41,6 +43,7 @@ export function GemMark({ color, detailed = false }: { color: TokenColor; detail
       })}
       <polygon points={points(inner)} fill={`url(#${id}-table)`} stroke={light} strokeOpacity=".6" strokeWidth=".35" />
       <polygon points={points(outer)} fill="none" stroke={`url(#${id}-edge)`} strokeWidth=".7" strokeLinejoin="round" />
+      {detailed && <g className="gem-home-shimmer" clipPath={`url(#${id}-shape)`} data-gem-shimmer="clipped"><rect x="-18" y="-8" width="10" height="52" transform="rotate(18 16 17)" fill={`url(#${id}-shimmer)`} /></g>}
       {detailed && <><path d="M10 10L20 8L13 16Z" fill="#fff" opacity=".3" /><path d="M9 7v4M7 9h4" stroke="#fff" strokeWidth=".6" strokeLinecap="round" opacity=".9" /></>}
     </svg>
   </span>;

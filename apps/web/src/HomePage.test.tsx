@@ -122,6 +122,9 @@ describe('HomePage', () => {
     expect(container.querySelectorAll('.gomoku-grid path')).toHaveLength(5);
     expect(container.querySelector('.splendor-gem-aura')).toBeInTheDocument();
     expect(container.querySelector('.splendor-home-gems')).toHaveAttribute('data-motion', 'hover-replay');
+    const gemShimmers = [...container.querySelectorAll('[data-gem-shimmer="clipped"]')];
+    expect(gemShimmers).toHaveLength(3);
+    expect(gemShimmers.every((shimmer) => shimmer.closest('svg'))).toBe(true);
     expect(container.querySelectorAll('.splendor-gem-dust i')).toHaveLength(6);
     expect(container.querySelector('.effect-gomoku .gomoku-win-guide')).toBeInTheDocument();
     expect(container.querySelector('.effect-quoridor .quoridor-wall')).toBeInTheDocument();
