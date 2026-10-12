@@ -178,6 +178,82 @@ describe('game components', () => {
     expect(screen.getByRole('button', { name: '提交答案' })).toBeDisabled();
   });
 
+  it('24 点原生输入、粘贴与快捷编辑共享撤销重做顺序，键盘只作用于算式', () => {
+    const nowMs = 1_000_000;
+    const state = createTwentyFourState([
+      { id: 0, suit: 'S', rank: 1 }, { id: 5, suit: 'S', rank: 6 },
+      { id: 23, suit: 'H', rank: 11 }, { id: 37, suit: 'D', rank: 12 },
+    ], '1+6+11+12', nowMs);
+    const onAction = vi.fn().mockResolvedValue(undefined);
+    render(<><TwentyFourGame state={viewTwentyFourState(state, nowMs)} mySeat={0} active serverNowMs={nowMs} onAction={onAction} /><input aria-label="聊天输入测试" /></>);
+    const input = screen.getByLabelText('输入算式') as HTMLInputElement;
+    input.focus();
+    for (const value of ['1', '12', '12+', '12+3']) fireEvent.input(input, { target: { value }, inputType: 'insertText' });
+    expect(input).toHaveValue('12+3');
+    input.setSelectionRange(0, 0);
+    fireEvent.click(screen.getByRole('button', { name: '+' }));
+    expect(input).toHaveValue('+12+3');
+    expect(input.selectionStart).toBe(1);
+    fireEvent.keyDown(input, { key: 'z', ctrlKey: true });
+    expect(input).toHaveValue('12+3');
+    expect(input.selectionStart).toBe(0);
+    fireEvent.keyDown(input, { key: 'z', ctrlKey: true });
+    expect(input).toHaveValue('');
+    fireEvent.keyDown(input, { key: 'Z', ctrlKey: true, shiftKey: true });
+    expect(input).toHaveValue('12+3');
+    fireEvent.keyDown(input, { key: 'y', ctrlKey: true });
+    expect(input).toHaveValue('+12+3');
+
+    input.setSelectionRange(1, 3);
+    fireEvent.select(input);
+    fireEvent.input(input, { target: { value: '+7+3' }, inputType: 'insertFromPaste' });
+    expect(input).toHaveValue('+7+3');
+    fireEvent.click(screen.getByRole('button', { name: '撤销' }));
+    expect(input).toHaveValue('+12+3');
+    expect(input.selectionStart).toBe(1);
+    expect(input.selectionEnd).toBe(3);
+    fireEvent.click(screen.getByRole('button', { name: '重做' }));
+    expect(input).toHaveValue('+7+3');
+    fireEvent.click(screen.getByRole('button', { name: '清空' }));
+    expect(input).toHaveValue('');
+    fireEvent.click(screen.getByRole('button', { name: '撤销' }));
+    expect(input).toHaveValue('+7+3');
+
+    const chat = screen.getByLabelText('聊天输入测试');
+    chat.focus();
+    expect(fireEvent.keyDown(chat, { key: 'z', ctrlKey: true })).toBe(true);
+    expect(input).toHaveValue('+7+3');
+  });
+
+  it('24 点组合输入可整体撤销，暂停时历史不可改，历史长度有界', () => {
+    const nowMs = 1_000_000;
+    const state = createTwentyFourState([
+      { id: 0, suit: 'S', rank: 1 }, { id: 5, suit: 'S', rank: 6 },
+      { id: 23, suit: 'H', rank: 11 }, { id: 37, suit: 'D', rank: 12 },
+    ], '1+6+11+12', nowMs);
+    const onAction = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(<TwentyFourGame state={viewTwentyFourState(state, nowMs)} mySeat={0} active serverNowMs={nowMs} onAction={onAction} />);
+    const input = screen.getByLabelText('输入算式') as HTMLInputElement;
+    fireEvent.compositionStart(input);
+    fireEvent.input(input, { target: { value: '1' }, inputType: 'insertCompositionText' });
+    fireEvent.compositionEnd(input);
+    expect(input).toHaveValue('1');
+    fireEvent.keyDown(input, { key: 'z', ctrlKey: true });
+    expect(input).toHaveValue('');
+    fireEvent.keyDown(input, { key: 'z', ctrlKey: true, shiftKey: true });
+    expect(input).toHaveValue('1');
+    rerender(<TwentyFourGame state={viewTwentyFourState(state, nowMs)} mySeat={0} active={false} serverNowMs={nowMs} onAction={onAction} />);
+    expect(screen.getByRole('button', { name: '撤销' })).toBeDisabled();
+    fireEvent.keyDown(input, { key: 'z', ctrlKey: true });
+    expect(input).toHaveValue('1');
+    rerender(<TwentyFourGame state={viewTwentyFourState(state, nowMs)} mySeat={0} active serverNowMs={nowMs} onAction={onAction} />);
+
+    for (let index = 2; index <= 70; index++) fireEvent.input(input, { target: { value: String(index) }, inputType: 'insertFromPaste' });
+    for (let index = 0; index < 64; index++) fireEvent.click(screen.getByRole('button', { name: '撤销' }));
+    expect(input).toHaveValue('6');
+    expect(screen.getByRole('button', { name: '撤销' })).toBeDisabled();
+  });
+
   it('德州扑克只展示自己的手牌并提交跟注/弃牌操作', () => {
     const onAction = vi.fn().mockResolvedValue(undefined);
     const state = createTexasHoldemState({ seats: [0, 1], dealerSeat: 0, rng: () => 0.2 });

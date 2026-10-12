@@ -252,24 +252,82 @@ export function QuoridorGame({ state, mySeat, active, onAction }: { state: Quori
 
 const suitSymbols = { S: '♠', H: '♥', D: '♦', C: '♣' } as const;
 const rankLabels: Record<number, string> = { 1: 'A', 11: 'J', 12: 'Q', 13: 'K' };
+type ExpressionSnapshot = { text: string; start: number; end: number };
+const EXPRESSION_HISTORY_LIMIT = 64;
 
 export function TwentyFourGame({ state, mySeat, active, serverNowMs, onAction }: { state: TwentyFourView; mySeat: Player; active: boolean; serverNowMs: number; onAction: ActionHandler }) {
   const [expression, setExpression] = useState('');
+  const [historyAvailability, setHistoryAvailability] = useState({ canUndo: false, canRedo: false });
   const inputRef = useRef<HTMLInputElement>(null);
   const composingRef = useRef(false);
-  const pendingCaret = useRef<number | null>(null);
+  const compositionBefore = useRef<ExpressionSnapshot | null>(null);
+  const selectionRef = useRef({ start: 0, end: 0 });
+  const pendingSelection = useRef<{ start: number; end: number } | null>(null);
+  const historyRef = useRef<{ past: ExpressionSnapshot[]; future: ExpressionSnapshot[]; lastNative: { kind: string; caret: number } | null }>({ past: [], future: [], lastNative: null });
   const remainingMs = Math.max(0, state.deadlineAtMs - serverNowMs);
   const cooldownMs = Math.max(0, state.cooldownUntilMs[mySeat] - serverNowMs);
   const canEdit = active && state.phase === 'answering' && remainingMs > 0;
   const canSubmit = canEdit && cooldownMs <= 0 && expression.trim().length > 0;
 
   useLayoutEffect(() => {
-    if (pendingCaret.current === null || !inputRef.current) return;
-    const caret = pendingCaret.current;
-    pendingCaret.current = null;
+    if (!pendingSelection.current || !inputRef.current) return;
+    const selection = pendingSelection.current;
+    pendingSelection.current = null;
     inputRef.current.focus();
-    inputRef.current.setSelectionRange(caret, caret);
+    inputRef.current.setSelectionRange(selection.start, selection.end);
+    selectionRef.current = selection;
   }, [expression]);
+
+  function currentSnapshot(): ExpressionSnapshot {
+    const input = inputRef.current;
+    return { text: expression, start: input?.selectionStart ?? selectionRef.current.start, end: input?.selectionEnd ?? selectionRef.current.end };
+  }
+
+  function remember(before: ExpressionSnapshot, nativeKind: string | null = null, nextCaret = 0) {
+    const history = historyRef.current;
+    const contiguous = (nativeKind === 'insertText' || nativeKind === 'deleteContentBackward')
+      && history.lastNative?.kind === nativeKind && history.lastNative.caret === before.start && before.start === before.end;
+    if (!contiguous) {
+      history.past.push(before);
+      if (history.past.length > EXPRESSION_HISTORY_LIMIT) history.past.shift();
+    }
+    history.future = [];
+    history.lastNative = nativeKind === 'insertText' || nativeKind === 'deleteContentBackward' ? { kind: nativeKind, caret: nextCaret } : null;
+    setHistoryAvailability({ canUndo: history.past.length > 0, canRedo: false });
+  }
+
+  function restore(redo: boolean) {
+    if (!canEdit || composingRef.current) return;
+    const history = historyRef.current;
+    const source = redo ? history.future : history.past;
+    const destination = redo ? history.past : history.future;
+    const snapshot = source.pop();
+    if (!snapshot) return;
+    destination.push(currentSnapshot());
+    history.lastNative = null;
+    setHistoryAvailability({ canUndo: history.past.length > 0, canRedo: history.future.length > 0 });
+    pendingSelection.current = { start: snapshot.start, end: snapshot.end };
+    selectionRef.current = pendingSelection.current;
+    if (snapshot.text === expression) {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(snapshot.start, snapshot.end);
+      pendingSelection.current = null;
+    } else setExpression(snapshot.text);
+  }
+
+  function replaceExpression(next: string, start: number, end = start) {
+    const input = inputRef.current;
+    if (next === expression) {
+      input?.focus();
+      input?.setSelectionRange(start, end);
+      selectionRef.current = { start, end };
+      return;
+    }
+    remember(currentSnapshot());
+    pendingSelection.current = { start, end };
+    selectionRef.current = pendingSelection.current;
+    setExpression(next);
+  }
 
   function edit(value: string, backspace = false) {
     if (!canEdit || composingRef.current) return;
@@ -279,12 +337,18 @@ export function TwentyFourGame({ state, mySeat, active, serverNowMs, onAction }:
     const from = backspace && start === end ? Math.max(0, start - 1) : start;
     const next = `${expression.slice(0, from)}${value}${expression.slice(end)}`;
     if (next.length > 128) { input?.focus(); return; }
-    pendingCaret.current = from + value.length;
-    if (next === expression) {
-      input?.focus();
-      input?.setSelectionRange(pendingCaret.current, pendingCaret.current);
-      pendingCaret.current = null;
-    } else setExpression(next);
+    replaceExpression(next, from + value.length);
+  }
+
+  function changeExpression(input: HTMLInputElement, inputType: string | null) {
+    if (!canEdit) return;
+    const next = input.value.slice(0, 128);
+    const start = Math.min(input.selectionStart ?? next.length, next.length);
+    const end = Math.min(input.selectionEnd ?? start, next.length);
+    if (next === expression) { selectionRef.current = { start, end }; return; }
+    if (!composingRef.current) remember({ text: expression, ...selectionRef.current }, inputType, start);
+    selectionRef.current = { start, end };
+    setExpression(next);
   }
 
   return (
@@ -307,13 +371,37 @@ export function TwentyFourGame({ state, mySeat, active, serverNowMs, onAction }:
         <div className="expression-panel">
           <label htmlFor="expression">输入算式</label>
           <div className="expression-row">
-            <input ref={inputRef} id="expression" value={expression} maxLength={128} disabled={!canEdit} onChange={(event) => setExpression(event.target.value.slice(0, 128))} onCompositionStart={() => { composingRef.current = true; }} onCompositionEnd={() => { composingRef.current = false; }} onKeyDown={(event) => { if (event.key === 'Enter' && !composingRef.current && !event.nativeEvent.isComposing && canSubmit) void onAction({ type: 'submit', expression }); }} placeholder="例如：8/(3-8/3)" autoComplete="off" spellCheck={false} />
+            <input ref={inputRef} id="expression" value={expression} maxLength={128} disabled={!canEdit}
+              onSelect={(event) => { selectionRef.current = { start: event.currentTarget.selectionStart ?? 0, end: event.currentTarget.selectionEnd ?? 0 }; }}
+              onChange={(event) => changeExpression(event.currentTarget, (event.nativeEvent as InputEvent).inputType ?? null)}
+              onCompositionStart={() => { composingRef.current = true; compositionBefore.current = currentSnapshot(); }}
+              onCompositionEnd={(event) => {
+                composingRef.current = false;
+                const before = compositionBefore.current;
+                compositionBefore.current = null;
+                const next = event.currentTarget.value.slice(0, 128);
+                if (before && before.text !== next) remember(before);
+                if (next !== expression) setExpression(next);
+                selectionRef.current = { start: event.currentTarget.selectionStart ?? next.length, end: event.currentTarget.selectionEnd ?? next.length };
+              }}
+              onBeforeInput={(event) => { const kind = (event.nativeEvent as InputEvent).inputType; if (kind === 'historyUndo' || kind === 'historyRedo') { event.preventDefault(); restore(kind === 'historyRedo'); } }}
+              onKeyDown={(event) => {
+                if (composingRef.current || event.nativeEvent.isComposing) return;
+                if ((event.ctrlKey || event.metaKey) && !event.altKey && (event.key.toLowerCase() === 'z' || event.key.toLowerCase() === 'y')) {
+                  event.preventDefault();
+                  restore(event.key.toLowerCase() === 'y' || event.shiftKey);
+                  return;
+                }
+                if (event.key === 'Enter' && canSubmit) void onAction({ type: 'submit', expression });
+              }} placeholder="例如：8/(3-8/3)" autoComplete="off" spellCheck={false} />
             <button type="button" disabled={!canSubmit} onClick={() => void onAction({ type: 'submit', expression })}>提交答案</button>
           </div>
           <div className="math-pad" role="toolbar" aria-label="算式快捷键">
             {['+', '−', '×', '÷', '(', ')'].map((operator) => <button type="button" key={operator} disabled={!canEdit} onPointerDown={(event) => event.preventDefault()} onClick={() => edit(operator === '−' ? '-' : operator === '×' ? '*' : operator === '÷' ? '/' : operator)}>{operator}</button>)}
             <button type="button" disabled={!canEdit} onPointerDown={(event) => event.preventDefault()} onClick={() => edit('', true)}>退格</button>
-            <button type="button" disabled={!canEdit} onPointerDown={(event) => event.preventDefault()} onClick={() => { pendingCaret.current = 0; setExpression(''); if (!expression) { inputRef.current?.focus(); inputRef.current?.setSelectionRange(0, 0); pendingCaret.current = null; } }}>清空</button>
+            <button type="button" disabled={!canEdit} onPointerDown={(event) => event.preventDefault()} onClick={() => { if (canEdit && !composingRef.current) replaceExpression('', 0); }}>清空</button>
+            <button type="button" disabled={!canEdit || !historyAvailability.canUndo} onPointerDown={(event) => event.preventDefault()} onClick={() => restore(false)}>撤销</button>
+            <button type="button" disabled={!canEdit || !historyAvailability.canRedo} onPointerDown={(event) => event.preventDefault()} onClick={() => restore(true)}>重做</button>
           </div>
           <p className={`cooldown-note ${cooldownMs > 0 ? 'visible' : ''}`} aria-live="polite">{cooldownMs > 0 ? `答案不正确，${Math.ceil(cooldownMs / 1000)} 秒后可再次提交` : '允许分数和负数中间结果，四张牌必须各用一次。'}</p>
         </div>
