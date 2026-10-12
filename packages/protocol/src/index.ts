@@ -163,5 +163,6 @@ export type ClientToServerEvents = {
 
 export type SessionResponse = {
   sessionId: string;
+  socketProof: string;
   reconnectableRoomCode: string | null;
 };

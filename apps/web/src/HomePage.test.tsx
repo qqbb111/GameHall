@@ -18,7 +18,7 @@ function clientStub(overrides: Partial<GameHallClient> = {}): GameHallClient {
   return {
     loading: false,
     connection: 'online',
-    session: { sessionId: 'session', reconnectableRoomCode: null },
+    session: { sessionId: 'session', socketProof: 'A'.repeat(43), reconnectableRoomCode: null },
     room: null,
     game: null,
     error: null,
@@ -375,7 +375,7 @@ describe('HomePage', () => {
     window.history.replaceState(null, '', '/?practice=reversi&source=summary-watch#board');
     expect(leavePracticeAddress()).toBe('replace');
     expect(window.location.search).toBe('?source=summary-watch');
-    render(<HomePage client={clientStub({ session: { sessionId: 'session', reconnectableRoomCode: 'ABC234' } })} />);
+    render(<HomePage client={clientStub({ session: { sessionId: 'session', socketProof: 'A'.repeat(43), reconnectableRoomCode: 'ABC234' } })} />);
     expect(screen.getByLabelText('六位房间邀请码')).toHaveValue('ABC234');
   });
 

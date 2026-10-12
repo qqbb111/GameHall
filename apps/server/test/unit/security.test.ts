@@ -1,7 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeNickname, normalizeRoomMessage, requestHash, SlidingWindowLimiter } from '../../src/security';
+import { normalizeNickname, normalizeRoomMessage, requestHash, SlidingWindowLimiter, socketProof, verifySocketProof } from '../../src/security';
 
 describe('guest security helpers', () => {
+  it('Socket 证明绑定 token 和 sessionId，格式有界且不接受替换值', () => {
+    const proof = socketProof('a'.repeat(43), 'session-a');
+    expect(proof).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(verifySocketProof('a'.repeat(43), 'session-a', proof)).toBe(true);
+    expect(verifySocketProof('b'.repeat(43), 'session-a', proof)).toBe(false);
+    expect(verifySocketProof('a'.repeat(43), 'session-b', proof)).toBe(false);
+    expect(verifySocketProof('a'.repeat(43), 'session-a', proof + 'A')).toBe(false);
+    expect(verifySocketProof('a'.repeat(43), 'session-a', proof + '\n')).toBe(false);
+    expect(verifySocketProof('a'.repeat(43), 'session-a', proof + '\r\n')).toBe(false);
+    expect(verifySocketProof('a'.repeat(43), 'session-a', proof + '中')).toBe(false);
+    expect(verifySocketProof('a'.repeat(43), 'session-a', ['a'])).toBe(false);
+  });
   it('按可见字素限制昵称并拒绝控制字符', () => {
     expect(normalizeNickname('  木纹   棋手  ')).toEqual({ display: '木纹 棋手', key: '木纹 棋手' });
     expect(normalizeNickname('😀'.repeat(16))?.display).toBe('😀'.repeat(16));

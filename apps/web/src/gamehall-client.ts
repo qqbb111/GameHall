@@ -25,6 +25,16 @@ const ACK_TIMEOUT_MS = 8_000;
 const SESSION_TIMEOUT_MS = 7_000;
 const SESSION_RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 8_000, 8_000] as const;
 
+function engineRejectionCode(cause: Error): string | null {
+  const transport = cause as Error & { description?: unknown; context?: { responseText?: unknown } };
+  if ((transport.description !== 403 && transport.description !== 429) || typeof transport.context?.responseText !== 'string' ||
+      transport.context.responseText.length > 128) return null;
+  try {
+    const body = JSON.parse(transport.context.responseText) as { code?: unknown };
+    return body.code === 'SESSION_REQUIRED' || body.code === 'ORIGIN_NOT_ALLOWED' || body.code === 'RATE_LIMITED' ? body.code : null;
+  } catch { return null; }
+}
+
 export type MessageToast = {
   id: string;
   nickname: string;
@@ -86,17 +96,20 @@ export function useGameHallClient() {
       });
       socket.on('connect_error', (cause) => {
         if (!isCurrent()) return;
-        if (cause.message === 'SESSION_REQUIRED' && sessionRefreshAttemptsRef.current < 2) {
+        const code = engineRejectionCode(cause) ?? cause.message;
+        if (code === 'SESSION_REQUIRED' && sessionRefreshAttemptsRef.current < 2) {
           sessionRefreshAttemptsRef.current++;
           void bootstrapRef.current();
           return;
         }
         setConnection('offline');
-        const blocked = cause.message === 'ORIGIN_NOT_ALLOWED' || cause.message === 'RATE_LIMITED';
+        const blocked = code === 'ORIGIN_NOT_ALLOWED' || code === 'RATE_LIMITED' || code === 'SESSION_REQUIRED';
         connectionBlockedRef.current = blocked;
         if (blocked) socket.disconnect();
-        setError({ event: 'connection', commandId: null, code: blocked ? cause.message : 'CONNECT_FAILED',
-          message: blocked ? '当前连接请求被服务端拒绝，请稍后再试' : '实时服务连接失败，正在自动重试', retryable: !blocked });
+        setError({ event: 'connection', commandId: null, code: blocked ? code : 'CONNECT_FAILED',
+          message: code === 'SESSION_REQUIRED' ? '会话验证失败，请点击重新连接' :
+            blocked ? '当前连接请求被服务端拒绝，请稍后再试' : '实时服务连接失败，正在自动重试',
+          retryable: code === 'SESSION_REQUIRED' || !blocked });
       });
       socket.on('disconnect', () => {
         if (isCurrent()) setConnection('offline');
@@ -192,8 +205,11 @@ export function useGameHallClient() {
       const operation = (async () => {
         try {
           const response = await fetch('/api/session', { method: 'POST', credentials: 'include', signal: AbortSignal.timeout(SESSION_TIMEOUT_MS) });
+          if (response.status === 429) throw new Error('RATE_LIMITED');
           if (!response.ok) throw new Error('SESSION_FAILED');
           const value = await response.json() as SessionResponse;
+          if (!value.sessionId || typeof value.socketProof !== 'string' || value.socketProof.length !== 43 ||
+            !/^[A-Za-z0-9_-]{43}$/.test(value.socketProof)) throw new Error('SESSION_FAILED');
           if (!active || !mountedRef.current) return;
 
           if (sessionIdRef.current && sessionIdRef.current !== value.sessionId) {
@@ -210,14 +226,21 @@ export function useGameHallClient() {
           const previousSocket = socketRef.current;
           if (previousSocket) previousSocket.disconnect();
           const socket = io({ path: '/socket.io', withCredentials: true, transports: ['websocket', 'polling'], tryAllTransports: true,
-            timeout: SESSION_TIMEOUT_MS, reconnectionAttempts: 6, reconnectionDelayMax: 8_000 });
+            timeout: SESSION_TIMEOUT_MS, reconnectionAttempts: 6, reconnectionDelayMax: 8_000,
+            auth: { socketProof: value.socketProof },
+            transportOptions: { polling: { extraHeaders: { 'x-gamehall-socket-proof': value.socketProof } } } });
           socketRef.current = socket;
           bindSocket(socket);
           setLoading(false);
-        } catch {
+        } catch (cause) {
           if (!active || !mountedRef.current) return;
           setLoading(false);
           setConnection('offline');
+          if (cause instanceof Error && cause.message === 'RATE_LIMITED') {
+            connectionBlockedRef.current = true;
+            setError({ event: 'session', commandId: null, code: 'RATE_LIMITED', message: '会话请求太频繁，请稍后再试', retryable: false });
+            return;
+          }
           setError({ event: 'session', commandId: null, code: 'SESSION_FAILED', message: '暂时无法连接服务，正在自动重试', retryable: true });
           scheduleSessionRetry();
         }
@@ -452,6 +475,11 @@ export function useGameHallClient() {
     setError(null);
     setConnection('connecting');
     clearRetryTimer();
+    if (error?.code === 'SESSION_REQUIRED' || error?.code === 'RATE_LIMITED') {
+      sessionRefreshAttemptsRef.current = 0;
+      void bootstrapRef.current();
+      return;
+    }
     const socket = socketRef.current;
     if (!socket) {
       void bootstrapRef.current();
@@ -463,7 +491,7 @@ export function useGameHallClient() {
       return;
     }
     socket.connect();
-  }, [clearRetryTimer, syncRoomById]);
+  }, [clearRetryTimer, error?.code, syncRoomById]);
 
   useEffect(() => {
     const refresh = () => {

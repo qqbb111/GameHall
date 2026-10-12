@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import { createServer, type Server as HttpServer } from 'node:http';
+import { createServer, type IncomingHttpHeaders, type IncomingMessage, type Server as HttpServer, type ServerResponse } from 'node:http';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import * as cookie from 'cookie';
@@ -26,18 +26,20 @@ import {
 import { loadConfig, type ServerConfig } from './config';
 import { GameHallDatabase } from './database';
 import { RoomService, type GameHallIo, type GameHallSocket, type SocketData } from './room-service';
-import { createSessionToken, hashToken, SlidingWindowLimiter } from './security';
+import { createSessionToken, hashToken, SlidingWindowLimiter, socketProof, verifySocketProof } from './security';
 
 type InterServerEvents = Record<string, never>;
 type SessionRow = { id: string; expires_at_ms: number };
 
 const SESSION_COOKIE = 'gamehall_session';
 const SESSION_TTL_MS = 7 * 24 * 60 * 60_000;
+const SOCKET_PROOF_HEADER = 'x-gamehall-socket-proof';
 
 function parseCookieToken(header: string | undefined): string | null {
   if (!header) return null;
   try {
-    return cookie.parse(header)[SESSION_COOKIE] ?? null;
+    const token = cookie.parse(header)[SESSION_COOKIE];
+    return token?.length === 43 && /^[A-Za-z0-9_-]{43}$/.test(token) ? token : null;
   } catch {
     return null;
   }
@@ -66,7 +68,8 @@ export function createGameHallServer(configOverrides: Partial<ServerConfig> = {}
     maxHttpBufferSize: 16 * 1024,
     cors: {
       origin(origin, callback) {
-        if ((!origin && config.isTest) || (origin && config.allowedOrigins.has(origin))) callback(null, true);
+        // Engine middleware authenticates every request without an Origin before transport allocation.
+        if (origin === undefined || config.allowedOrigins.has(origin)) callback(null, true);
         else callback(new Error('origin not allowed'));
       },
       credentials: true,
@@ -111,12 +114,58 @@ export function createGameHallServer(configOverrides: Partial<ServerConfig> = {}
       .get(hashToken(token), nowMs) as SessionRow | undefined;
   }
 
+  function authorizedSession(origin: string | undefined, cookieHeader: string | undefined, proof: unknown): SessionRow | undefined {
+    if (origin !== undefined && !config.allowedOrigins.has(origin)) return undefined;
+    const token = parseCookieToken(cookieHeader);
+    const session = sessionForToken(token, Date.now());
+    if (!token || !session || (origin === undefined && !verifySocketProof(token, session.id, proof))) return undefined;
+    return session;
+  }
+
+  function requestAddress(headers: IncomingHttpHeaders, remoteAddress: string | undefined): string {
+    const forwarded = headers['x-forwarded-for'];
+    const text = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+    return text?.split(',').at(-1)?.trim() || remoteAddress || 'unknown';
+  }
+
+  // Runs on the first Engine.IO GET and on every later polling GET/POST and upgrade.
+  // Checking only io.use would leave an unauthenticated Engine transport and SID alive.
+  const engineSessionByRequest = new WeakMap<IncomingMessage, string>();
+  const engineSessionBySid = new Map<string, string>();
+  io.engine.on('connection', (engineSocket) => {
+    // Engine.IO exposes the initial request here; only the server records its authenticated identity.
+    const sessionId = engineSessionByRequest.get(engineSocket.request);
+    if (!sessionId) { engineSocket.close(true); return; }
+    const sid = (engineSocket as unknown as { id: string }).id;
+    engineSessionBySid.set(sid, sessionId);
+    engineSocket.once('close', () => engineSessionBySid.delete(sid));
+  });
+  io.engine.use((request: IncomingMessage, response: ServerResponse, next: (error?: Error) => void) => {
+    const sid = new URL(request.url ?? '', 'http://localhost').searchParams.get('sid');
+    const initial = !sid;
+    if (initial && !limiter.allow(`socket:${requestAddress(request.headers, request.socket.remoteAddress)}:handshake`, 80, 60_000)) {
+      response.writeHead(429, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'Retry-After': '60' });
+      response.end(JSON.stringify({ code: 'RATE_LIMITED' }));
+      return;
+    }
+    const session = authorizedSession(request.headers.origin, request.headers.cookie, request.headers[SOCKET_PROOF_HEADER]);
+    if (session && (!sid || engineSessionBySid.get(sid) === session.id)) {
+      if (initial) engineSessionByRequest.set(request, session.id);
+      return next();
+    }
+    const code = request.headers.origin !== undefined && !config.allowedOrigins.has(request.headers.origin)
+      ? 'ORIGIN_NOT_ALLOWED' : 'SESSION_REQUIRED';
+    response.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+    response.end(JSON.stringify({ code }));
+  });
+
   app.get('/healthz', (_request, response) => {
     if (closing) response.status(503).json({ ok: false });
     else response.json({ ok: true });
   });
 
   app.post('/api/session', (request, response) => {
+    response.setHeader('Cache-Control', 'no-store');
     const nowMs = Date.now();
     const address = request.ip ?? request.socket.remoteAddress ?? 'unknown';
     const perMinute = limiter.allow(`http:${address}:session:minute`, 60, 60_000, nowMs);
@@ -150,25 +199,17 @@ export function createGameHallServer(configOverrides: Partial<ServerConfig> = {}
     }));
     const body: SessionResponse = {
       sessionId: session.id,
+      socketProof: socketProof(activeToken!, session.id),
       reconnectableRoomCode: roomService.getReconnectableRoomCode(session.id),
     };
     response.json(body);
   });
 
   io.use((socket, next) => {
-    if (!limiter.allow(`socket:${socketAddress(socket)}:handshake`, 80, 60_000)) {
-      next(new Error('RATE_LIMITED'));
-      return;
-    }
     const origin = socket.handshake.headers.origin;
-    if (origin ? !config.allowedOrigins.has(origin) : !config.isTest) {
-      next(new Error('ORIGIN_NOT_ALLOWED'));
-      return;
-    }
-    const token = parseCookieToken(socket.handshake.headers.cookie);
-    const session = sessionForToken(token, Date.now());
+    const session = authorizedSession(origin, socket.handshake.headers.cookie, socket.handshake.auth?.socketProof);
     if (!session) {
-      next(new Error('SESSION_REQUIRED'));
+      next(new Error(origin !== undefined && !config.allowedOrigins.has(origin) ? 'ORIGIN_NOT_ALLOWED' : 'SESSION_REQUIRED'));
       return;
     }
     socket.data.sessionId = session.id;

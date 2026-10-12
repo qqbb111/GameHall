@@ -51,14 +51,65 @@ vi.mock('socket.io-client', () => ({
   }),
 }));
 
-function sessionResponse(reconnectableRoomCode: string | null = null, sessionId = 'session-1') {
-  return new Response(JSON.stringify({ sessionId, reconnectableRoomCode }), {
+function sessionResponse(reconnectableRoomCode: string | null = null, sessionId = 'session-1', socketProof = 'A'.repeat(43)) {
+  return new Response(JSON.stringify({ sessionId, socketProof, reconnectableRoomCode }), {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
   });
 }
 
 describe('useGameHallClient connection recovery', () => {
+  it('WebSocket 受阻后 polling 的早期会话拒绝会有界刷新 proof，旧 Socket 事件不能恢复连接', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(sessionResponse(null, 'session-1', 'A'.repeat(43)))
+      .mockResolvedValueOnce(sessionResponse(null, 'session-2', 'B'.repeat(43)))
+      .mockResolvedValueOnce(sessionResponse(null, 'session-3', 'C'.repeat(43)))
+      .mockResolvedValueOnce(sessionResponse(null, 'session-4', 'D'.repeat(43)));
+    vi.stubGlobal('fetch', fetchMock);
+    const { result } = renderHook(() => useGameHallClient());
+    await waitFor(() => expect(socketMocks.sockets).toHaveLength(1));
+    const engineError = () => Object.assign(new Error('xhr poll error'), {
+      description: 403, context: { responseText: '{"code":"SESSION_REQUIRED"}' },
+    });
+    act(() => socketMocks.sockets[0]!.trigger('connect_error', engineError()));
+    await waitFor(() => expect(socketMocks.sockets).toHaveLength(2));
+    expect(vi.mocked(io).mock.calls[1]?.[0]).toMatchObject({ auth: { socketProof: 'B'.repeat(43) },
+      transportOptions: { polling: { extraHeaders: { 'x-gamehall-socket-proof': 'B'.repeat(43) } } } });
+    expect(socketMocks.sockets[0]!.disconnect).toHaveBeenCalled();
+    act(() => socketMocks.sockets[0]!.trigger('connect'));
+    expect(result.current.connection).not.toBe('online');
+    act(() => socketMocks.sockets[1]!.trigger('connect_error', engineError()));
+    await waitFor(() => expect(socketMocks.sockets).toHaveLength(3));
+    act(() => socketMocks.sockets[2]!.trigger('connect_error', engineError()));
+    expect(result.current.error?.code).toBe('SESSION_REQUIRED');
+    expect(socketMocks.sockets[2]!.disconnect).toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    act(() => result.current.reconnect());
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+  });
+
+  it('引擎层 Origin 和限流错误不刷新会话；429 会话接口也停止自动重试', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(sessionResponse()));
+    const first = renderHook(() => useGameHallClient());
+    await waitFor(() => expect(socketMocks.sockets).toHaveLength(1));
+    act(() => socketMocks.sockets[0]!.trigger('connect_error', Object.assign(new Error('xhr poll error'), {
+      description: 403, context: { responseText: '{"code":"ORIGIN_NOT_ALLOWED"}' },
+    })));
+    expect(first.result.current.error?.code).toBe('ORIGIN_NOT_ALLOWED');
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
+    first.unmount();
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 429 })));
+    const second = renderHook(() => useGameHallClient());
+    await waitFor(() => expect(second.result.current.error?.code).toBe('RATE_LIMITED'));
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
+  });
+
+  it('会话接口缺少有效 proof 时不创建 Socket', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(sessionResponse(null, 'session-1', `${'A'.repeat(43)}\n`)));
+    const { result } = renderHook(() => useGameHallClient());
+    await waitFor(() => expect(result.current.error?.code).toBe('SESSION_FAILED'));
+    expect(io).not.toHaveBeenCalled();
+  });
   it('重开清除旧对局并拒绝上一局的延迟房间和游戏快照', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(sessionResponse('ABC234')));
     const { result } = renderHook(() => useGameHallClient());
@@ -232,6 +283,8 @@ describe('useGameHallClient connection recovery', () => {
     expect(result.current.room).toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(vi.mocked(io).mock.calls[0]?.[0]).toMatchObject({ tryAllTransports: true, timeout: 7_000 });
+    expect(vi.mocked(io).mock.calls[0]?.[0]).toMatchObject({ auth: { socketProof: 'A'.repeat(43) },
+      transportOptions: { polling: { extraHeaders: { 'x-gamehall-socket-proof': 'A'.repeat(43) } } } });
     expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ signal: expect.any(AbortSignal) });
   });
 

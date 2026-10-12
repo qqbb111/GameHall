@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
 const bidiAndControl = /[\p{Cc}\p{Cf}]/u;
 
@@ -8,6 +8,18 @@ export function hashToken(token: string): string {
 
 export function createSessionToken(): string {
   return randomBytes(32).toString('base64url');
+}
+
+// A proof may be disclosed to the same-origin page, while the session cookie stays HttpOnly.
+// Domain separation prevents this HMAC from being confused with other token uses.
+export function socketProof(token: string, sessionId: string): string {
+  return createHmac('sha256', token).update(`gamehall:socket-proof:v1:${sessionId}`).digest('base64url');
+}
+
+export function verifySocketProof(token: string, sessionId: string, candidate: unknown): boolean {
+  if (typeof candidate !== 'string' || candidate.length !== 43 || !/^[A-Za-z0-9_-]{43}$/.test(candidate)) return false;
+  const expected = Buffer.from(socketProof(token, sessionId));
+  return timingSafeEqual(expected, Buffer.from(candidate));
 }
 
 export function normalizeNickname(input: string): { display: string; key: string } | null {

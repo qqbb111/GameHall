@@ -34,7 +34,7 @@ function finishedClient(gameId: keyof typeof finishedViews, rematchReady: [boole
     view: finishedViews[gameId], serverTimeMs: 1_000,
   };
   return {
-    loading: false, connection: 'online', session: { sessionId: 'session', reconnectableRoomCode: null },
+    loading: false, connection: 'online', session: { sessionId: 'session', socketProof: 'A'.repeat(43), reconnectableRoomCode: null },
     room, game, error: null, messages: [], messageToasts: [], clearError: vi.fn(), reconnect: vi.fn(),
     createRoom: vi.fn(), joinRoom: vi.fn(), startRoom: vi.fn(), reopenRoom: vi.fn(), setReady: vi.fn(), leaveRoom: vi.fn(),
     submitGameAction: vi.fn(), requestRematch, sendMessage: vi.fn(),
@@ -212,7 +212,7 @@ describe('RoomPage result copy', () => {
       view: { ...base, deadlineAtMs: 31_000, serverNowMs: serverTimeMs }, serverTimeMs,
     });
     const client = (connection: GameHallClient['connection'], roomValue: RoomSnapshot, gameValue: GameSnapshot): GameHallClient => ({
-      loading: false, connection, session: { sessionId: 'session', reconnectableRoomCode: null },
+      loading: false, connection, session: { sessionId: 'session', socketProof: 'A'.repeat(43), reconnectableRoomCode: null },
       room: roomValue, game: gameValue, error: null, messages: [], messageToasts: [], clearError: vi.fn(), reconnect: vi.fn(),
       createRoom: vi.fn(), joinRoom: vi.fn(), startRoom: vi.fn(), reopenRoom: vi.fn(), setReady: vi.fn(), leaveRoom: vi.fn(),
       submitGameAction: vi.fn(), requestRematch: vi.fn(), sendMessage: vi.fn(),
@@ -244,7 +244,7 @@ describe('RoomPage result copy', () => {
       ],
     };
     const client = {
-      loading: false, connection: 'online', session: { sessionId: 'session', reconnectableRoomCode: null },
+      loading: false, connection: 'online', session: { sessionId: 'session', socketProof: 'A'.repeat(43), reconnectableRoomCode: null },
       room, game: null, error: null, messages: [], messageToasts: [], clearError: vi.fn(), reconnect: vi.fn(),
       createRoom: vi.fn(), joinRoom: vi.fn(), startRoom: vi.fn(), reopenRoom: vi.fn(), setReady: vi.fn(), leaveRoom: vi.fn(),
       submitGameAction: vi.fn(), requestRematch: vi.fn(), sendMessage: vi.fn(),
@@ -265,7 +265,7 @@ describe('RoomPage result copy', () => {
     };
     const leaveRoom = vi.fn().mockResolvedValue({ ok: true });
     const client = {
-      loading: false, connection: 'online', session: { sessionId: 'session', reconnectableRoomCode: null },
+      loading: false, connection: 'online', session: { sessionId: 'session', socketProof: 'A'.repeat(43), reconnectableRoomCode: null },
       room, game: null, error: null, messages: [], messageToasts: [], clearError: vi.fn(), reconnect: vi.fn(),
       createRoom: vi.fn(), joinRoom: vi.fn(), startRoom: vi.fn(), reopenRoom: vi.fn(), setReady: vi.fn(), leaveRoom,
       submitGameAction: vi.fn(), requestRematch: vi.fn(), sendMessage: vi.fn(),
@@ -328,7 +328,7 @@ describe('RoomPage result copy', () => {
     const submitGameAction = vi.fn().mockResolvedValue({ ok: true });
     const sendMessage = vi.fn().mockResolvedValue({ ok: true });
     const client = {
-      loading: false, connection: 'online', session: { sessionId: 'session', reconnectableRoomCode: null },
+      loading: false, connection: 'online', session: { sessionId: 'session', socketProof: 'A'.repeat(43), reconnectableRoomCode: null },
       room, game: null, error: null, messages: [], messageToasts: [], clearError: vi.fn(), reconnect: vi.fn(),
       createRoom: vi.fn(), joinRoom: vi.fn(), startRoom: vi.fn(), reopenRoom: vi.fn(), setReady: vi.fn(), leaveRoom: vi.fn(),
       submitGameAction, requestRematch: vi.fn(), sendMessage,
