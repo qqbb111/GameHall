@@ -145,7 +145,7 @@ describe('local solo progress', () => {
     const invalid = readSoloSnapshot('reversi');
     expect(invalid.read).toEqual({ kind: 'invalid' });
     expect(invalid.token?.length).toBeLessThan(64);
-    window.localStorage.setItem(soloProgressKey('reversi'), 'y' + 'x'.repeat(SOLO_PROGRESS_MAX_BYTES));
+    window.localStorage.setItem(soloProgressKey('reversi'), 'x'.repeat(100) + 'y' + 'x'.repeat(SOLO_PROGRESS_MAX_BYTES - 100));
     expect(readSoloSnapshot('reversi').token).not.toBe(invalid.token);
     expect(await writeSoloProgress(progress, invalid.token)).toMatchObject({ kind: 'conflict' });
     const currentInvalid = readSoloSnapshot('reversi');

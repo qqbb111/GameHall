@@ -156,14 +156,10 @@ function revision(): string {
 
 function oversizedFingerprint(value: string): string {
   let first = 0x811c9dc5, second = 0x9e3779b9;
-  const width = 32, samples = 128;
-  for (let sample = 0; sample < samples; sample++) {
-    const start = Math.floor(sample * (value.length - width) / (samples - 1));
-    for (let offset = 0; offset < width; offset++) {
-      const code = value.charCodeAt(start + offset);
-      first = Math.imul(first ^ code, 0x01000193);
-      second = Math.imul(second ^ code, 0x85ebca6b);
-    }
+  for (let index = 0; index < value.length; index++) {
+    const code = value.charCodeAt(index);
+    first = Math.imul(first ^ code, 0x01000193);
+    second = Math.imul(second ^ code, 0x85ebca6b);
   }
   return `\u0000oversized:${value.length}:${(first >>> 0).toString(16)}:${(second >>> 0).toString(16)}`;
 }
