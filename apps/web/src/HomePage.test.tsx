@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { GameHallClient } from './gamehall-client';
 import { HomePage } from './HomePage';
@@ -45,6 +45,7 @@ describe('HomePage', () => {
 
   it('五款已确认游戏均可进入，开发中卡片不可点击', () => {
     const { container } = render(<HomePage client={clientStub()} />);
+    fireEvent.click(screen.getByText('更多玩法正在准备 · 5 款'));
     expect(screen.getByRole('button', { name: '围棋尚未开放' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '关牌尚未开放' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '炸金花尚未开放' })).toBeDisabled();
@@ -80,34 +81,7 @@ describe('HomePage', () => {
     expect(container.querySelector('.editorial-horizon')).not.toBeInTheDocument();
     expect(container.querySelector('.grand-board')).not.toBeInTheDocument();
     expect(container.querySelector('.cinematic-particles')).not.toBeInTheDocument();
-    expect(screen.getByRole('list', { name: '开桌流程' })).toBeInTheDocument();
-  });
-
-  it('开桌引导随昵称推进步骤，并可定位到真实游戏目录', () => {
-    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
-    const { container } = render(<HomePage client={clientStub()} />);
-    const guide = container.querySelector('.opening-guide');
-    const nameStep = screen.getByText('留下称呼').closest('li');
-    const gameStep = screen.getByText('挑一张桌').closest('li');
-    const chooseGame = screen.getByRole('button', { name: '去选游戏' });
-
-    expect(guide).not.toHaveAttribute('aria-hidden');
-    expect(nameStep).toHaveClass('is-active');
-    expect(nameStep).toHaveAttribute('aria-current', 'step');
-    expect(screen.getByText('先在右侧留下称呼')).toBeInTheDocument();
-    expect(gameStep).toHaveClass('is-pending');
-    expect(chooseGame).toBeDisabled();
-
-    fireEvent.change(screen.getByLabelText('你的昵称'), { target: { value: '引路棋客' } });
-    expect(nameStep).toHaveClass('is-complete');
-    expect(screen.getByText('引路棋客')).toBeInTheDocument();
-    expect(screen.getByLabelText('已完成')).toBeInTheDocument();
-    expect(gameStep).toHaveClass('is-active');
-    expect(gameStep).toHaveAttribute('aria-current', 'step');
-    expect(chooseGame).toBeEnabled();
-
-    fireEvent.click(chooseGame);
-    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' });
+    expect(screen.queryByRole('list', { name: '开桌流程' })).not.toBeInTheDocument();
   });
 
   it('电影级标题保持完整可访问名称，视觉字符不会被重复朗读', () => {
@@ -155,15 +129,49 @@ describe('HomePage', () => {
     [...container.querySelectorAll<HTMLElement>('.game-card-reveal')].forEach((card) => expect(card.style.getPropertyValue('--reveal-distance')).toBe('0px'));
   });
 
-  it('首页游戏卡不启用系统减少动画降级', () => {
+  it('首页显现和游戏卡遵从系统减少动画设置', () => {
     const { container } = render(<HomePage client={clientStub()} />);
     const reveals = container.querySelectorAll('.reveal');
     expect(reveals.length).toBeGreaterThan(0);
-    expect(container.querySelectorAll('.reveal[data-reduced-motion="ignore"]')).toHaveLength(reveals.length);
-    expect(container.querySelectorAll('.game-card-surface[data-reduced-motion="ignore"]')).toHaveLength(8);
-    expect(container.querySelectorAll('.featured-spark[data-reduced-motion="ignore"]')).toHaveLength(8);
-    expect(container.querySelectorAll('.game-card-surface[data-reduced-motion="respect"]')).toHaveLength(0);
-    expect(screen.getAllByText('可开局 · 2–4 人')).toHaveLength(2);
+    expect(container.querySelectorAll('.reveal[data-reduced-motion="respect"]')).toHaveLength(reveals.length);
+    expect(container.querySelectorAll('.game-card-surface[data-reduced-motion="respect"]')).toHaveLength(8);
+    expect(container.querySelectorAll('.featured-spark[data-reduced-motion="respect"]')).toHaveLength(8);
+    expect(screen.getAllByText(/2–4 人 ·/)).toHaveLength(2);
+  });
+
+  it('搜索、筛选与收藏只改变候选，不会创建房间', () => {
+    const client = clientStub();
+    render(<HomePage client={client} />);
+    fireEvent.change(screen.getByRole('textbox', { name: '搜索游戏' }), { target: { value: '连线' } });
+    expect(screen.getByRole('button', { name: '创建四子连线房间' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '创建五子棋房间' })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole('textbox', { name: '搜索游戏' }), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: '收藏五子棋' }));
+    fireEvent.click(screen.getByRole('button', { name: '收藏' }));
+    expect(screen.getByRole('button', { name: '创建五子棋房间' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '创建四子连线房间' })).not.toBeInTheDocument();
+    expect(client.createRoom).not.toHaveBeenCalled();
+  });
+
+  it('推荐只标记候选，规则窗口支持 Escape、Tab 环绕与焦点恢复', () => {
+    const client = clientStub();
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    render(<HomePage client={client} />);
+    fireEvent.click(screen.getByRole('button', { name: '帮我选一款' }));
+    expect(screen.getByText(/推荐你试试 璀璨宝石/)).toBeInTheDocument();
+    expect(client.createRoom).not.toHaveBeenCalled();
+    const trigger = screen.getByRole('button', { name: '查看璀璨宝石玩法规则' });
+    trigger.focus();
+    fireEvent.click(trigger);
+    const dialog = screen.getByRole('dialog', { name: '璀璨宝石' });
+    const close = screen.getByRole('button', { name: '关闭玩法规则' });
+    expect(dialog).toHaveTextContent('15 分');
+    expect(close).toHaveFocus();
+    fireEvent.keyDown(window, { key: 'Tab', shiftKey: true });
+    expect(within(dialog).getByRole('button', { name: '创建璀璨宝石房间' })).toHaveFocus();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
   });
 
   it('连接中的提示延迟显示且没有无效重连按钮', () => {
@@ -226,7 +234,23 @@ describe('HomePage', () => {
     fireEvent.click(screen.getByRole('button', { name: '创建五子棋房间' }));
     expect(createRoom).not.toHaveBeenCalled();
     expect(nickname).toHaveFocus();
-    expect(screen.getByRole('alert')).toHaveTextContent('先留下昵称');
+    expect(screen.getByRole('alert')).toHaveTextContent('1–16 个可显示字符');
+  });
+
+  it('规则窗口创建时空昵称回到输入，超长昵称阻止请求，复合 emoji 按单字计数', async () => {
+    const client = clientStub();
+    render(<HomePage client={client} />);
+    fireEvent.click(screen.getByRole('button', { name: '查看五子棋玩法规则' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '创建五子棋房间' }));
+    await waitFor(() => expect(screen.getByLabelText('你的昵称')).toHaveFocus());
+    expect(client.createRoom).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText('你的昵称'), { target: { value: '棋'.repeat(17) } });
+    fireEvent.click(screen.getByRole('button', { name: '创建五子棋房间' }));
+    expect(screen.getByLabelText('你的昵称')).toHaveAttribute('aria-invalid', 'true');
+    expect(client.createRoom).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText('你的昵称'), { target: { value: '👨‍👩‍👧‍👦'.repeat(16) } });
+    fireEvent.click(screen.getByRole('button', { name: '创建五子棋房间' }));
+    await waitFor(() => expect(client.createRoom).toHaveBeenCalledTimes(1));
   });
 
   it('创建过程中禁用全部开房入口，避免重复创建', async () => {
