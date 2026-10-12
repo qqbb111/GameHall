@@ -396,7 +396,10 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
 .round-clock > div span { height: 100%; display: block; border-radius: inherit; background: linear-gradient(90deg, #62bd8f, var(--gold)); transition: width .2s linear; }
 .round-clock strong { color: #b9c7c0; font: 700 12px ui-monospace, monospace; }
 .playing-cards { display: grid; grid-template-columns: repeat(4, minmax(72px, 120px)); justify-content: center; gap: clamp(8px, 2vw, 17px); margin: 32px 0 35px; }
-.playing-card { aspect-ratio: .7; max-height: 168px; padding: 10px; display: flex; flex-direction: column; justify-content: space-between; border-radius: 11px; color: #14221e; background: linear-gradient(145deg, #fff9ed, #dfd2ba); box-shadow: 0 14px 30px #0006, inset 0 0 0 1px #fff8; transform: rotate(-1.5deg); animation: deal-card .5s cubic-bezier(.2,1.25,.4,1) both; }
+.playing-card { width: 100%; min-width: 0; min-height: 44px; aspect-ratio: .7; max-height: 168px; padding: 10px; display: flex; flex-direction: column; justify-content: space-between; border: 0; border-radius: 11px; color: #14221e; background: linear-gradient(145deg, #fff9ed, #dfd2ba); box-shadow: 0 14px 30px #0006, inset 0 0 0 1px #fff8; transform: rotate(-1.5deg); animation: deal-card .5s cubic-bezier(.2,1.25,.4,1) both; cursor: pointer; }
+.playing-card:disabled { cursor: default; }
+.playing-card:not(:disabled):hover { filter: brightness(1.06); }
+.playing-card:focus-visible, .math-pad button:focus-visible { outline: 3px solid var(--gold-light); outline-offset: 3px; }
 .playing-card:nth-child(2) { animation-delay: .07s; transform: rotate(1.5deg) translateY(-5px); }
 .playing-card:nth-child(3) { animation-delay: .14s; }
 .playing-card:nth-child(4) { animation-delay: .21s; transform: rotate(1.5deg) translateY(-5px); }
@@ -410,7 +413,9 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
 .expression-row input { min-width: 0; font: 600 16px ui-monospace, SFMono-Regular, Consolas, monospace; }
 .expression-row button { min-height: 48px; padding: 0 18px; border: 0; border-radius: 10px; color: #15261f; background: var(--gold-light); font-size: 12px; font-weight: 800; }
 .math-pad { margin-top: 9px; display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
-.math-pad button { min-height: 44px; min-width: 0; padding: 0 5px; border: 1px solid rgba(255,255,255,.08); border-radius: 8px; color: #c2d0c9; background: rgba(3,16,14,.4); font-size: 13px; }
+.math-pad button { min-height: 44px; min-width: 0; padding: 0 5px; border: 1px solid #668c76; border-radius: 8px; color: #f7e4ba; background: #24513e; font-size: 13px; font-weight: 700; cursor: pointer; }
+.math-pad button:not(:disabled):hover { background: #32694d; border-color: var(--gold-light); }
+.math-pad button:disabled { opacity: .5; cursor: default; }
 .cooldown-note { min-height: 18px; margin: 12px 0 0; color: #71877d; text-align: center; font-size: 10px; }
 .cooldown-note.visible { color: #e8a688; }
 .solution-card { max-width: 600px; margin: 20px auto; padding: 28px; text-align: center; border: 1px solid rgba(240,206,139,.18); border-radius: 14px; background: rgba(217,173,97,.07); }

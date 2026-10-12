@@ -106,6 +106,78 @@ describe('game components', () => {
     expect(onAction).toHaveBeenCalledWith({ type: 'submit', expression: '6*(12-6-1)' });
   });
 
+  it('24 点按光标与选区编辑，可点击牌面输入数值，计时刷新不抢焦点', () => {
+    const nowMs = 1_000_000;
+    const state = createTwentyFourState([
+      { id: 0, suit: 'S', rank: 1 }, { id: 5, suit: 'S', rank: 6 },
+      { id: 23, suit: 'H', rank: 11 }, { id: 37, suit: 'D', rank: 12 },
+    ], '1+6+11+12', nowMs);
+    const onAction = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(<TwentyFourGame state={viewTwentyFourState(state, nowMs)} mySeat={0} active serverNowMs={nowMs} onAction={onAction} />);
+    const input = screen.getByLabelText('输入算式') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '12+3' } });
+    input.focus();
+    input.setSelectionRange(0, 0);
+    fireEvent.click(screen.getByRole('button', { name: '×' }));
+    expect(input).toHaveValue('*12+3');
+    expect(input).toHaveFocus();
+    expect(input.selectionStart).toBe(1);
+
+    input.setSelectionRange(1, 3);
+    fireEvent.click(screen.getByRole('button', { name: /J♥，输入数值 11/ }));
+    expect(input).toHaveValue('*11+3');
+    expect(input.selectionStart).toBe(3);
+    input.setSelectionRange(1, 3);
+    fireEvent.click(screen.getByRole('button', { name: '退格' }));
+    expect(input).toHaveValue('*+3');
+    expect(input.selectionStart).toBe(1);
+    fireEvent.click(screen.getByRole('button', { name: '退格' }));
+    expect(input).toHaveValue('+3');
+    expect(input.selectionStart).toBe(0);
+    fireEvent.click(screen.getByRole('button', { name: '清空' }));
+    fireEvent.click(screen.getByRole('button', { name: /A♠，输入数值 1/ }));
+    expect(input).toHaveValue('1');
+    expect(input).toHaveFocus();
+
+    screen.getByRole('button', { name: '提交答案' }).focus();
+    rerender(<TwentyFourGame state={viewTwentyFourState(state, nowMs + 1000)} mySeat={0} active serverNowMs={nowMs + 1000} onAction={onAction} />);
+    expect(screen.getByRole('button', { name: '提交答案' })).toHaveFocus();
+  });
+
+  it('24 点限制长度、组合输入及暂停和超时提交', () => {
+    const nowMs = 1_000_000;
+    const state = createTwentyFourState([
+      { id: 0, suit: 'S', rank: 1 }, { id: 5, suit: 'S', rank: 6 },
+      { id: 23, suit: 'H', rank: 11 }, { id: 37, suit: 'D', rank: 12 },
+    ], '1+6+11+12', nowMs);
+    const onAction = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(<TwentyFourGame state={viewTwentyFourState(state, nowMs)} mySeat={0} active serverNowMs={nowMs} onAction={onAction} />);
+    const input = screen.getByLabelText('输入算式') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '1'.repeat(127) } });
+    input.setSelectionRange(127, 127);
+    fireEvent.click(screen.getByRole('button', { name: /J♥，输入数值 11/ }));
+    expect(input.value).toHaveLength(127);
+    fireEvent.change(input, { target: { value: '2'.repeat(129) } });
+    expect(input.value).toHaveLength(128);
+    fireEvent.change(input, { target: { value: '1+6+11+12' } });
+    fireEvent.compositionStart(input);
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
+    expect(onAction).not.toHaveBeenCalled();
+    fireEvent.compositionEnd(input);
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onAction).toHaveBeenCalledOnce();
+
+    rerender(<TwentyFourGame state={viewTwentyFourState(state, nowMs)} mySeat={0} active={false} serverNowMs={nowMs} onAction={onAction} />);
+    expect(input).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '×' }));
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(input).toHaveValue('1+6+11+12');
+    expect(onAction).toHaveBeenCalledOnce();
+    rerender(<TwentyFourGame state={viewTwentyFourState(state, nowMs + 30_000)} mySeat={0} active serverNowMs={nowMs + 30_000} onAction={onAction} />);
+    expect(input).toBeDisabled();
+    expect(screen.getByRole('button', { name: '提交答案' })).toBeDisabled();
+  });
+
   it('德州扑克只展示自己的手牌并提交跟注/弃牌操作', () => {
     const onAction = vi.fn().mockResolvedValue(undefined);
     const state = createTexasHoldemState({ seats: [0, 1], dealerSeat: 0, rng: () => 0.2 });

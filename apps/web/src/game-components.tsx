@@ -255,12 +255,36 @@ const rankLabels: Record<number, string> = { 1: 'A', 11: 'J', 12: 'Q', 13: 'K' }
 
 export function TwentyFourGame({ state, mySeat, active, serverNowMs, onAction }: { state: TwentyFourView; mySeat: Player; active: boolean; serverNowMs: number; onAction: ActionHandler }) {
   const [expression, setExpression] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+  const composingRef = useRef(false);
+  const pendingCaret = useRef<number | null>(null);
   const remainingMs = Math.max(0, state.deadlineAtMs - serverNowMs);
   const cooldownMs = Math.max(0, state.cooldownUntilMs[mySeat] - serverNowMs);
-  const canSubmit = active && state.phase === 'answering' && remainingMs > 0 && cooldownMs <= 0 && expression.trim().length > 0;
+  const canEdit = active && state.phase === 'answering' && remainingMs > 0;
+  const canSubmit = canEdit && cooldownMs <= 0 && expression.trim().length > 0;
 
-  function append(value: string) {
-    setExpression((current) => `${current}${value}`.slice(0, 128));
+  useLayoutEffect(() => {
+    if (pendingCaret.current === null || !inputRef.current) return;
+    const caret = pendingCaret.current;
+    pendingCaret.current = null;
+    inputRef.current.focus();
+    inputRef.current.setSelectionRange(caret, caret);
+  }, [expression]);
+
+  function edit(value: string, backspace = false) {
+    if (!canEdit || composingRef.current) return;
+    const input = inputRef.current;
+    const start = input?.selectionStart ?? expression.length;
+    const end = input?.selectionEnd ?? expression.length;
+    const from = backspace && start === end ? Math.max(0, start - 1) : start;
+    const next = `${expression.slice(0, from)}${value}${expression.slice(end)}`;
+    if (next.length > 128) { input?.focus(); return; }
+    pendingCaret.current = from + value.length;
+    if (next === expression) {
+      input?.focus();
+      input?.setSelectionRange(pendingCaret.current, pendingCaret.current);
+      pendingCaret.current = null;
+    } else setExpression(next);
   }
 
   return (
@@ -274,22 +298,22 @@ export function TwentyFourGame({ state, mySeat, active, serverNowMs, onAction }:
       </div>
       <div className="playing-cards" aria-label="本题四张牌">
         {state.cards.map((card) => (
-          <div className={`playing-card ${card.suit === 'H' || card.suit === 'D' ? 'red' : ''}`} key={card.id} aria-label={`${rankLabels[card.rank] ?? card.rank}${suitSymbols[card.suit]}，数值 ${card.rank}`}>
+          <button type="button" className={`playing-card ${card.suit === 'H' || card.suit === 'D' ? 'red' : ''}`} key={card.id} aria-label={`${rankLabels[card.rank] ?? card.rank}${suitSymbols[card.suit]}，输入数值 ${card.rank}`} disabled={!canEdit} onPointerDown={(event) => event.preventDefault()} onClick={() => edit(String(card.rank))}>
             <span>{rankLabels[card.rank] ?? card.rank}</span><i>{suitSymbols[card.suit]}</i><b>{rankLabels[card.rank] ?? card.rank}</b>
-          </div>
+          </button>
         ))}
       </div>
       {state.phase === 'answering' ? (
         <div className="expression-panel">
           <label htmlFor="expression">输入算式</label>
           <div className="expression-row">
-            <input id="expression" value={expression} onChange={(event) => setExpression(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && canSubmit) void onAction({ type: 'submit', expression }); }} placeholder="例如：8/(3-8/3)" autoComplete="off" spellCheck={false} />
+            <input ref={inputRef} id="expression" value={expression} maxLength={128} disabled={!canEdit} onChange={(event) => setExpression(event.target.value.slice(0, 128))} onCompositionStart={() => { composingRef.current = true; }} onCompositionEnd={() => { composingRef.current = false; }} onKeyDown={(event) => { if (event.key === 'Enter' && !composingRef.current && !event.nativeEvent.isComposing && canSubmit) void onAction({ type: 'submit', expression }); }} placeholder="例如：8/(3-8/3)" autoComplete="off" spellCheck={false} />
             <button type="button" disabled={!canSubmit} onClick={() => void onAction({ type: 'submit', expression })}>提交答案</button>
           </div>
           <div className="math-pad" role="toolbar" aria-label="算式快捷键">
-            {['+', '−', '×', '÷', '(', ')'].map((operator) => <button type="button" key={operator} onClick={() => append(operator === '−' ? '-' : operator)}>{operator}</button>)}
-            <button type="button" onClick={() => setExpression((current) => current.slice(0, -1))}>退格</button>
-            <button type="button" onClick={() => setExpression('')}>清空</button>
+            {['+', '−', '×', '÷', '(', ')'].map((operator) => <button type="button" key={operator} disabled={!canEdit} onPointerDown={(event) => event.preventDefault()} onClick={() => edit(operator === '−' ? '-' : operator === '×' ? '*' : operator === '÷' ? '/' : operator)}>{operator}</button>)}
+            <button type="button" disabled={!canEdit} onPointerDown={(event) => event.preventDefault()} onClick={() => edit('', true)}>退格</button>
+            <button type="button" disabled={!canEdit} onPointerDown={(event) => event.preventDefault()} onClick={() => { pendingCaret.current = 0; setExpression(''); if (!expression) { inputRef.current?.focus(); inputRef.current?.setSelectionRange(0, 0); pendingCaret.current = null; } }}>清空</button>
           </div>
           <p className={`cooldown-note ${cooldownMs > 0 ? 'visible' : ''}`} aria-live="polite">{cooldownMs > 0 ? `答案不正确，${Math.ceil(cooldownMs / 1000)} 秒后可再次提交` : '允许分数和负数中间结果，四张牌必须各用一次。'}</p>
         </div>
