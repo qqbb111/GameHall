@@ -52,6 +52,8 @@ render.yaml              Render 单实例部署配置
 
 `packages/game-core` 提供八款游戏的纯规则引擎，服务端统一负责房间状态、动作校验、版本推进、实时广播与恢复；前端根据共享快照渲染对应的棋盘、牌桌和结算界面。
 
+Web 的四子连线、黑白棋电脑搜索模块复用相同纯规则，在独立 Worker 中以有界深度和节点数选择合法动作；战术判断覆盖四连胜负与黑白棋角位。
+
 `room:sync` 只接受成员的房间 ID，并在限流范围内重发权威房间、游戏和消息快照。访客会话超过有效期后会建立新身份，无法凭旧会话恢复原座位。
 
 运行环境要求 Node.js `24.15+`、pnpm `11.19+`。
@@ -116,6 +118,7 @@ pnpm --filter @gamehall/game-core test -- dots-and-boxes
 pnpm --filter @gamehall/server test:integration -- dots-and-boxes
 pnpm --filter @gamehall/server test:integration -- board-games-lifecycle
 pnpm --filter @gamehall/web test -- DotsAndBoxesGame
+pnpm --filter @gamehall/web test -- solo-ai
 ```
 
 连接恢复的定向检查：
