@@ -17,6 +17,7 @@ import type { SoloGameId } from './solo-ai';
 import type { PracticeGameId } from './solo-navigation';
 import { readSoloDraft, readSoloSnapshot, soloProgressKey } from './solo-progress';
 import { readSharedSoloSnapshot, subscribeSharedSoloProgress } from './solo-shared-store';
+import { readTwentyFourDraft, readTwentyFourSnapshot, subscribeTwentyFourStore } from './twenty-four-store';
 import { readFavoriteGames, readRememberedNickname, rememberFavoriteGames } from './client-preferences';
 import type { GameHallClient } from './gamehall-client';
 import { games, type GameCardInfo } from './games';
@@ -164,8 +165,18 @@ function practiceButtonLabel(summary: PracticeSummary[SoloGameId]): string {
   return summary === 'finished' ? '查看上局练习' : summary === 'active' ? '继续练习' : '和电脑练习';
 }
 
+type TwentyFourSummary = 'none' | 'active' | 'finished';
+function twentyFourSummary(): TwentyFourSummary {
+  const draft = readTwentyFourDraft();
+  return draft ? draft.progress.phase === 'finished' ? 'finished' : 'active' : 'none';
+}
+function twentyFourButtonLabel(summary: TwentyFourSummary): string {
+  return summary === 'active' ? '继续练习' : summary === 'finished' ? '查看上组结果' : '单人练习';
+}
+
 export function HomePage({ client, onPractice }: { client: GameHallClient; onPractice?: (gameId: PracticeGameId) => void }) {
   const [practiceSaves, setPracticeSaves] = useState<PracticeSummary>(() => ({ 'connect-four': draftPracticeSummary('connect-four'), reversi: draftPracticeSummary('reversi'), 'dots-and-boxes': draftPracticeSummary('dots-and-boxes') }));
+  const [twentyFourSave, setTwentyFourSave] = useState<TwentyFourSummary>(twentyFourSummary);
   const [nickname, setNickname] = useState(readRememberedNickname);
   const [roomCode, setRoomCode] = useState(() => {
     const queryCode = parseRoomCodeInput(window.location.search);
@@ -234,6 +245,33 @@ export function HomePage({ client, onPractice }: { client: GameHallClient; onPra
       unsubscribe();
       window.removeEventListener('storage', onStorage);
       window.removeEventListener('gamehall:solo-progress', onLocalSave);
+      window.removeEventListener('focus', onVisible);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    let generation = 0;
+    const refresh = async () => {
+      const request = ++generation;
+      const shared = await readTwentyFourSnapshot();
+      if (!active || request !== generation) return;
+      const draft = readTwentyFourDraft();
+      const available = draft?.progress ?? (shared.kind === 'valid' ? shared.progress : null);
+      setTwentyFourSave(available ? available.phase === 'finished' ? 'finished' : 'active' : 'none');
+    };
+    const onVisible = () => { if (document.visibilityState === 'visible') void refresh(); };
+    const onLocalSave = () => { void refresh(); };
+    const unsubscribe = subscribeTwentyFourStore(() => { void refresh(); });
+    window.addEventListener('gamehall:twenty-four-progress', onLocalSave);
+    window.addEventListener('focus', onVisible);
+    document.addEventListener('visibilitychange', onVisible);
+    void refresh();
+    return () => {
+      active = false;
+      unsubscribe();
+      window.removeEventListener('gamehall:twenty-four-progress', onLocalSave);
       window.removeEventListener('focus', onVisible);
       document.removeEventListener('visibilitychange', onVisible);
     };
@@ -429,7 +467,7 @@ export function HomePage({ client, onPractice }: { client: GameHallClient; onPra
                       <button type="button" className="card-practice" data-practice-game={game.id} aria-label={`${practiceButtonLabel(practiceSaves[game.id as SoloGameId])}${game.name}`} onClick={() => onPractice?.(game.id as SoloGameId)}>{practiceButtonLabel(practiceSaves[game.id as SoloGameId])}</button>
                     </div> : game.id === 'twenty-four' ? <div className="card-actions">
                       <button type="button" className="card-create" aria-label={`创建${game.name}房间`} disabled={pendingGameId !== null || joinPending || client.connection !== 'online'} onClick={() => void createRoom(game.id as GameId)}>创建房间 <ArrowRight size={16} /></button>
-                      <button type="button" className="card-practice" data-practice-game="twenty-four" aria-label="单人练习24点" onClick={() => onPractice?.('twenty-four')}>单人练习</button>
+                      <button type="button" className="card-practice" data-practice-game="twenty-four" aria-label={`${twentyFourButtonLabel(twentyFourSave)}24点`} onClick={() => onPractice?.('twenty-four')}>{twentyFourButtonLabel(twentyFourSave)}</button>
                     </div> : <button type="button" aria-label={`创建${game.name}房间`} disabled={pendingGameId !== null || joinPending || client.connection !== 'online'} onClick={() => void createRoom(game.id as GameId)}>
                       <span>{pendingGameId === game.id ? '正在创建' : '创建房间'}</span><ArrowRight size={18} />
                     </button>}

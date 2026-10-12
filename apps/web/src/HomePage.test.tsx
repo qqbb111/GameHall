@@ -8,6 +8,10 @@ import { saveSoloProgress, soloProgressKey } from './solo-progress';
 import { leavePracticeAddress } from './solo-navigation';
 import { readSharedSoloSnapshot, writeSharedSoloProgress } from './solo-shared-store';
 import type { SoloProgress } from './solo-progress';
+import { fixturePack } from './twenty-four-fixture';
+import { newTwentyFourProgress } from './twenty-four-practice';
+import { readTwentyFourSnapshot, writeTwentyFourDraft, writeTwentyFourProgress } from './twenty-four-store';
+import * as twentyFourStore from './twenty-four-store';
 
 async function saveShared(progress: SoloProgress) {
   const before = await readSharedSoloSnapshot(progress.gameId);
@@ -42,6 +46,7 @@ describe('HomePage', () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
     window.localStorage.clear();
+    window.sessionStorage.clear();
     window.history.replaceState(null, '', '/');
   });
 
@@ -157,6 +162,39 @@ describe('HomePage', () => {
     fireEvent.click(screen.getByRole('button', { name: '单人练习24点' }));
     expect(onPractice).toHaveBeenCalledWith('twenty-four');
     expect(client.createRoom).not.toHaveBeenCalled();
+  });
+
+  it('24 点首页摘要跟随共享存档与本标签草稿，读取不改存档 token', async () => {
+    const initial = newTwentyFourProgress('practice', fixturePack());
+    const saved = await writeTwentyFourProgress(initial, null, () => true);
+    if (saved.kind !== 'saved') throw new Error('save failed');
+    const onPractice = vi.fn();
+    render(<HomePage client={clientStub()} onPractice={onPractice} />);
+    fireEvent.click(await screen.findByRole('button', { name: '继续练习24点' }));
+    expect(onPractice).toHaveBeenCalledWith('twenty-four');
+    expect((await readTwentyFourSnapshot()).token).toBe(saved.token);
+
+    const finished = { ...newTwentyFourProgress('challenge', fixturePack()), phase: 'finished' as const, finishReason: 'time' as const, remainingMs: 0 };
+    writeTwentyFourDraft({ progress: finished, baseToken: null });
+    fireEvent.focus(window);
+    expect(await screen.findByRole('button', { name: '查看上组结果24点' })).toBeInTheDocument();
+    expect((await readTwentyFourSnapshot()).token).toBe(saved.token);
+  });
+
+  it('24 点较慢的旧读取不会覆盖新通知，坏存档与不可读共享库不冒充续玩', async () => {
+    const progress = newTwentyFourProgress('practice', fixturePack());
+    let resolveOld: ((snapshot: twentyFourStore.Snapshot) => void) | undefined;
+    vi.spyOn(twentyFourStore, 'readTwentyFourSnapshot')
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }))
+      .mockResolvedValueOnce({ kind: 'valid', progress, token: 'idb:00000000-0000-0000-0000-000000000001' })
+      .mockResolvedValue({ kind: 'unavailable', token: null });
+    render(<HomePage client={clientStub()} />);
+    fireEvent(window, new Event('gamehall:twenty-four-progress'));
+    expect(await screen.findByRole('button', { name: '继续练习24点' })).toBeInTheDocument();
+    await act(async () => { resolveOld?.({ kind: 'empty', token: null }); });
+    expect(screen.getByRole('button', { name: '继续练习24点' })).toBeInTheDocument();
+    fireEvent.focus(window);
+    expect(await screen.findByRole('button', { name: '单人练习24点' })).toBeInTheDocument();
   });
 
   it('搜索、筛选与收藏只改变候选，不会创建房间', () => {
