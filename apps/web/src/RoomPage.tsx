@@ -1,7 +1,7 @@
 import { Check, Clipboard, DoorOpen, Flag, Link2, LoaderCircle, LogOut, RotateCcw, Send, ShieldCheck, TriangleAlert, Wifi, WifiOff, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { requireBinaryPlayer, type GomokuState, type ConnectFourState, type ReversiState, type DotsAndBoxesState, type QuoridorView, type TwentyFourView, type SplendorView, type TexasHoldemView } from '@gamehall/game-core';
-import type { GameId, RoomMemberView } from '@gamehall/protocol';
+import type { RoomMemberView } from '@gamehall/protocol';
 import type { GameHallClient } from './gamehall-client';
 import { GomokuGame, QuoridorGame, TexasHoldemGame, TwentyFourGame } from './game-components';
 import { ClickSpark, Reveal } from './motion-primitives';
@@ -10,17 +10,7 @@ import { SplendorGame } from './SplendorGame';
 import { ConnectFourGame } from './ConnectFourGame';
 import { ReversiGame } from './ReversiGame';
 import { DotsAndBoxesGame } from './DotsAndBoxesGame';
-
-const gameNames: Record<GameId, string> = {
-  splendor: '璀璨宝石',
-  gomoku: '五子棋',
-  'connect-four': '四子连线',
-  reversi: '黑白棋',
-  'dots-and-boxes': '点格棋',
-  quoridor: '路墙棋',
-  'twenty-four': '24 点速度对决',
-  'texas-holdem': '德州扑克',
-};
+import { gameNames, games } from './games';
 
 const quickMessages = ['👍', '👏', '😄', '🤔', '🔥', '🎉', '😮', '😭'] as const;
 
@@ -72,22 +62,35 @@ export function RoomPage({ client }: { client: GameHallClient }) {
   const [confirmAction, setConfirmAction] = useState<'leave' | 'resign' | null>(null);
   const confirmTriggerRef = useRef<HTMLElement | null>(null);
   const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const confirmDialogRef = useRef<HTMLElement | null>(null);
+  const roomHeadingRef = useRef<HTMLHeadingElement | null>(null);
   const [messageDraft, setMessageDraft] = useState('');
   const [pokerPresentationLocked, setPokerPresentationLocked] = useState(false);
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const followMessagesRef = useRef(true);
   const [now, setNow] = useState(room?.serverTimeMs ?? 0);
   const [gameClockNow, setGameClockNow] = useState(room?.serverTimeMs ?? 0);
+  const pauseDeadline = room?.pauseReason === 'restart'
+    ? room.restartDeadlineMs
+    : room?.members.find((member) => !member.online)?.disconnectDeadlineMs;
+
+  useEffect(() => {
+    if (!room?.roomId) return;
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    roomHeadingRef.current?.focus({ preventScroll: true });
+  }, [room?.roomId]);
 
   useEffect(() => {
     const anchorServerMs = room?.serverTimeMs;
-    if (anchorServerMs === undefined) return undefined;
+    if (anchorServerMs === undefined || !pauseDeadline) return undefined;
     const anchorMonotonicMs = performance.now();
+    const immediate = window.setTimeout(() => setNow(anchorServerMs), 0);
     const timer = window.setInterval(() => {
       setNow(anchorServerMs + performance.now() - anchorMonotonicMs);
-    }, 200);
-    return () => window.clearInterval(timer);
-  }, [room?.serverTimeMs]);
+    }, 1_000);
+    return () => { window.clearTimeout(immediate); window.clearInterval(timer); };
+  }, [pauseDeadline, room?.serverTimeMs]);
 
   useEffect(() => () => {
     if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current);
@@ -104,6 +107,13 @@ export function RoomPage({ client }: { client: GameHallClient }) {
     cancelButtonRef.current?.focus();
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !pendingRef.current) setConfirmAction(null);
+      if (event.key !== 'Tab') return;
+      const controls = [...(confirmDialogRef.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])];
+      if (!controls.length) return;
+      const first = controls[0]!, last = controls[controls.length - 1]!;
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      else if (!confirmDialogRef.current?.contains(document.activeElement)) { event.preventDefault(); first.focus(); }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => {
@@ -124,15 +134,13 @@ export function RoomPage({ client }: { client: GameHallClient }) {
   const inviteUrl = room ? `${window.location.origin}${window.location.pathname}?room=${room.code}` : '';
   const result = !(room?.gameId === 'texas-holdem' && pokerPresentationLocked) && room && game ? resultMessage(room.gameId, game.view, room.mySeat) : null;
   const pokerBetweenHands = room?.gameId === 'texas-holdem' && (game?.view as TexasHoldemView | undefined)?.phase === 'hand-complete';
-  const pauseDeadline = room?.pauseReason === 'restart'
-    ? room.restartDeadlineMs
-    : room?.members.find((member) => !member.online)?.disconnectDeadlineMs;
   const pauseSeconds = pauseDeadline ? Math.max(0, Math.ceil((pauseDeadline - now) / 1000)) : null;
   const canPlay = room?.status === 'active' && client.connection === 'online';
   useEffect(() => {
     const anchorServerMs = game?.serverTimeMs ?? room?.serverTimeMs;
     if (anchorServerMs === undefined) return undefined;
-    if (!canPlay) {
+    const shouldTick = room?.gameId === 'twenty-four' && canPlay && (game?.view as TwentyFourView | undefined)?.phase === 'answering';
+    if (!shouldTick) {
       if (room?.status !== 'paused') return undefined;
       const reanchor = window.setTimeout(() => setGameClockNow(anchorServerMs), 0);
       return () => window.clearTimeout(reanchor);
@@ -147,7 +155,7 @@ export function RoomPage({ client }: { client: GameHallClient }) {
       window.clearTimeout(immediate);
       window.clearInterval(timer);
     };
-  }, [canPlay, game?.serverTimeMs, room?.serverTimeMs, room?.status]);
+  }, [canPlay, game?.serverTimeMs, game?.view, room?.gameId, room?.serverTimeMs, room?.status]);
   const rematchCount = room?.members.filter((member) => member.rematchReady).length ?? 0;
   const statusText = useMemo(() => {
     if (!room) return '';
@@ -160,6 +168,7 @@ export function RoomPage({ client }: { client: GameHallClient }) {
   if (!room) return null;
   const currentRoom = room;
   const multiplayer = room.gameId === 'splendor' || room.gameId === 'texas-holdem';
+  const gameInfo = games.find((candidate) => candidate.id === room.gameId);
   const isHost = room.mySeat === room.hostSeat;
   const hostStartLabel = starting ? '正在开局…' : client.connection !== 'online' ? '等待连接恢复' : room.members.length < 2 ? '等待好友加入'
     : room.members.some((member) => !member.online) ? '等待成员上线'
@@ -249,7 +258,7 @@ export function RoomPage({ client }: { client: GameHallClient }) {
           <div className="room-heading">
             <div>
               <span>{gameNames[room.gameId]} · 私人好友房</span>
-              <h1>{statusText}</h1>
+              <h1 ref={roomHeadingRef} tabIndex={-1}>{statusText}</h1>
             </div>
             <div className="invite-code" aria-label={`房间邀请码 ${room.code}`}>
               <small>房间邀请码</small><strong>{room.code}</strong>
@@ -369,7 +378,7 @@ export function RoomPage({ client }: { client: GameHallClient }) {
             </form>
           </section>
           <section className="room-rules-note">
-            <ShieldCheck size={18} /><div><strong>服务端权威判定</strong><p>所有回合、规则和胜负都由服务器校验，断线恢复时以最新快照为准。</p></div>
+            <ShieldCheck size={18} /><div><strong>{gameNames[room.gameId]}怎么玩</strong><p>{gameInfo?.rules}</p></div>
           </section>
         </aside>
       </main>
@@ -381,7 +390,7 @@ export function RoomPage({ client }: { client: GameHallClient }) {
 
       {confirmAction && (
         <div className="confirm-backdrop" role="presentation" onClick={(event) => { if (event.target === event.currentTarget && !pending) setConfirmAction(null); }}>
-          <section className={`confirm-dialog is-${confirmAction}`} role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-description">
+          <section ref={confirmDialogRef} className={`confirm-dialog is-${confirmAction}`} role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-description">
             <button className="confirm-close" type="button" onClick={() => setConfirmAction(null)} disabled={pending} aria-label="关闭确认窗口"><X size={18} /></button>
             <div className="confirm-icon">{confirmAction === 'leave' ? <DoorOpen size={27} /> : <TriangleAlert size={27} />}</div>
             <span>{confirmAction === 'leave' ? 'LEAVE TABLE' : 'CONCEDE GAME'}</span>

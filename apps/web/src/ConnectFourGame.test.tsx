@@ -18,4 +18,14 @@ describe('四子连线棋盘', () => {
     fireEvent.click(screen.getByRole('gridcell', { name: '第 2 行第 3 列，空位' }));
     expect(onAction).toHaveBeenCalledTimes(2);
   });
+
+  it('投放预览使用当前玩家的金色或珊瑚色', () => {
+    const state = createConnectFourState(0);
+    const { rerender } = render(<ConnectFourGame state={state} mySeat={0} active onAction={vi.fn()} />);
+    const cell = screen.getByRole('gridcell', { name: '第 6 行第 1 列，空位' });
+    fireEvent.pointerEnter(cell);
+    expect(cell).toHaveClass('preview-gold');
+    rerender(<ConnectFourGame state={{ ...state, turn: 1 }} mySeat={1} active onAction={vi.fn()} />);
+    expect(cell).toHaveClass('preview-coral');
+  });
 });

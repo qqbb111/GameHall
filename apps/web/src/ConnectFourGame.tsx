@@ -24,7 +24,7 @@ export function ConnectFourGame({ state, mySeat, active, onAction }: {
       const last = state.lastMove?.row === row && state.lastMove.col === col;
       const win = state.winningLine.some((entry) => entry.row === row && entry.col === col);
       const preview = mine && hovered === col && cell === null && (row === CONNECT_FOUR_ROWS - 1 || state.board[(row + 1) * 7 + col] !== null);
-      return <span key={index} className={`four-hole ${win ? 'is-winning' : ''} ${preview ? 'is-preview' : ''}`} role="gridcell" aria-label={`第 ${row + 1} 行第 ${col + 1} 列，${cell === null ? '空位' : cell === state.firstPlayer ? '金色棋子' : '珊瑚色棋子'}`} onPointerEnter={() => setHovered(col)} onClick={() => void drop(col)}><i className={`${cell === null ? '' : cell === state.firstPlayer ? 'gold' : 'coral'} ${last ? 'is-last' : ''}`} /></span>;
+      return <span key={index} className={`four-hole ${win ? 'is-winning' : ''} ${preview ? `is-preview ${isGold ? 'preview-gold' : 'preview-coral'}` : ''}`} role="gridcell" aria-label={`第 ${row + 1} 行第 ${col + 1} 列，${cell === null ? '空位' : cell === state.firstPlayer ? '金色棋子' : '珊瑚色棋子'}`} onPointerEnter={() => setHovered(col)} onClick={() => void drop(col)}><i className={`${cell === null ? '' : cell === state.firstPlayer ? 'gold' : 'coral'} ${last ? 'is-last' : ''}`} /></span>;
     })}</div>
     <p className="board-hint">点击或用 Tab 选择列，再按 Enter 或空格投放。棋子会落在该列最低的空位；横、竖、斜任意四子相连即获胜，棋盘放满则和棋。</p>
   </section>;

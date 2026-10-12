@@ -131,13 +131,43 @@ describe('RoomPage result copy', () => {
     ['gomoku', '五子棋对局'],
     ['quoridor', '路墙棋对局'],
     ['twenty-four', '24点速度对决'],
-  ] as const)('%s 终局结算覆盖在对应棋盘舞台内', (gameId, surfaceLabel) => {
+  ] as const)('%s 终局结算与棋盘同在舞台内', (gameId, surfaceLabel) => {
     const rendered = render(<RoomPage client={finishedClient(gameId)} />);
     const resultPanel = screen.getByText('GAME COMPLETE').closest('[role="status"]');
     const stage = resultPanel?.closest('.game-stage');
     expect(stage).toHaveClass('has-result');
     expect(stage).toContainElement(screen.getByLabelText(surfaceLabel));
+    expect(resultPanel?.parentElement).toHaveClass('result-reveal');
+    expect(stage?.firstElementChild).toHaveClass('game-surface');
     rendered.unmount();
+  });
+
+  it('进入新房间时回到顶部并聚焦状态标题，后续快照不抢回焦点', () => {
+    const client = finishedClient('gomoku');
+    document.documentElement.scrollTop = 650;
+    const rendered = render(<RoomPage client={client} />);
+    const heading = screen.getByRole('heading', { level: 1 });
+    expect(document.documentElement.scrollTop).toBe(0);
+    expect(heading).toHaveFocus();
+    const copy = screen.getByRole('button', { name: '复制六位房间码' });
+    copy.focus();
+    client.room = { ...client.room!, version: 8 };
+    rendered.rerender(<RoomPage client={client} />);
+    expect(copy).toHaveFocus();
+    client.room = { ...client.room!, roomId: 'next-room', code: 'XYZ789' };
+    rendered.rerender(<RoomPage client={client} />);
+    expect(heading).toHaveFocus();
+  });
+
+  it('空闲房间不启动时钟，侧栏展示当前玩法规则', () => {
+    const interval = vi.spyOn(window, 'setInterval');
+    const client = finishedClient('gomoku');
+    client.room = { ...client.room!, status: 'waiting' };
+    client.game = null;
+    render(<RoomPage client={client} />);
+    expect(interval.mock.calls.some(([, delay]) => delay === 200 || delay === 1_000)).toBe(false);
+    expect(screen.getByText('五子棋怎么玩')).toBeInTheDocument();
+    expect(screen.getByText(/先将五枚己方棋子/)).toBeInTheDocument();
   });
 
   it('复赛按钮常驻显示双方同意人数，并支持本端同意与撤回', async () => {
@@ -237,6 +267,12 @@ describe('RoomPage result copy', () => {
     const brand = screen.getByRole('button', { name: '返回主界面并离开房间' });
     fireEvent.click(brand);
     expect(screen.getByRole('alertdialog')).toHaveTextContent('确认离开房间');
+    const close = screen.getByRole('button', { name: '关闭确认窗口' });
+    close.focus();
+    fireEvent.keyDown(window, { key: 'Tab', shiftKey: true });
+    expect(screen.getByRole('button', { name: '确认离开' })).toHaveFocus();
+    fireEvent.keyDown(window, { key: 'Tab' });
+    expect(close).toHaveFocus();
     fireEvent.keyDown(window, { key: 'Escape' });
     await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
     expect(brand).toHaveFocus();
