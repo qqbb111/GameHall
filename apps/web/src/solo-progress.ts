@@ -1,6 +1,7 @@
 import { applyConnectFourAction, connectFourDefinition, connectFourLine, createConnectFourState, createReversiState, legalReversiMoves,
   otherPlayer, reversiDefinition, type ConnectFourState, type ReversiState } from '@gamehall/game-core';
 import type { SoloDifficulty, SoloGameId, SoloState } from './solo-ai';
+import { secureUuid } from './secure-id';
 
 export type SoloStarter = 'human' | 'computer';
 export type SoloProgress = {
@@ -151,7 +152,7 @@ export function saveSoloProgress(progress: SoloProgress): boolean {
 }
 
 function revision(): string {
-  return globalThis.crypto?.randomUUID?.() ?? `${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+  return secureUuid();
 }
 
 function oversizedFingerprint(value: string): string {

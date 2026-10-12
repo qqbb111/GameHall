@@ -12,6 +12,7 @@ import type {
   ServerToClientEvents,
   SessionResponse,
 } from '@gamehall/protocol';
+import { secureUuid } from './secure-id';
 
 type GameHallSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 type AckEmitter = {
@@ -160,7 +161,9 @@ export function useGameHallClient() {
         setMessages((current) => current.some((item) => item.messageId === message.messageId)
           ? current
           : [...current, message].slice(-100));
-        const id = crypto.randomUUID();
+        let id: string;
+        try { id = secureUuid(); }
+        catch { return; }
         setMessageToasts((current) => [...current.slice(-2), { id, nickname: message.nickname, content: message.content }]);
         window.setTimeout(() => {
           if (isCurrent()) setMessageToasts((current) => current.filter((item) => item.id !== id));
@@ -254,6 +257,11 @@ export function useGameHallClient() {
     return { ok: false, error: commandError };
   }, []);
 
+  const commandIdentity = useCallback((event: string): { id: string } | { failure: CommandAck } => {
+    try { return { id: secureUuid() }; }
+    catch { return { failure: failCommand(event, null, 'SECURE_RANDOM_UNAVAILABLE', '当前浏览器无法生成安全操作编号，请换用支持安全随机数的浏览器或 HTTPS。') }; }
+  }, [failCommand]);
+
   const emitWithAck = useCallback(async (event: string, payload: unknown, commandId: string | null = null, relevant: () => boolean = () => true): Promise<CommandAck> => {
     try {
       const socket = requireSocket();
@@ -298,16 +306,20 @@ export function useGameHallClient() {
       pending.socket = socketRef.current;
     }
     const epoch = roomEpochRef.current;
-    const result = await emitWithAck('room:sync', { commandId: crypto.randomUUID(), roomId }, null,
+    const identity = commandIdentity('room:sync');
+    if ('failure' in identity) return identity.failure;
+    const result = await emitWithAck('room:sync', { commandId: identity.id, roomId }, identity.id,
       () => roomEpochRef.current === epoch && latestRoomRef.current?.roomId === roomId);
     if (result.ok && uncertainActionRef.current?.command.roomId === roomId && uncertainActionRef.current.epoch === epoch) uncertainActionRef.current = null;
     return result;
-  }, [emitWithAck]);
+  }, [commandIdentity, emitWithAck]);
   useEffect(() => { syncRoomRef.current = syncRoomById; }, [syncRoomById]);
 
   const createRoom = useCallback(async (nickname: string, gameId: GameId): Promise<CommandAck> => {
     setError(null);
-    const commandId = crypto.randomUUID();
+    const identity = commandIdentity('room:create');
+    if ('failure' in identity) return identity.failure;
+    const commandId = identity.id;
     const generation = ++admissionGenerationRef.current;
     const issuedSessionId = sessionIdRef.current;
     const isCurrentAdmission = () => generation === admissionGenerationRef.current && issuedSessionId === sessionIdRef.current;
@@ -318,11 +330,13 @@ export function useGameHallClient() {
       expectedRoomRef.current = latestRoomRef.current?.roomId === result.roomId ? null : result.roomId ? { roomId: result.roomId } : { anyNew: true };
     } else if (result.error.code !== 'ACK_TIMEOUT' && result.error.code !== 'CONNECTION_CHANGED') expectedRoomRef.current = null;
     return result;
-  }, [emitWithAck]);
+  }, [commandIdentity, emitWithAck]);
 
   const joinRoom = useCallback(async (nickname: string, code: string): Promise<CommandAck> => {
     setError(null);
-    const commandId = crypto.randomUUID();
+    const identity = commandIdentity('room:join');
+    if ('failure' in identity) return identity.failure;
+    const commandId = identity.id;
     const generation = ++admissionGenerationRef.current;
     const issuedSessionId = sessionIdRef.current;
     const isCurrentAdmission = () => generation === admissionGenerationRef.current && issuedSessionId === sessionIdRef.current;
@@ -333,17 +347,21 @@ export function useGameHallClient() {
       expectedRoomRef.current = latestRoomRef.current?.roomId === result.roomId ? null : result.roomId ? { roomId: result.roomId } : { code };
     } else if (result.error.code !== 'ACK_TIMEOUT' && result.error.code !== 'CONNECTION_CHANGED') expectedRoomRef.current = null;
     return result;
-  }, [emitWithAck]);
+  }, [commandIdentity, emitWithAck]);
 
   const setReady = useCallback(async (ready: boolean): Promise<CommandAck> => {
     if (!room) return failCommand('room:ready', null, 'NO_ROOM', '当前不在房间中');
-    const commandId = crypto.randomUUID();
+    const identity = commandIdentity('room:ready');
+    if ('failure' in identity) return identity.failure;
+    const commandId = identity.id;
     return emitWithAck('room:ready', { commandId, roomId: room.roomId, ready }, commandId);
-  }, [emitWithAck, failCommand, room]);
+  }, [commandIdentity, emitWithAck, failCommand, room]);
 
   const leaveRoom = useCallback(async (): Promise<CommandAck> => {
     if (!room) return { ok: true };
-    const commandId = crypto.randomUUID();
+    const identity = commandIdentity('room:leave');
+    if ('failure' in identity) return identity.failure;
+    const commandId = identity.id;
     const result = await emitWithAck('room:leave', { commandId, roomId: room.roomId }, commandId);
     if (result.ok && latestRoomRef.current?.roomId === room.roomId) {
       abandonedRoomsRef.current.add(room.roomId);
@@ -358,18 +376,20 @@ export function useGameHallClient() {
       setSession((current) => current ? { ...current, reconnectableRoomCode: null } : current);
     }
     return result;
-  }, [emitWithAck, room]);
+  }, [commandIdentity, emitWithAck, room]);
 
   const submitGameAction = useCallback(async (action: GameActionCommand['action']): Promise<CommandAck> => {
     if (!room) return failCommand('game:action', null, 'NO_ROOM', '当前不在房间中');
     if (uncertainActionRef.current?.command.roomId === room.roomId) return failCommand('game:action', uncertainActionRef.current.command.actionId, 'ACTION_PENDING_SYNC', '上一操作尚未核对，请先重新连接并同步棋盘');
     if (inFlightActionRef.current?.roomId === room.roomId) return failCommand('game:action', null, 'ACTION_IN_FLIGHT', '上一操作正在确认，请稍候');
+    const identity = commandIdentity('game:action');
+    if ('failure' in identity) return identity.failure;
     const epoch = roomEpochRef.current;
     inFlightActionRef.current = { roomId: room.roomId, epoch };
     const actionSocket = socketRef.current;
     const relevant = () => roomEpochRef.current === epoch && latestRoomRef.current?.roomId === room.roomId;
     const command: GameActionCommand = {
-      actionId: crypto.randomUUID(),
+      actionId: identity.id,
       roomId: room.roomId,
       expectedVersion: room.version,
       action,
@@ -393,31 +413,39 @@ export function useGameHallClient() {
     } finally {
       if (inFlightActionRef.current?.roomId === room.roomId && inFlightActionRef.current.epoch === epoch) inFlightActionRef.current = null;
     }
-  }, [emitWithAck, failCommand, room, syncRoomById]);
+  }, [commandIdentity, emitWithAck, failCommand, room, syncRoomById]);
 
   const requestRematch = useCallback(async (requested = true): Promise<CommandAck> => {
     if (!room) return failCommand('game:rematch', null, 'NO_ROOM', '当前不在房间中');
-    const commandId = crypto.randomUUID();
+    const identity = commandIdentity('game:rematch');
+    if ('failure' in identity) return identity.failure;
+    const commandId = identity.id;
     return emitWithAck('game:rematch', { commandId, roomId: room.roomId, requested }, commandId);
-  }, [emitWithAck, failCommand, room]);
+  }, [commandIdentity, emitWithAck, failCommand, room]);
 
   const startRoom = useCallback(async (): Promise<CommandAck> => {
     if (!room) return failCommand('room:start', null, 'NO_ROOM', '当前不在房间中');
-    const commandId = crypto.randomUUID();
+    const identity = commandIdentity('room:start');
+    if ('failure' in identity) return identity.failure;
+    const commandId = identity.id;
     return emitWithAck('room:start', { commandId, roomId: room.roomId, expectedVersion: room.version }, commandId);
-  }, [emitWithAck, failCommand, room]);
+  }, [commandIdentity, emitWithAck, failCommand, room]);
 
   const reopenRoom = useCallback(async (): Promise<CommandAck> => {
     if (!room) return failCommand('room:reopen', null, 'NO_ROOM', '当前不在房间中');
-    const commandId = crypto.randomUUID();
+    const identity = commandIdentity('room:reopen');
+    if ('failure' in identity) return identity.failure;
+    const commandId = identity.id;
     return emitWithAck('room:reopen', { commandId, roomId: room.roomId, expectedVersion: room.version }, commandId);
-  }, [emitWithAck, failCommand, room]);
+  }, [commandIdentity, emitWithAck, failCommand, room]);
 
   const sendMessage = useCallback(async (content: string): Promise<CommandAck> => {
     if (!room) return failCommand('room:message:send', null, 'NO_ROOM', '当前不在房间中');
-    const messageId = crypto.randomUUID();
+    const identity = commandIdentity('room:message:send');
+    if ('failure' in identity) return identity.failure;
+    const messageId = identity.id;
     return emitWithAck('room:message:send', { messageId, roomId: room.roomId, content }, messageId);
-  }, [emitWithAck, failCommand, room]);
+  }, [commandIdentity, emitWithAck, failCommand, room]);
 
   const reconnect = useCallback(() => {
     connectionBlockedRef.current = false;

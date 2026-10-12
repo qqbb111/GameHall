@@ -103,6 +103,27 @@ describe('useGameHallClient connection recovery', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('没有安全随机源时好友命令明确失败，游戏动作不遗留进行中锁', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(sessionResponse('ABC234')));
+    vi.stubGlobal('crypto', {});
+    const { result } = renderHook(() => useGameHallClient());
+    await waitFor(() => expect(socketMocks.sockets).toHaveLength(1));
+    const socket = socketMocks.sockets[0]!;
+    act(() => { socket.connected = true; socket.trigger('connect'); });
+    let create!: Promise<CommandAck>;
+    act(() => { create = result.current.createRoom('棋手', 'connect-four'); });
+    expect(await create).toMatchObject({ ok: false, error: { code: 'SECURE_RANDOM_UNAVAILABLE' } });
+    expect(socket.timedEmits).toHaveLength(0);
+    act(() => socket.trigger('room:snapshot', { roomId: 'room', code: 'ABC234', gameId: 'connect-four', version: 1, status: 'active', members: [] }));
+    let first!: Promise<CommandAck>, second!: Promise<CommandAck>;
+    act(() => { first = result.current.submitGameAction({ type: 'drop', col: 0 }); });
+    act(() => { second = result.current.submitGameAction({ type: 'drop', col: 1 }); });
+    expect(await first).toMatchObject({ ok: false, error: { code: 'SECURE_RANDOM_UNAVAILABLE' } });
+    expect(await second).toMatchObject({ ok: false, error: { code: 'SECURE_RANDOM_UNAVAILABLE' } });
+    expect(result.current.error?.message).toMatch(/安全操作编号/);
+    expect(socket.timedEmits).toHaveLength(0);
+  });
+
   it('自动退避后可在服务恢复时建立连接', async () => {
     vi.useFakeTimers();
     const fetchMock = vi.fn()
