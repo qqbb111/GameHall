@@ -14,6 +14,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom';
 import type { GameId } from '@gamehall/protocol';
 import type { SoloGameId } from './solo-ai';
+import { readSoloProgress, type SoloProgressRead } from './solo-progress';
 import { readFavoriteGames, readRememberedNickname, rememberFavoriteGames } from './client-preferences';
 import type { GameHallClient } from './gamehall-client';
 import { games, type GameCardInfo } from './games';
@@ -148,7 +149,12 @@ function validNickname(value: string): boolean {
   return count >= 1 && count <= 16;
 }
 
+function practiceButtonLabel(saved: SoloProgressRead): string {
+  return saved.kind === 'valid' ? saved.progress.state.phase === 'finished' ? '查看上局练习' : '继续练习' : '和电脑练习';
+}
+
 export function HomePage({ client, onPractice }: { client: GameHallClient; onPractice?: (gameId: SoloGameId) => void }) {
+  const [practiceSaves] = useState(() => ({ 'connect-four': readSoloProgress('connect-four'), reversi: readSoloProgress('reversi') }));
   const [nickname, setNickname] = useState(readRememberedNickname);
   const [roomCode, setRoomCode] = useState(() => {
     const queryCode = parseRoomCodeInput(window.location.search);
@@ -365,7 +371,7 @@ export function HomePage({ client, onPractice }: { client: GameHallClient; onPra
                     </div>
                     {game.id === 'connect-four' || game.id === 'reversi' ? <div className="card-actions">
                       <button type="button" className="card-create" aria-label={`创建${game.name}房间`} disabled={pendingGameId !== null || joinPending || client.connection !== 'online'} onClick={() => void createRoom(game.id as GameId)}>创建房间 <ArrowRight size={16} /></button>
-                      <button type="button" className="card-practice" aria-label={`和电脑练习${game.name}`} onClick={() => onPractice?.(game.id as SoloGameId)}>和电脑练习</button>
+                      <button type="button" className="card-practice" aria-label={`${practiceButtonLabel(practiceSaves[game.id as SoloGameId])}${game.name}`} onClick={() => onPractice?.(game.id as SoloGameId)}>{practiceButtonLabel(practiceSaves[game.id as SoloGameId])}</button>
                     </div> : <button type="button" aria-label={`创建${game.name}房间`} disabled={pendingGameId !== null || joinPending || client.connection !== 'online'} onClick={() => void createRoom(game.id as GameId)}>
                       <span>{pendingGameId === game.id ? '正在创建' : '创建房间'}</span><ArrowRight size={18} />
                     </button>}

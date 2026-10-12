@@ -35,6 +35,7 @@ describe('Reversi practice auto-pass', () => {
   afterEach(() => {
     FakeWorker.instances = [];
     vi.unstubAllGlobals();
+    window.localStorage.clear();
   });
 
   it('玩家无合法步时组件继续请求电脑第二手并显示最终结算', async () => {

@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { GameHallClient } from './gamehall-client';
 import { HomePage } from './HomePage';
 import { NICKNAME_STORAGE_KEY } from './client-preferences';
+import { applyReversiAction, createConnectFourState, createReversiState } from '@gamehall/game-core';
+import { saveSoloProgress } from './solo-progress';
 
 function clientStub(overrides: Partial<GameHallClient> = {}): GameHallClient {
   return {
@@ -214,6 +216,23 @@ describe('HomePage', () => {
     fireEvent.click(screen.getByRole('button', { name: '和电脑练习黑白棋' }));
     expect(onPractice.mock.calls).toEqual([['connect-four'], ['reversi']]);
     expect(client.createRoom).not.toHaveBeenCalled();
+  });
+
+  it('两款独立存档让卡片展示继续练习或查看上局，入口仍由玩家明确选择', () => {
+    expect(saveSoloProgress({ gameId: 'connect-four', state: createConnectFourState(0), history: [], difficulty: 'easy', starter: 'human' })).toBe(true);
+    const board = Array<0 | 1 | null>(64).fill(0);
+    board[0] = null; board[1] = 1; board[63] = null; board[62] = 1;
+    const near = { ...createReversiState(0), board, counts: [60, 2] as [number, number], moveCount: 58 };
+    const first = applyReversiAction(near, 0, { type: 'placeDisc', row: 0, col: 0 });
+    if (!first.ok) throw new Error('bad fixture');
+    const final = applyReversiAction(first.state, 0, { type: 'placeDisc', row: 7, col: 7 });
+    if (!final.ok) throw new Error('bad fixture');
+    expect(saveSoloProgress({ gameId: 'reversi', state: final.state, history: [], difficulty: 'thoughtful', starter: 'human' })).toBe(true);
+    const onPractice = vi.fn();
+    render(<HomePage client={clientStub({ connection: 'offline' })} onPractice={onPractice} />);
+    fireEvent.click(screen.getByRole('button', { name: '继续练习四子连线' }));
+    fireEvent.click(screen.getByRole('button', { name: '查看上局练习黑白棋' }));
+    expect(onPractice.mock.calls).toEqual([['connect-four'], ['reversi']]);
   });
 
   it('昵称区域只负责取名，不再包含创建、加入或在线徽标', () => {

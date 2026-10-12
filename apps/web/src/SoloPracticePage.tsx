@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   applyConnectFourAction, applyReversiAction, createConnectFourState, createReversiState, legalReversiMoves,
   type ConnectFourState, type ReversiState,
@@ -8,12 +8,12 @@ import { ConnectFourGame } from './ConnectFourGame';
 import { ReversiGame } from './ReversiGame';
 import type { SoloAction, SoloDifficulty, SoloGameId, SoloState } from './solo-ai';
 import type { SoloWorkerRequest, SoloWorkerResponse } from './solo-ai.worker';
+import { readSoloProgress, saveSoloProgress, type SoloStarter } from './solo-progress';
 import './solo-practice.css';
 
-type Starter = 'human' | 'computer';
 const names: Record<SoloGameId, string> = { 'connect-four': '四子连线', reversi: '黑白棋' };
 
-function initialState(gameId: SoloGameId, starter: Starter): SoloState {
+function initialState(gameId: SoloGameId, starter: SoloStarter): SoloState {
   return gameId === 'connect-four' ? createConnectFourState(starter === 'human' ? 0 : 1)
     : createReversiState(starter === 'human' ? 0 : 1);
 }
@@ -39,14 +39,20 @@ function resultText(state: SoloState): string {
 export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
   gameId: SoloGameId; recoveredRoom: boolean; onExit: () => void;
 }) {
-  const [difficulty, setDifficulty] = useState<SoloDifficulty>('easy');
-  const [starter, setStarter] = useState<Starter>('human');
-  const [activeDifficulty, setActiveDifficulty] = useState<SoloDifficulty>('easy');
-  const [activeStarter, setActiveStarter] = useState<Starter>('human');
-  const [state, setState] = useState<SoloState | null>(null);
-  const stateRef = useRef<SoloState | null>(null);
-  const history = useRef<SoloState[]>([]);
-  const [historyLength, setHistoryLength] = useState(0);
+  const [saved] = useState(() => readSoloProgress(gameId));
+  const restored = saved.kind === 'valid' ? saved.progress : null;
+  const [difficulty, setDifficulty] = useState<SoloDifficulty>(restored?.difficulty ?? 'easy');
+  const [starter, setStarter] = useState<SoloStarter>(restored?.starter ?? 'human');
+  const [activeDifficulty, setActiveDifficulty] = useState<SoloDifficulty>(restored?.difficulty ?? 'easy');
+  const [activeStarter, setActiveStarter] = useState<SoloStarter>(restored?.starter ?? 'human');
+  const activeDifficultyRef = useRef(activeDifficulty);
+  const activeStarterRef = useRef(activeStarter);
+  const [state, setState] = useState<SoloState | null>(restored?.state ?? null);
+  const stateRef = useRef<SoloState | null>(restored?.state ?? null);
+  const history = useRef<SoloState[]>(restored?.history ?? []);
+  const [historyLength, setHistoryLength] = useState(restored?.history.length ?? 0);
+  const [saveNotice, setSaveNotice] = useState(saved.kind === 'valid' ? '已接上次练习' : saved.kind === 'invalid' ? '上次练习没能恢复，可以开始新一局。' : null);
+  const [unsaved, setUnsaved] = useState(saved.kind === 'unavailable');
   const [thinking, setThinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
@@ -55,6 +61,21 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
   const requestGeneration = useRef(0);
   const humanMoveAt = useRef(0);
   const playStatus = useRef<HTMLElement | null>(null);
+
+  const persist = useCallback((current: SoloState) => {
+    setUnsaved(!saveSoloProgress({ gameId, state: current, history: history.current,
+      difficulty: activeDifficultyRef.current, starter: activeStarterRef.current }));
+  }, [gameId]);
+
+  useEffect(() => {
+    const flush = () => {
+      const current = stateRef.current;
+      if (current) saveSoloProgress({ gameId, state: current, history: history.current,
+        difficulty: activeDifficultyRef.current, starter: activeStarterRef.current });
+    };
+    window.addEventListener('pagehide', flush);
+    return () => window.removeEventListener('pagehide', flush);
+  }, [gameId]);
 
   function cancelComputer() {
     requestGeneration.current++;
@@ -113,6 +134,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
         worker.terminate(); workerRef.current = null;
         stateRef.current = next;
         setState(next);
+        persist(next);
         setThinking(false);
       };
       const animated = !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -135,7 +157,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
       worker.terminate();
       if (workerRef.current === worker) workerRef.current = null;
     };
-  }, [state, gameId, activeDifficulty, retry]);
+  }, [state, gameId, activeDifficulty, retry, persist]);
 
   useEffect(() => {
     if (!round) return;
@@ -149,9 +171,13 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     history.current = [];
     setHistoryLength(0);
     stateRef.current = next;
+    activeDifficultyRef.current = difficulty;
+    activeStarterRef.current = starter;
     setActiveDifficulty(difficulty);
     setActiveStarter(starter);
     setState(next);
+    persist(next);
+    setSaveNotice(null);
     setError(null);
     setRound((current) => current + 1);
   }
@@ -163,6 +189,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     stateRef.current = previous;
     setState(previous);
     setHistoryLength(history.current.length);
+    persist(previous);
     setError(null);
     setRound((current) => current + 1);
   }
@@ -184,10 +211,14 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     setHistoryLength(history.current.length);
     stateRef.current = next;
     setState(next);
+    persist(next);
+    setSaveNotice(null);
     setError(null);
   }
 
   function exit() {
+    if (stateRef.current) saveSoloProgress({ gameId, state: stateRef.current, history: history.current,
+      difficulty: activeDifficultyRef.current, starter: activeStarterRef.current });
     cancelComputer();
     onExit();
   }
@@ -203,6 +234,8 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
       {!recoveredRoom && <button type="button" className="solo-back" onClick={exit}>返回大厅</button>}
     </header>
     {recoveredRoom && <div className="solo-recovered" role="status">已恢复你的好友房。<button type="button" onClick={exit}>返回对局</button></div>}
+    {saveNotice && <p className="solo-save-note" role="status">{saveNotice}</p>}
+    {unsaved && <p className="solo-save-note is-warning" role="status">当前浏览器无法保存，刷新后会重新开始。</p>}
     {!state ? <section className="solo-setup" aria-label="练习设置">
       <h2>开始前选一下</h2>
       <fieldset><legend>难度</legend><label><input type="radio" name="solo-difficulty" checked={difficulty === 'easy'} onChange={() => setDifficulty('easy')} />轻松</label><label><input type="radio" name="solo-difficulty" checked={difficulty === 'thoughtful'} onChange={() => setDifficulty('thoughtful')} />认真</label></fieldset>

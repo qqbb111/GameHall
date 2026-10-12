@@ -27,4 +27,6 @@
 .solo-settings summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-weight: 700; }
 .solo-settings p { margin-bottom: 8px; font-size: 13px; }
 .solo-error { margin-top: 10px; }
+.solo-save-note { width: min(100%, 950px); margin: -7px auto 16px; color: #d7e4c9; font-size: 13px; }
+.solo-save-note.is-warning { color: #f4c3a1; }
 @media (max-width: 620px) { .solo-shell { padding-inline: 8px; } .solo-header { flex-direction: column; } .solo-header button { align-self: flex-start; } .solo-toolbar { align-items: flex-start; } .solo-toolbar > div { flex-direction: column; gap: 3px; } .solo-play > .reversi-surface { padding-inline: 4px; } .solo-play .reversi-board { padding: 4px; border-width: 5px; } .solo-play .reversi-surface > :not(.reversi-board) { margin-inline: 8px; } .solo-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } .solo-actions button:last-child { grid-column: 1 / -1; } }

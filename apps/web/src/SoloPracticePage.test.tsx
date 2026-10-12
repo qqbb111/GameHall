@@ -1,6 +1,8 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SoloWorkerRequest, SoloWorkerResponse } from './solo-ai.worker';
+import { applyConnectFourAction, createConnectFourState, legalReversiMoves } from '@gamehall/game-core';
+import { readSoloProgress, saveSoloProgress, soloProgressKey } from './solo-progress';
 import { SoloPracticePage } from './SoloPracticePage';
 
 class FakeWorker {
@@ -26,6 +28,7 @@ function start(gameId: 'connect-four' | 'reversi' = 'connect-four', onExit = vi.
 
 describe('local computer practice', () => {
   beforeEach(() => {
+    window.localStorage.clear();
     FakeWorker.instances = [];
     vi.stubGlobal('Worker', FakeWorker);
     vi.stubGlobal('matchMedia', () => ({ matches: true }));
@@ -35,6 +38,7 @@ describe('local computer practice', () => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+    window.localStorage.clear();
   });
 
   it('四子连线的人机两步可悔棋，重开只按明确设置生效', async () => {
@@ -175,8 +179,88 @@ describe('local computer practice', () => {
       expect(onExit).toHaveBeenCalledOnce();
     }
     expect(worker.terminated).toBe(true);
-    expect(vi.getTimerCount()).toBe(0);
+    if (cancel === 'exit') {
+      render(<SoloPracticePage gameId="connect-four" recoveredRoom={false} onExit={vi.fn()} />);
+      expect(screen.getByRole('grid', { name: /已投放 1 枚棋子/ })).toBeInTheDocument();
+    }
     act(() => vi.advanceTimersByTime(1_000));
-    if (cancel !== 'exit') expect(screen.getByRole('grid', { name: /已投放 0 枚棋子/ })).toBeInTheDocument();
+    expect(screen.getByRole('grid', { name: cancel === 'exit' ? /已投放 1 枚棋子/ : /已投放 0 枚棋子/ })).toBeInTheDocument();
+  });
+
+  it('四子连线刷新后继续电脑回合，旧实例迟到应手不污染新局，悔棋历史仍可用', async () => {
+    const first = start();
+    fireEvent.click(screen.getByRole('button', { name: '投放第 1 列' }));
+    await waitFor(() => expect(FakeWorker.instances).toHaveLength(1));
+    expect(readSoloProgress('connect-four')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 1, turn: 1 }, history: [{ moveCount: 0 }] } });
+    const old = FakeWorker.instances[0]!;
+    first.unmount();
+    expect(old.terminated).toBe(true);
+    render(<SoloPracticePage gameId="connect-four" recoveredRoom={false} onExit={vi.fn()} />);
+    expect(screen.getByText('已接上次练习')).toBeInTheDocument();
+    expect(screen.getByRole('grid', { name: /已投放 1 枚棋子/ })).toBeInTheDocument();
+    await waitFor(() => expect(FakeWorker.instances).toHaveLength(2));
+    act(() => old.reply({ action: { type: 'drop', col: 2 } }));
+    expect(screen.getByRole('grid', { name: /已投放 1 枚棋子/ })).toBeInTheDocument();
+    act(() => FakeWorker.instances[1]!.reply({ action: { type: 'drop', col: 1 } }));
+    expect(screen.getByRole('grid', { name: /已投放 2 枚棋子/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '悔棋' }));
+    expect(screen.getByRole('grid', { name: /已投放 0 枚棋子/ })).toBeInTheDocument();
+    expect(readSoloProgress('connect-four')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 0 }, history: [] } });
+  });
+
+  it('黑白棋刷新后合法应手和悔棋继续可用，不重新显示设置页', async () => {
+    const first = start('reversi');
+    fireEvent.click(screen.getByRole('gridcell', { name: '第 3 行第 4 列，空位，可落子' }));
+    await waitFor(() => expect(FakeWorker.instances).toHaveLength(1));
+    first.unmount();
+    render(<SoloPracticePage gameId="reversi" recoveredRoom={false} onExit={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: '开始练习' })).not.toBeInTheDocument();
+    await waitFor(() => expect(FakeWorker.instances).toHaveLength(2));
+    const request = FakeWorker.instances[1]!.request!;
+    const board = JSON.parse(request.stateJson).board as Array<0 | 1 | null>;
+    const move = legalReversiMoves(board, 1)[0]!;
+    act(() => FakeWorker.instances[1]!.reply({ action: { type: 'placeDisc', ...move } }));
+    expect(screen.getByText('轮到你')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '悔棋' }));
+    expect(readSoloProgress('reversi')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 0 }, history: [] } });
+  });
+
+  it('pagehide 用最新棋盘和实际先手/难度同步刷新；坏记录退回设置并给简短提示', () => {
+    render(<SoloPracticePage gameId="connect-four" recoveredRoom={false} onExit={vi.fn()} />);
+    fireEvent.click(screen.getByRole('radio', { name: '电脑先手' }));
+    fireEvent.click(screen.getByRole('radio', { name: '认真' }));
+    fireEvent.click(screen.getByRole('button', { name: '开始练习' }));
+    window.localStorage.removeItem(soloProgressKey('connect-four'));
+    act(() => window.dispatchEvent(new Event('pagehide')));
+    expect(readSoloProgress('connect-four')).toMatchObject({ kind: 'valid', progress: { starter: 'computer', difficulty: 'thoughtful', state: { turn: 1 } } });
+    window.localStorage.setItem(soloProgressKey('reversi'), '{broken');
+    render(<SoloPracticePage gameId="reversi" recoveredRoom={false} onExit={vi.fn()} />);
+    expect(screen.getByText('上次练习没能恢复，可以开始新一局。')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '开始练习' })).toBeInTheDocument();
+  });
+
+  it('存储不可写只显示非阻断提示，仍可继续落子', () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota'); });
+    start();
+    expect(screen.getByText('当前浏览器无法保存，刷新后会重新开始。')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '投放第 1 列' }));
+    expect(screen.getByRole('grid', { name: /已投放 1 枚棋子/ })).toBeInTheDocument();
+  });
+
+  it('有效结束棋局直接显示棋盘，且不得无意覆盖旧局', () => {
+    let state = createConnectFourState(0);
+    for (const col of [0, 6, 1, 6, 2, 5, 3]) {
+      const result = applyConnectFourAction(state, state.turn, { type: 'drop', col });
+      if (!result.ok) throw new Error('bad fixture');
+      state = result.state;
+    }
+    expect(saveSoloProgress({ gameId: 'connect-four', state, history: [], starter: 'human', difficulty: 'easy' })).toBe(true);
+    render(<SoloPracticePage gameId="connect-four" recoveredRoom={false} onExit={vi.fn()} />);
+    expect(screen.getByRole('grid', { name: /已投放 7 枚棋子/ })).toBeInTheDocument();
+    expect(screen.getByText('你赢了！')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '开始练习' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('新一局设置'));
+    fireEvent.click(screen.getByRole('radio', { name: '电脑先手' }));
+    expect(readSoloProgress('connect-four')).toMatchObject({ kind: 'valid', progress: { starter: 'human' } });
   });
 });
