@@ -105,6 +105,16 @@ describe('local computer practice', () => {
     expect(screen.getByRole('grid', { name: /已投放 2 枚棋子/ })).toBeInTheDocument();
   });
 
+  it('电脑回传认输动作也不会结束本地练习', async () => {
+    start();
+    fireEvent.click(screen.getByRole('button', { name: '投放第 1 列' }));
+    await waitFor(() => expect(FakeWorker.instances).toHaveLength(1));
+    act(() => FakeWorker.instances[0]!.reply({ action: { type: 'resign' } }));
+    expect(screen.getByRole('alert')).toHaveTextContent('未能落下');
+    expect(screen.getByRole('grid', { name: /已投放 1 枚棋子/ })).toBeInTheDocument();
+    expect(screen.queryByText('你赢了！')).not.toBeInTheDocument();
+  });
+
   it('黑白棋电脑先手使用合法落子，玩家随后可落子且练习不需服务端', async () => {
     render(<SoloPracticePage gameId="reversi" recoveredRoom={false} onExit={vi.fn()} />);
     fireEvent.click(screen.getByRole('radio', { name: '电脑先手' }));
@@ -143,5 +153,30 @@ describe('local computer practice', () => {
     expect(screen.getByRole('grid', { name: /已投放 1 枚棋子/ })).toBeInTheDocument();
     act(() => vi.advanceTimersByTime(1));
     expect(screen.getByRole('grid', { name: /已投放 2 枚棋子/ })).toBeInTheDocument();
+  });
+
+  it.each(['undo', 'restart', 'exit'] as const)('电脑回包已进入动画等待时 %s 会清除待落子的旧计时器', async (cancel) => {
+    vi.stubGlobal('matchMedia', () => ({ matches: false }));
+    vi.spyOn(performance, 'now').mockReturnValue(1_000);
+    const { onExit, unmount } = start();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    fireEvent.click(screen.getByRole('button', { name: '投放第 1 列' }));
+    await act(async () => { await Promise.resolve(); });
+    expect(FakeWorker.instances).toHaveLength(1);
+    const worker = FakeWorker.instances[0]!;
+    act(() => worker.reply({ action: { type: 'drop', col: 1 } }));
+    expect(screen.getByRole('grid', { name: /已投放 1 枚棋子/ })).toBeInTheDocument();
+
+    if (cancel === 'undo') fireEvent.click(screen.getByRole('button', { name: '悔棋' }));
+    else if (cancel === 'restart') fireEvent.click(screen.getByRole('button', { name: '重新开始' }));
+    else {
+      fireEvent.click(screen.getAllByRole('button', { name: '返回大厅' })[0]!);
+      unmount();
+      expect(onExit).toHaveBeenCalledOnce();
+    }
+    expect(worker.terminated).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+    act(() => vi.advanceTimersByTime(1_000));
+    if (cancel !== 'exit') expect(screen.getByRole('grid', { name: /已投放 0 枚棋子/ })).toBeInTheDocument();
   });
 });

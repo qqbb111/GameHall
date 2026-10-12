@@ -113,7 +113,7 @@ pnpm --filter @gamehall/game-core test -- connect-four
 pnpm --filter @gamehall/server test -- board-games-migration
 pnpm --filter @gamehall/server test:integration -- connect-four
 pnpm --filter @gamehall/web test -- ConnectFourGame
-pnpm --filter @gamehall/web test -- solo-ai SoloPracticePage App HomePage
+pnpm --filter @gamehall/web test -- solo-ai SoloPracticePage SoloPracticePass App HomePage
 pnpm --filter @gamehall/game-core test -- reversi
 pnpm --filter @gamehall/server test:integration -- reversi
 pnpm --filter @gamehall/web test -- ReversiGame
