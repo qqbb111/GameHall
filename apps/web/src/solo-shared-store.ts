@@ -6,6 +6,7 @@ const DATABASE = 'gamehall-solo-progress';
 const STORE = 'games';
 const CHANNEL = 'gamehall:solo-progress';
 const STORAGE_TIMEOUT_MS = 4_000;
+const tabId = (() => { try { return secureUuid(); } catch { return null; } })();
 
 type StoredGame = { gameId: SoloGameId; token: string; serialized: string };
 
@@ -55,7 +56,7 @@ function announceSave(gameId: SoloGameId): void {
   window.dispatchEvent(new CustomEvent('gamehall:solo-progress', { detail: gameId }));
   try {
     const channel = new BroadcastChannel(CHANNEL);
-    channel.postMessage(gameId);
+    channel.postMessage({ gameId, tabId });
     channel.close();
   } catch { /* focus/visibility still refresh another tab */ }
 }
@@ -64,7 +65,8 @@ export function subscribeSharedSoloProgress(listener: (gameId: SoloGameId) => vo
   try {
     const channel = new BroadcastChannel(CHANNEL);
     channel.onmessage = (event: MessageEvent<unknown>) => {
-      if (event.data === 'connect-four' || event.data === 'reversi') listener(event.data);
+      const message = event.data as { gameId?: unknown; tabId?: unknown } | null;
+      if (message && message.tabId !== tabId && (message.gameId === 'connect-four' || message.gameId === 'reversi')) listener(message.gameId);
     };
     return () => channel.close();
   } catch { return () => undefined; }

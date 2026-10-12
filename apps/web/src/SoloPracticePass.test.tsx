@@ -42,7 +42,7 @@ describe('Reversi practice auto-pass', () => {
     vi.stubGlobal('Worker', FakeWorker);
     vi.stubGlobal('matchMedia', () => ({ matches: true }));
     render(<SoloPracticePage gameId="reversi" recoveredRoom={false} onExit={vi.fn()} />);
-    fireEvent.click(screen.getByRole('radio', { name: '电脑先手' }));
+    fireEvent.click(await screen.findByRole('radio', { name: '电脑先手' }));
     fireEvent.click(screen.getByRole('button', { name: '开始练习' }));
     await waitFor(() => expect(FakeWorker.instances).toHaveLength(1));
     act(() => FakeWorker.instances[0]!.reply({ type: 'placeDisc', row: 0, col: 0 }));

@@ -41,7 +41,7 @@ describe('practice browser navigation with real board', () => {
     mocks.useClient.mockReturnValue({ loading: true, room: null } as unknown as GameHallClient);
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: 'practice' }));
-    fireEvent.click(screen.getByRole('button', { name: '开始练习' }));
+    fireEvent.click(await screen.findByRole('button', { name: '开始练习' }));
     fireEvent.click(screen.getByRole('button', { name: '投放第 1 列' }));
     await waitFor(() => expect(FakeWorker.instances).toHaveLength(1));
     const old = FakeWorker.instances[0]!;
@@ -50,7 +50,7 @@ describe('practice browser navigation with real board', () => {
     expect(screen.getByRole('heading', { name: 'home' })).toBeInTheDocument();
     expect(old.terminated).toBe(true);
     act(() => { window.history.replaceState(null, '', '/?room=ABC234&practice=connect-four#top'); window.dispatchEvent(new PopStateEvent('popstate')); });
-    expect(screen.getByRole('grid', { name: /已投放 1 枚棋子/ })).toBeInTheDocument();
+    expect(await screen.findByRole('grid', { name: /已投放 1 枚棋子/ })).toBeInTheDocument();
     await waitFor(() => expect(FakeWorker.instances).toHaveLength(2));
     act(() => old.reply({ action: { type: 'drop', col: 2 } }));
     expect(screen.getByRole('grid', { name: /已投放 1 枚棋子/ })).toBeInTheDocument();

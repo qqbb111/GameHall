@@ -4,8 +4,15 @@ import type { GameHallClient } from './gamehall-client';
 import { HomePage } from './HomePage';
 import { NICKNAME_STORAGE_KEY } from './client-preferences';
 import { applyReversiAction, createConnectFourState, createReversiState } from '@gamehall/game-core';
-import { saveSoloProgress, soloDraftKey, soloProgressKey } from './solo-progress';
+import { saveSoloProgress, soloProgressKey } from './solo-progress';
 import { leavePracticeAddress } from './solo-navigation';
+import { readSharedSoloSnapshot, writeSharedSoloProgress } from './solo-shared-store';
+import type { SoloProgress } from './solo-progress';
+
+async function saveShared(progress: SoloProgress) {
+  const before = await readSharedSoloSnapshot(progress.gameId);
+  expect((await writeSharedSoloProgress(progress, before.token)).kind).toBe('saved');
+}
 
 function clientStub(overrides: Partial<GameHallClient> = {}): GameHallClient {
   return {
@@ -207,19 +214,19 @@ describe('HomePage', () => {
     expect(reconnect).toHaveBeenCalledTimes(1);
   });
 
-  it.each(['connecting', 'offline'] as const)('%s 时仍能免昵称进入两种电脑练习，联网开房不可操作', (connection) => {
+  it.each(['connecting', 'offline'] as const)('%s 时仍能免昵称进入两种电脑练习，联网开房不可操作', async (connection) => {
     const onPractice = vi.fn();
     const client = clientStub({ loading: true, connection });
     render(<HomePage client={client} onPractice={onPractice} />);
     expect(screen.getByRole('button', { name: '创建四子连线房间' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '创建黑白棋房间' })).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: '和电脑练习四子连线' }));
-    fireEvent.click(screen.getByRole('button', { name: '和电脑练习黑白棋' }));
+    fireEvent.click(await screen.findByRole('button', { name: '和电脑练习四子连线' }));
+    fireEvent.click(await screen.findByRole('button', { name: '和电脑练习黑白棋' }));
     expect(onPractice.mock.calls).toEqual([['connect-four'], ['reversi']]);
     expect(client.createRoom).not.toHaveBeenCalled();
   });
 
-  it('两款独立存档让卡片展示继续练习或查看上局，入口仍由玩家明确选择', () => {
+  it('两款独立存档让卡片展示继续练习或查看上局，入口仍由玩家明确选择', async () => {
     expect(saveSoloProgress({ gameId: 'connect-four', state: createConnectFourState(0), history: [], difficulty: 'easy', starter: 'human' })).toBe(true);
     const board = Array<0 | 1 | null>(64).fill(0);
     board[0] = null; board[1] = 1; board[63] = null; board[62] = 1;
@@ -231,34 +238,25 @@ describe('HomePage', () => {
     expect(saveSoloProgress({ gameId: 'reversi', state: final.state, history: [], difficulty: 'thoughtful', starter: 'human' })).toBe(true);
     const onPractice = vi.fn();
     render(<HomePage client={clientStub({ connection: 'offline' })} onPractice={onPractice} />);
-    fireEvent.click(screen.getByRole('button', { name: '继续练习四子连线' }));
-    fireEvent.click(screen.getByRole('button', { name: '查看上局练习黑白棋' }));
+    fireEvent.click(await screen.findByRole('button', { name: '继续练习四子连线' }));
+    fireEvent.click(await screen.findByRole('button', { name: '查看上局练习黑白棋' }));
     expect(onPractice.mock.calls).toEqual([['connect-four'], ['reversi']]);
   });
 
-  it('旧大厅只响应练习存档、清空及重新聚焦，并重新校验其他标签写入的内容', () => {
+  it('旧大厅在共享存档变化后更新摘要，损坏的旧缓存不能盖掉已迁移棋局', async () => {
     render(<HomePage client={clientStub()} />);
-    expect(screen.getByRole('button', { name: '和电脑练习四子连线' })).toBeInTheDocument();
-    const reads = vi.spyOn(Storage.prototype, 'getItem');
-    reads.mockClear();
-    fireEvent(window, new StorageEvent('storage', { key: 'unrelated-preference' }));
-    expect(reads).not.toHaveBeenCalled();
-
-    expect(saveSoloProgress({ gameId: 'connect-four', state: createConnectFourState(0), history: [], difficulty: 'easy', starter: 'human' })).toBe(true);
-    fireEvent(window, new StorageEvent('storage', { key: soloProgressKey('connect-four') }));
-    expect(reads.mock.calls.map(([key]) => key)).toEqual([soloDraftKey('connect-four'), soloProgressKey('connect-four')]);
-    expect(screen.getByRole('button', { name: '继续练习四子连线' })).toBeInTheDocument();
-    reads.mockClear();
+    expect(await screen.findByRole('button', { name: '和电脑练习四子连线' })).toBeInTheDocument();
+    await saveShared({ gameId: 'connect-four', state: createConnectFourState(0), history: [], difficulty: 'easy', starter: 'human' });
+    expect(await screen.findByRole('button', { name: '继续练习四子连线' })).toBeInTheDocument();
     window.localStorage.setItem(soloProgressKey('connect-four'), '{broken');
     fireEvent.focus(window);
-    expect(screen.getByRole('button', { name: '和电脑练习四子连线' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: '继续练习四子连线' })).toBeInTheDocument();
 
-    expect(saveSoloProgress({ gameId: 'reversi', state: createReversiState(0), history: [], difficulty: 'easy', starter: 'human' })).toBe(true);
+    await saveShared({ gameId: 'reversi', state: createReversiState(0), history: [], difficulty: 'easy', starter: 'human' });
     fireEvent(document, new Event('visibilitychange'));
+    expect(await screen.findByRole('button', { name: '继续练习黑白棋' })).toBeInTheDocument();
+    fireEvent(window, new StorageEvent('storage', { key: 'unrelated-preference' }));
     expect(screen.getByRole('button', { name: '继续练习黑白棋' })).toBeInTheDocument();
-    window.localStorage.clear();
-    fireEvent(window, new StorageEvent('storage', { key: null }));
-    expect(screen.getByRole('button', { name: '和电脑练习黑白棋' })).toBeInTheDocument();
   });
 
   it('昵称区域只负责取名，不再包含创建、加入或在线徽标', () => {

@@ -25,7 +25,7 @@ export const SOLO_PROGRESS_MAX_BYTES = 65_536;
 export const SOLO_HISTORY_MAX = 64;
 export function soloProgressKey(gameId: SoloGameId): string { return `gamehall:solo:${gameId}:v1`; }
 export function soloDraftKey(gameId: SoloGameId): string { return `gamehall:solo:${gameId}:draft:v1`; }
-export function canShareSoloProgress(): boolean { return !!navigator.locks?.request; }
+export function canShareSoloProgress(): boolean { return typeof indexedDB !== 'undefined'; }
 
 function decodeState(gameId: SoloGameId, serialized: string): SoloState {
   return gameId === 'connect-four' ? connectFourDefinition.deserialize(serialized) : reversiDefinition.deserialize(serialized);

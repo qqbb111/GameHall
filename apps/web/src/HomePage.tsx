@@ -14,7 +14,8 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom';
 import type { GameId } from '@gamehall/protocol';
 import type { SoloGameId } from './solo-ai';
-import { readSoloDraft, readSoloProgress, soloProgressKey } from './solo-progress';
+import { readSoloDraft, readSoloSnapshot, soloProgressKey } from './solo-progress';
+import { readSharedSoloSnapshot, subscribeSharedSoloProgress } from './solo-shared-store';
 import { readFavoriteGames, readRememberedNickname, rememberFavoriteGames } from './client-preferences';
 import type { GameHallClient } from './gamehall-client';
 import { games, type GameCardInfo } from './games';
@@ -149,21 +150,21 @@ function validNickname(value: string): boolean {
   return count >= 1 && count <= 16;
 }
 
-type PracticeSummary = Record<SoloGameId, 'none' | 'active' | 'finished'>;
+type PracticeSummary = Record<SoloGameId, 'loading' | 'none' | 'active' | 'finished'>;
 
-function readPracticeSummary(gameId: SoloGameId): PracticeSummary[SoloGameId] {
+function draftPracticeSummary(gameId: SoloGameId): PracticeSummary[SoloGameId] {
   const draft = readSoloDraft(gameId);
   if (draft) return draft.progress.state.phase === 'finished' ? 'finished' : 'active';
-  const saved = readSoloProgress(gameId);
-  return saved.kind === 'valid' ? saved.progress.state.phase === 'finished' ? 'finished' : 'active' : 'none';
+  return 'loading';
 }
 
 function practiceButtonLabel(summary: PracticeSummary[SoloGameId]): string {
+  if (summary === 'loading') return '打开电脑练习';
   return summary === 'finished' ? '查看上局练习' : summary === 'active' ? '继续练习' : '和电脑练习';
 }
 
 export function HomePage({ client, onPractice }: { client: GameHallClient; onPractice?: (gameId: SoloGameId) => void }) {
-  const [practiceSaves, setPracticeSaves] = useState<PracticeSummary>(() => ({ 'connect-four': readPracticeSummary('connect-four'), reversi: readPracticeSummary('reversi') }));
+  const [practiceSaves, setPracticeSaves] = useState<PracticeSummary>(() => ({ 'connect-four': draftPracticeSummary('connect-four'), reversi: draftPracticeSummary('reversi') }));
   const [nickname, setNickname] = useState(readRememberedNickname);
   const [roomCode, setRoomCode] = useState(() => {
     const queryCode = parseRoomCodeInput(window.location.search);
@@ -194,11 +195,22 @@ export function HomePage({ client, onPractice }: { client: GameHallClient; onPra
   });
 
   useEffect(() => {
-    const refresh = (gameId?: SoloGameId) => setPracticeSaves((current) => {
-      const next = gameId ? { ...current, [gameId]: readPracticeSummary(gameId) }
-        : { 'connect-four': readPracticeSummary('connect-four'), reversi: readPracticeSummary('reversi') };
-      return next['connect-four'] === current['connect-four'] && next.reversi === current.reversi ? current : next;
-    });
+    let active = true;
+    const generations: Record<SoloGameId, number> = { 'connect-four': 0, reversi: 0 };
+    const refreshOne = async (gameId: SoloGameId) => {
+      const generation = ++generations[gameId];
+      const saved = await readSharedSoloSnapshot(gameId);
+      if (!active || generation !== generations[gameId]) return;
+      const draft = readSoloDraft(gameId);
+      const legacy = saved.read.kind === 'unavailable' ? readSoloSnapshot(gameId) : null;
+      const available = draft?.progress ?? (saved.read.kind === 'valid' ? saved.read.progress : legacy?.read.kind === 'valid' ? legacy.read.progress : null);
+      const summary = available ? available.state.phase === 'finished' ? 'finished' : 'active' : 'none';
+      setPracticeSaves((current) => current[gameId] === summary ? current : { ...current, [gameId]: summary });
+    };
+    const refresh = (gameId?: SoloGameId) => {
+      if (gameId) void refreshOne(gameId);
+      else { void refreshOne('connect-four'); void refreshOne('reversi'); }
+    };
     const onStorage = (event: StorageEvent) => {
       if (event.key === null) refresh();
       else if (event.key === soloProgressKey('connect-four')) refresh('connect-four');
@@ -210,10 +222,14 @@ export function HomePage({ client, onPractice }: { client: GameHallClient; onPra
       if (gameId === 'connect-four' || gameId === 'reversi') refresh(gameId);
     };
     window.addEventListener('storage', onStorage);
+    const unsubscribe = subscribeSharedSoloProgress((gameId) => refresh(gameId));
     window.addEventListener('gamehall:solo-progress', onLocalSave);
     window.addEventListener('focus', onVisible);
     document.addEventListener('visibilitychange', onVisible);
+    refresh();
     return () => {
+      active = false;
+      unsubscribe();
       window.removeEventListener('storage', onStorage);
       window.removeEventListener('gamehall:solo-progress', onLocalSave);
       window.removeEventListener('focus', onVisible);
