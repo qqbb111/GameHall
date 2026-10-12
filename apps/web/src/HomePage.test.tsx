@@ -4,7 +4,7 @@ import type { GameHallClient } from './gamehall-client';
 import { HomePage } from './HomePage';
 import { NICKNAME_STORAGE_KEY } from './client-preferences';
 import { applyReversiAction, createConnectFourState, createReversiState } from '@gamehall/game-core';
-import { saveSoloProgress } from './solo-progress';
+import { saveSoloProgress, soloProgressKey } from './solo-progress';
 
 function clientStub(overrides: Partial<GameHallClient> = {}): GameHallClient {
   return {
@@ -233,6 +233,31 @@ describe('HomePage', () => {
     fireEvent.click(screen.getByRole('button', { name: '继续练习四子连线' }));
     fireEvent.click(screen.getByRole('button', { name: '查看上局练习黑白棋' }));
     expect(onPractice.mock.calls).toEqual([['connect-four'], ['reversi']]);
+  });
+
+  it('旧大厅只响应练习存档、清空及重新聚焦，并重新校验其他标签写入的内容', () => {
+    render(<HomePage client={clientStub()} />);
+    expect(screen.getByRole('button', { name: '和电脑练习四子连线' })).toBeInTheDocument();
+    const reads = vi.spyOn(Storage.prototype, 'getItem');
+    reads.mockClear();
+    fireEvent(window, new StorageEvent('storage', { key: 'unrelated-preference' }));
+    expect(reads).not.toHaveBeenCalled();
+
+    expect(saveSoloProgress({ gameId: 'connect-four', state: createConnectFourState(0), history: [], difficulty: 'easy', starter: 'human' })).toBe(true);
+    fireEvent(window, new StorageEvent('storage', { key: soloProgressKey('connect-four') }));
+    expect(reads.mock.calls.map(([key]) => key)).toEqual([soloProgressKey('connect-four')]);
+    expect(screen.getByRole('button', { name: '继续练习四子连线' })).toBeInTheDocument();
+    reads.mockClear();
+    window.localStorage.setItem(soloProgressKey('connect-four'), '{broken');
+    fireEvent.focus(window);
+    expect(screen.getByRole('button', { name: '和电脑练习四子连线' })).toBeInTheDocument();
+
+    expect(saveSoloProgress({ gameId: 'reversi', state: createReversiState(0), history: [], difficulty: 'easy', starter: 'human' })).toBe(true);
+    fireEvent(document, new Event('visibilitychange'));
+    expect(screen.getByRole('button', { name: '继续练习黑白棋' })).toBeInTheDocument();
+    window.localStorage.clear();
+    fireEvent(window, new StorageEvent('storage', { key: null }));
+    expect(screen.getByRole('button', { name: '和电脑练习黑白棋' })).toBeInTheDocument();
   });
 
   it('昵称区域只负责取名，不再包含创建、加入或在线徽标', () => {

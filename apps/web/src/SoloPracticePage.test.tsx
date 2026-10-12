@@ -196,7 +196,7 @@ describe('local computer practice', () => {
     first.unmount();
     expect(old.terminated).toBe(true);
     render(<SoloPracticePage gameId="connect-four" recoveredRoom={false} onExit={vi.fn()} />);
-    expect(screen.getByText('已接上次练习')).toBeInTheDocument();
+    expect(screen.getByText('已恢复上次练习')).toBeInTheDocument();
     expect(screen.getByRole('grid', { name: /已投放 1 枚棋子/ })).toBeInTheDocument();
     await waitFor(() => expect(FakeWorker.instances).toHaveLength(2));
     act(() => old.reply({ action: { type: 'drop', col: 2 } }));

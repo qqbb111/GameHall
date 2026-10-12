@@ -51,7 +51,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
   const stateRef = useRef<SoloState | null>(restored?.state ?? null);
   const history = useRef<SoloState[]>(restored?.history ?? []);
   const [historyLength, setHistoryLength] = useState(restored?.history.length ?? 0);
-  const [saveNotice, setSaveNotice] = useState(saved.kind === 'valid' ? '已接上次练习' : saved.kind === 'invalid' ? '上次练习没能恢复，可以开始新一局。' : null);
+  const [saveNotice, setSaveNotice] = useState(saved.kind === 'valid' ? '已恢复上次练习' : saved.kind === 'invalid' ? '上次练习没能恢复，可以开始新一局。' : null);
   const [unsaved, setUnsaved] = useState(saved.kind === 'unavailable');
   const [thinking, setThinking] = useState(false);
   const [error, setError] = useState<string | null>(null);

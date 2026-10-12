@@ -14,7 +14,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom';
 import type { GameId } from '@gamehall/protocol';
 import type { SoloGameId } from './solo-ai';
-import { readSoloProgress, type SoloProgressRead } from './solo-progress';
+import { readSoloProgress, soloProgressKey } from './solo-progress';
 import { readFavoriteGames, readRememberedNickname, rememberFavoriteGames } from './client-preferences';
 import type { GameHallClient } from './gamehall-client';
 import { games, type GameCardInfo } from './games';
@@ -149,12 +149,19 @@ function validNickname(value: string): boolean {
   return count >= 1 && count <= 16;
 }
 
-function practiceButtonLabel(saved: SoloProgressRead): string {
-  return saved.kind === 'valid' ? saved.progress.state.phase === 'finished' ? '查看上局练习' : '继续练习' : '和电脑练习';
+type PracticeSummary = Record<SoloGameId, 'none' | 'active' | 'finished'>;
+
+function readPracticeSummary(gameId: SoloGameId): PracticeSummary[SoloGameId] {
+  const saved = readSoloProgress(gameId);
+  return saved.kind === 'valid' ? saved.progress.state.phase === 'finished' ? 'finished' : 'active' : 'none';
+}
+
+function practiceButtonLabel(summary: PracticeSummary[SoloGameId]): string {
+  return summary === 'finished' ? '查看上局练习' : summary === 'active' ? '继续练习' : '和电脑练习';
 }
 
 export function HomePage({ client, onPractice }: { client: GameHallClient; onPractice?: (gameId: SoloGameId) => void }) {
-  const [practiceSaves] = useState(() => ({ 'connect-four': readSoloProgress('connect-four'), reversi: readSoloProgress('reversi') }));
+  const [practiceSaves, setPracticeSaves] = useState<PracticeSummary>(() => ({ 'connect-four': readPracticeSummary('connect-four'), reversi: readPracticeSummary('reversi') }));
   const [nickname, setNickname] = useState(readRememberedNickname);
   const [roomCode, setRoomCode] = useState(() => {
     const queryCode = parseRoomCodeInput(window.location.search);
@@ -183,6 +190,28 @@ export function HomePage({ client, onPractice }: { client: GameHallClient; onPra
     const matchesFilter = filter === 'all' || filter === 'favorites' && favorites.includes(game.id) || filter !== 'favorites' && game.categories?.includes(filter);
     return matchesSearch && matchesFilter;
   });
+
+  useEffect(() => {
+    const refresh = (gameId?: SoloGameId) => setPracticeSaves((current) => {
+      const next = gameId ? { ...current, [gameId]: readPracticeSummary(gameId) }
+        : { 'connect-four': readPracticeSummary('connect-four'), reversi: readPracticeSummary('reversi') };
+      return next['connect-four'] === current['connect-four'] && next.reversi === current.reversi ? current : next;
+    });
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === null) refresh();
+      else if (event.key === soloProgressKey('connect-four')) refresh('connect-four');
+      else if (event.key === soloProgressKey('reversi')) refresh('reversi');
+    };
+    const onVisible = () => { if (document.visibilityState === 'visible') refresh(); };
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('focus', onVisible);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('focus', onVisible);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
 
   useEffect(() => {
     if (!selectedRules) return undefined;
@@ -371,7 +400,7 @@ export function HomePage({ client, onPractice }: { client: GameHallClient; onPra
                     </div>
                     {game.id === 'connect-four' || game.id === 'reversi' ? <div className="card-actions">
                       <button type="button" className="card-create" aria-label={`创建${game.name}房间`} disabled={pendingGameId !== null || joinPending || client.connection !== 'online'} onClick={() => void createRoom(game.id as GameId)}>创建房间 <ArrowRight size={16} /></button>
-                      <button type="button" className="card-practice" aria-label={`${practiceButtonLabel(practiceSaves[game.id as SoloGameId])}${game.name}`} onClick={() => onPractice?.(game.id as SoloGameId)}>{practiceButtonLabel(practiceSaves[game.id as SoloGameId])}</button>
+                      <button type="button" className="card-practice" data-practice-game={game.id} aria-label={`${practiceButtonLabel(practiceSaves[game.id as SoloGameId])}${game.name}`} onClick={() => onPractice?.(game.id as SoloGameId)}>{practiceButtonLabel(practiceSaves[game.id as SoloGameId])}</button>
                     </div> : <button type="button" aria-label={`创建${game.name}房间`} disabled={pendingGameId !== null || joinPending || client.connection !== 'online'} onClick={() => void createRoom(game.id as GameId)}>
                       <span>{pendingGameId === game.id ? '正在创建' : '创建房间'}</span><ArrowRight size={18} />
                     </button>}

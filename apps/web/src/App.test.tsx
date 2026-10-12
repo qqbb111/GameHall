@@ -3,10 +3,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { GameHallClient } from './gamehall-client';
 import { NICKNAME_STORAGE_KEY } from './client-preferences';
 
-const mocks = vi.hoisted(() => ({ useClient: vi.fn() }));
+const mocks = vi.hoisted(() => ({ useClient: vi.fn(), hidePractice: false }));
 
 vi.mock('./gamehall-client', () => ({ useGameHallClient: mocks.useClient }));
-vi.mock('./HomePage', () => ({ HomePage: ({ onPractice }: { onPractice: (game: 'connect-four') => void }) => <main><h1 tabIndex={-1}>home</h1><button onClick={() => onPractice('connect-four')}>practice</button></main> }));
+vi.mock('./HomePage', () => ({ HomePage: ({ onPractice }: { onPractice: (game: 'connect-four') => void }) => <main><h1 tabIndex={-1}>home</h1>{!mocks.hidePractice && <button data-practice-game="connect-four" onClick={() => onPractice('connect-four')}>practice</button>}</main> }));
 vi.mock('./RoomPage', () => ({ RoomPage: () => <main><h1>room</h1></main> }));
 vi.mock('./SoloPracticePage', () => ({ SoloPracticePage: ({ gameId, recoveredRoom, onExit }: { gameId: string; recoveredRoom: boolean; onExit: () => void }) => <main><h1 tabIndex={-1}>solo {gameId}</h1>{recoveredRoom && <p>recovered</p>}<button onClick={onExit}>exit</button></main> }));
 
@@ -16,6 +16,7 @@ describe('App nickname persistence', () => {
   afterEach(() => {
     window.localStorage.clear();
     mocks.useClient.mockReset();
+    mocks.hidePractice = false;
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     window.history.replaceState(null, '', '/');
@@ -84,7 +85,7 @@ describe('App nickname persistence', () => {
     expect(screen.getByRole('heading', { name: 'home' })).toBeInTheDocument();
   });
 
-  it('浏览器返回恢复原滚动，不触发页面切换的置顶动作', () => {
+  it('浏览器返回和前进保留原滚动，返回聚焦旧入口，前进聚焦练习标题', () => {
     const scrollTo = vi.fn();
     vi.stubGlobal('scrollTo', scrollTo);
     vi.spyOn(window.history, 'back').mockImplementation(() => {
@@ -98,7 +99,30 @@ describe('App nickname persistence', () => {
     expect(scrollTo).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole('button', { name: 'exit' }));
     expect(screen.getByRole('heading', { name: 'home' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'practice' })).toHaveFocus();
     expect(scrollTo).toHaveBeenCalledOnce();
+    act(() => { window.history.replaceState(null, '', '/?practice=connect-four#top'); window.dispatchEvent(new PopStateEvent('popstate')); });
+    expect(screen.getByRole('heading', { name: 'solo connect-four' })).toHaveFocus();
+    expect(scrollTo).toHaveBeenCalledOnce();
+  });
+
+  it('返回大厅时原练习入口已被筛掉则聚焦标题，普通刷新不抢焦点', () => {
+    const scrollTo = vi.fn();
+    vi.stubGlobal('scrollTo', scrollTo);
+    mocks.useClient.mockReturnValue({ loading: false, room: null } as unknown as GameHallClient);
+    window.history.replaceState(null, '', '/');
+    const { rerender } = render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'practice' }));
+    mocks.hidePractice = true;
+    act(() => { window.history.replaceState(null, '', '/'); window.dispatchEvent(new PopStateEvent('popstate')); });
+    expect(screen.getByRole('heading', { name: 'home' })).toHaveFocus();
+    mocks.hidePractice = false;
+    act(() => { window.history.replaceState(null, '', '/?practice=connect-four'); window.dispatchEvent(new PopStateEvent('popstate')); });
+    const heading = screen.getByRole('heading', { name: 'solo connect-four' });
+    heading.focus();
+    rerender(<App />);
+    expect(heading).toHaveFocus();
+    expect(scrollTo).toHaveBeenCalledTimes(1);
   });
 
   it('离开房间回首页只在页面切换时重置滚动和标题焦点', () => {

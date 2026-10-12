@@ -32,10 +32,15 @@ export function App() {
     const routeChanged = previousRouteRevision.current !== practiceRoute.revision;
     previousRouteRevision.current = practiceRoute.revision;
     if (previousView.current === view) return;
+    const fromView = previousView.current;
     previousView.current = view;
-    if (routeChanged && practiceRoute.source === 'pop') return;
-    window.scrollTo({ top: 0, behavior: 'instant' });
-    if (view === 'home' || view.startsWith('practice:')) document.querySelector<HTMLElement>('main h1')?.focus({ preventScroll: true });
+    const popped = routeChanged && practiceRoute.source === 'pop';
+    if (!popped) window.scrollTo({ top: 0, behavior: 'instant' });
+    if (view === 'home') {
+      const gameId = fromView.startsWith('practice:') ? fromView.slice('practice:'.length) : null;
+      const returnButton = popped && gameId ? document.querySelector<HTMLElement>(`button[data-practice-game="${gameId}"]`) : null;
+      (returnButton ?? document.querySelector<HTMLElement>('main h1'))?.focus({ preventScroll: true });
+    } else if (view.startsWith('practice:')) document.querySelector<HTMLElement>('main h1')?.focus({ preventScroll: true });
   }, [view, practiceRoute]);
 
   function enterPractice(gameId: SoloGameId) {
