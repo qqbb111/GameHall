@@ -1,7 +1,8 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { type DotsAndBoxesState, type EdgeOrientation, type Player } from '@gamehall/game-core';
 import type { GameActionCommand } from '@gamehall/protocol';
 import './board-games.css';
+import { useBoardKeyboardContinuity } from './useBoardKeyboardContinuity';
 
 export function DotsAndBoxesGame({ state, mySeat, active, onAction, opponentLabel = '好友', hintEdge = null }: {
   state: DotsAndBoxesState; mySeat: Player; active: boolean;
@@ -10,7 +11,6 @@ export function DotsAndBoxesGame({ state, mySeat, active, onAction, opponentLabe
 }) {
   const [pending, setPending] = useState(false);
   const [focusIndex, setFocusIndex] = useState(0);
-  const boardRef = useRef<HTMLDivElement>(null);
   const mine = active && state.phase === 'playing' && state.turn === mySeat;
   const open = Array.from({ length: 49 }, (_, index) => index).filter((index) => {
     const gridRow = Math.floor(index / 7), gridCol = index % 7;
@@ -18,7 +18,13 @@ export function DotsAndBoxesGame({ state, mySeat, active, onAction, opponentLabe
     return gridRow % 2 === 0 ? state.horizontal[Math.floor(gridRow / 2) * 3 + Math.floor(gridCol / 2)] === null
       : state.vertical[Math.floor(gridRow / 2) * 4 + Math.floor(gridCol / 2)] === null;
   });
-  const currentFocus = open.includes(focusIndex) ? focusIndex : open[0];
+  const currentFocus = open.includes(focusIndex) ? focusIndex : open.toSorted((a, b) => {
+    const distance = (index: number) => Math.abs(Math.floor(index / 7) - Math.floor(focusIndex / 7)) + Math.abs(index % 7 - focusIndex % 7);
+    return distance(a) - distance(b) || a - b;
+  })[0];
+  const { boardRef, onKeyDownCapture, onPointerDownCapture } = useBoardKeyboardContinuity(
+    mine && !pending, currentFocus === undefined ? null : `[data-grid-index="${currentFocus}"]`,
+  );
   async function draw(orientation: EdgeOrientation, row: number, col: number) {
     const taken = orientation === 'H' ? state.horizontal[row * 3 + col] !== null : state.vertical[row * 4 + col] !== null;
     if (!mine || pending || taken) return;
@@ -48,7 +54,7 @@ export function DotsAndBoxesGame({ state, mySeat, active, onAction, opponentLabe
   }
   return <section className="game-surface dots-surface" aria-label="点格棋对局">
     <div className="surface-title"><div><span>连点成格 · 画完第四边得分并继续</span><h2 aria-live="polite">{state.phase === 'finished' ? '本局结束' : state.lastBoxes.length && state.lastEdge?.player === mySeat && mine ? `你获得 ${state.lastBoxes.length} 分，继续画边` : mine ? '轮到你画边' : `等待${opponentLabel}画边`}</h2></div><div className="dots-scores"><span>你 <b>{state.scores[mySeat]}</b></span><span>{opponentLabel} <b>{state.scores[mySeat === 0 ? 1 : 0]}</b></span></div></div>
-    <div ref={boardRef} className="dots-board" role="group" aria-label="4乘4点、3乘3格子的点格棋棋盘">{Array.from({ length: 49 }, (_, index) => {
+    <div ref={boardRef} className="dots-board" role="group" aria-label="4乘4点、3乘3格子的点格棋棋盘" onKeyDownCapture={onKeyDownCapture} onPointerDownCapture={onPointerDownCapture}>{Array.from({ length: 49 }, (_, index) => {
       const gridRow = Math.floor(index / 7), gridCol = index % 7;
       if (gridRow % 2 === 0 && gridCol % 2 === 0) return <span key={index} className="dots-point" aria-hidden="true"><i /></span>;
       if (gridRow % 2 === 1 && gridCol % 2 === 1) {
