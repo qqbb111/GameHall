@@ -85,18 +85,24 @@ export function createGameHallServer(configOverrides: Partial<ServerConfig> = {}
 
   app.set('trust proxy', 1);
   app.disable('x-powered-by');
-  app.use(helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        scriptSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
-        fontSrc: ["'self'", 'https://fonts.gstatic.com'],
-        imgSrc: ["'self'", 'data:'],
-        connectSrc: ["'self'", 'ws:', 'wss:'],
+  function securityHeaders(upgradeInsecureRequests: boolean) {
+    return helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+          fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+          imgSrc: ["'self'", 'data:'],
+          connectSrc: ["'self'", 'ws:', 'wss:'],
+          upgradeInsecureRequests: upgradeInsecureRequests ? [] : null,
+        },
       },
-    },
-  }));
+    });
+  }
+  const secureHeaders = securityHeaders(true);
+  const plainDevHeaders = securityHeaders(false);
+  app.use((request, response, next) => (config.isProduction || request.secure ? secureHeaders : plainDevHeaders)(request, response, next));
   app.use(express.json({ limit: '8kb' }));
 
   function sessionForToken(token: string | null, nowMs: number): SessionRow | undefined {

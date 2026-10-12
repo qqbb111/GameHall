@@ -80,6 +80,8 @@ Vite 会把 `/api` 和 `/socket.io` 代理到本地服务。首次启动时，�
 pnpm migrate
 ```
 
+开发模式下也可从同一局域网的 `http://<本机 IP>:3000` 访问已构建的 Web 页面；纯 HTTP 响应不会要求浏览器把脚本升级到 HTTPS。好友房仍按精确 Origin 校验，需将该地址显式配置为 `PUBLIC_ORIGIN` 或列入 `ALLOWED_ORIGINS`，不要开放通配 Origin。生产和 HTTPS 请求保留原有 CSP 升级策略。
+
 ## 验证
 
 按改动范围选择定向检查：
