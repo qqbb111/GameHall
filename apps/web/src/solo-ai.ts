@@ -7,6 +7,7 @@ export type SoloDifficulty = 'easy' | 'thoughtful';
 export type SoloGameId = 'connect-four' | 'reversi';
 export type SoloState = ConnectFourState | ReversiState;
 export type SoloAction = ConnectFourAction | ReversiAction;
+export type SoloHint = { action: SoloAction; reason: string };
 
 const FOUR_WINDOWS: number[][] = [];
 for (let row = 0; row < 6; row++) for (let col = 0; col < 7; col++) {
@@ -154,4 +155,23 @@ export function chooseReversiMove(state: ReversiState, difficulty: SoloDifficult
 
 export function chooseSoloMove(state: SoloState, difficulty: SoloDifficulty): SoloAction {
   return state.kind === 'connect-four' ? chooseConnectFourMove(state, difficulty) : chooseReversiMove(state, difficulty);
+}
+
+export function recommendSoloHint(state: SoloState): SoloHint {
+  if (state.phase !== 'playing' || state.turn !== 0) throw new Error('hint requires a human turn');
+  const action = chooseSoloMove(state, 'thoughtful');
+  if (state.kind === 'connect-four') {
+    if (action.type !== 'drop') throw new Error('invalid four hint');
+    const next = applyConnectFourAction(state, 0, action);
+    if (!next.ok) throw new Error('invalid four hint');
+    if (next.state.result?.type === 'win') return { action, reason: '这步可以立即连成四子。' };
+    const rival = applyConnectFourAction({ ...state, turn: 1 }, 1, action);
+    if (rival.ok && rival.state.result?.type === 'win') return { action, reason: '这步能挡住电脑下一手的四连。' };
+    return { action, reason: '综合当前局面，建议考虑这一列；你仍可自由落子。' };
+  }
+  if (action.type !== 'placeDisc') throw new Error('invalid reversi hint');
+  const flips = reversiFlips(state.board, 0, action.row, action.col).length;
+  if (!flips) throw new Error('invalid reversi hint');
+  const corner = (action.row === 0 || action.row === 7) && (action.col === 0 || action.col === 7);
+  return { action, reason: corner ? `角位落子可翻转 ${flips} 枚棋子，角位落子后不会再被翻走。` : `这步可以翻转 ${flips} 枚棋子；还可考虑其他合法落点。` };
 }

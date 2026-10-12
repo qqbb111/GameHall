@@ -6,12 +6,13 @@ import {
 import type { GameActionCommand } from '@gamehall/protocol';
 import { ConnectFourGame } from './ConnectFourGame';
 import { ReversiGame } from './ReversiGame';
-import type { SoloAction, SoloDifficulty, SoloGameId, SoloState } from './solo-ai';
+import type { SoloAction, SoloDifficulty, SoloGameId, SoloHint, SoloState } from './solo-ai';
 import type { SoloWorkerRequest, SoloWorkerResponse } from './solo-ai.worker';
 import { readSoloProgress, saveSoloProgress, type SoloStarter } from './solo-progress';
 import './solo-practice.css';
 
 const names: Record<SoloGameId, string> = { 'connect-four': '四子连线', reversi: '黑白棋' };
+type HintState = { kind: 'idle' | 'pending' } | { kind: 'ready'; hint: SoloHint } | { kind: 'error'; message: string };
 
 function initialState(gameId: SoloGameId, starter: SoloStarter): SoloState {
   return gameId === 'connect-four' ? createConnectFourState(starter === 'human' ? 0 : 1)
@@ -28,6 +29,18 @@ function computerAction(state: SoloState, action: SoloAction | undefined): SoloS
   if (action?.type !== 'placeDisc' || !legalReversiMoves(state.board, 1).some(({ row, col }) => row === action.row && col === action.col)) return null;
   const result = applyReversiAction(state, 1, action);
   return result.ok ? result.state : null;
+}
+
+function validHumanHint(state: SoloState, hint: SoloHint | undefined): hint is SoloHint {
+  if (state.phase !== 'playing' || state.turn !== 0 || !hint || typeof hint.reason !== 'string' || hint.reason.length < 1 || hint.reason.length > 120) return false;
+  const action = hint.action;
+  if (state.kind === 'connect-four') {
+    if (action?.type !== 'drop' || !Number.isInteger(action.col) || action.col < 0 || action.col >= 7 || state.board[action.col] !== null) return false;
+    return applyConnectFourAction(state, 0, action).ok;
+  }
+  if (action?.type !== 'placeDisc' || !Number.isInteger(action.row) || !Number.isInteger(action.col)) return false;
+  if (!legalReversiMoves(state.board, 0).some(({ row, col }) => row === action.row && col === action.col)) return false;
+  return applyReversiAction(state, 0, action).ok;
 }
 
 function resultText(state: SoloState): string {
@@ -59,6 +72,14 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
   const [round, setRound] = useState(0);
   const workerRef = useRef<Worker | null>(null);
   const requestGeneration = useRef(0);
+  const [hintState, setHintState] = useState<HintState>({ kind: 'idle' });
+  const hintWorkerRef = useRef<Worker | null>(null);
+  const hintGeneration = useRef(0);
+  const hintTimeoutRef = useRef<number | null>(null);
+  const hintButtonRef = useRef<HTMLButtonElement | null>(null);
+  const adoptButtonRef = useRef<HTMLButtonElement | null>(null);
+  const hintRequesterFocused = useRef(false);
+  const hintFocusTarget = useRef<'adopt' | 'button' | null>(null);
   const humanMoveAt = useRef(0);
   const playStatus = useRef<HTMLElement | null>(null);
 
@@ -82,6 +103,69 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     workerRef.current?.terminate();
     workerRef.current = null;
     setThinking(false);
+  }
+
+  function cancelHint() {
+    hintGeneration.current++;
+    hintFocusTarget.current = null;
+    if (hintTimeoutRef.current !== null) window.clearTimeout(hintTimeoutRef.current);
+    hintTimeoutRef.current = null;
+    hintWorkerRef.current?.terminate();
+    hintWorkerRef.current = null;
+    setHintState({ kind: 'idle' });
+  }
+
+  useEffect(() => () => {
+    hintGeneration.current++;
+    if (hintTimeoutRef.current !== null) window.clearTimeout(hintTimeoutRef.current);
+    hintWorkerRef.current?.terminate();
+    hintWorkerRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    if (hintFocusTarget.current === 'adopt' && hintState.kind === 'ready') {
+      adoptButtonRef.current?.focus({ preventScroll: true });
+      hintFocusTarget.current = null;
+    } else if (hintFocusTarget.current === 'button' && hintState.kind === 'idle') {
+      hintButtonRef.current?.focus({ preventScroll: true });
+      hintFocusTarget.current = null;
+    }
+  }, [hintState.kind]);
+
+  function requestHint() {
+    const currentState = stateRef.current;
+    if (!currentState || currentState.phase !== 'playing' || currentState.turn !== 0) return;
+    hintRequesterFocused.current = document.activeElement === hintButtonRef.current;
+    cancelHint();
+    const generation = hintGeneration.current;
+    const stateJson = JSON.stringify(currentState);
+    let worker: Worker;
+    try { worker = new Worker(new URL('./solo-ai.worker.ts', import.meta.url), { type: 'module' }); }
+    catch { setHintState({ kind: 'error', message: '暂时无法给出建议，请重试。' }); return; }
+    hintWorkerRef.current = worker;
+    setHintState({ kind: 'pending' });
+    const stillCurrent = () => hintWorkerRef.current === worker && hintGeneration.current === generation
+      && stateRef.current === currentState && JSON.stringify(stateRef.current) === stateJson;
+    const finish = () => {
+      if (hintTimeoutRef.current !== null) window.clearTimeout(hintTimeoutRef.current);
+      hintTimeoutRef.current = null;
+      worker.terminate();
+      if (hintWorkerRef.current === worker) hintWorkerRef.current = null;
+    };
+    const fail = () => { if (!stillCurrent()) return; finish(); setHintState({ kind: 'error', message: '这次没算出建议，请重试或直接落子。' }); };
+    worker.onmessage = (event: MessageEvent<SoloWorkerResponse>) => {
+      if (!stillCurrent() || event.data?.requestId !== generation) return;
+      if (event.data.error || !validHumanHint(currentState, event.data.hint)) { fail(); return; }
+      if (document.activeElement === hintButtonRef.current || hintRequesterFocused.current && document.activeElement === document.body) hintFocusTarget.current = 'adopt';
+      finish();
+      setHintState({ kind: 'ready', hint: event.data.hint });
+    };
+    worker.onerror = (event) => { event.preventDefault(); fail(); };
+    const request: SoloWorkerRequest = { requestId: generation, purpose: 'hint', gameId, difficulty: 'thoughtful', stateJson };
+    try {
+      worker.postMessage(request);
+      hintTimeoutRef.current = window.setTimeout(fail, 7_000);
+    } catch { fail(); }
   }
 
   useEffect(() => {
@@ -146,7 +230,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
       event.preventDefault();
       fail('电脑暂时无法完成这步，请点“重试这步”');
     };
-    const request: SoloWorkerRequest = { requestId: generation, gameId, difficulty: activeDifficulty, stateJson };
+    const request: SoloWorkerRequest = { requestId: generation, purpose: 'move', gameId, difficulty: activeDifficulty, stateJson };
     try {
       worker.postMessage(request);
       timeoutTimer = window.setTimeout(() => fail('电脑等得太久了，请点“重试这步”'), 7_000);
@@ -167,6 +251,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
 
   function start() {
     cancelComputer();
+    cancelHint();
     const next = initialState(gameId, starter);
     history.current = [];
     setHistoryLength(0);
@@ -186,6 +271,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     const previous = history.current.pop();
     if (!previous) return;
     cancelComputer();
+    cancelHint();
     stateRef.current = previous;
     setState(previous);
     setHistoryLength(history.current.length);
@@ -194,9 +280,9 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     setRound((current) => current + 1);
   }
 
-  async function humanAction(action: GameActionCommand['action']) {
+  async function humanAction(action: GameActionCommand['action']): Promise<boolean> {
     const current = stateRef.current;
-    if (!current || current.phase !== 'playing' || current.turn !== 0 || thinking) return;
+    if (!current || current.phase !== 'playing' || current.turn !== 0 || thinking) return false;
     let next: SoloState | null = null;
     if (current.kind === 'connect-four' && action.type === 'drop') {
       const result = applyConnectFourAction(current, 0, action);
@@ -205,7 +291,8 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
       const result = applyReversiAction(current, 0, action);
       if (result.ok) next = result.state;
     }
-    if (!next) return;
+    if (!next) return false;
+    cancelHint();
     history.current.push(current);
     humanMoveAt.current = performance.now();
     setHistoryLength(history.current.length);
@@ -214,12 +301,19 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     persist(next);
     setSaveNotice(null);
     setError(null);
+    return true;
+  }
+
+  function adoptHint() {
+    if (hintState.kind !== 'ready') return;
+    void humanAction(hintState.hint.action).then((applied) => { if (applied) playStatus.current?.focus({ preventScroll: true }); });
   }
 
   function exit() {
     if (stateRef.current) saveSoloProgress({ gameId, state: stateRef.current, history: history.current,
       difficulty: activeDifficultyRef.current, starter: activeStarterRef.current });
     cancelComputer();
+    cancelHint();
     onExit();
   }
 
@@ -228,6 +322,9 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     ? state.firstPlayer === 0 ? '金色' : '珊瑚色'
     : state?.kind === 'reversi' ? state.blackPlayer === 0 ? '黑色' : '白色' : '';
   const opponentColor = state?.kind === 'connect-four' ? color === '金色' ? '珊瑚色' : '金色' : color === '黑色' ? '白色' : '黑色';
+  const hint = hintState.kind === 'ready' ? hintState.hint : null;
+  const hintSpot = hint?.action.type === 'drop' ? `第 ${hint.action.col + 1} 列`
+    : hint?.action.type === 'placeDisc' ? `第 ${hint.action.row + 1} 行第 ${hint.action.col + 1} 列` : '';
   return <main className="solo-shell">
     <header className="solo-header">
       <div><span className="solo-eyebrow">本地单人练习</span><h1 tabIndex={-1}>与电脑练习 · {name}</h1><p>自己练一局，随时可以悔棋或重开。</p></div>
@@ -248,9 +345,13 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
         <strong ref={playStatus} tabIndex={-1} role="status" aria-live="polite">{error ? '电脑这步遇到问题' : resultText(state)}</strong>
       </div>
       {error && <div className="solo-error" role="alert">{error}<button type="button" onClick={() => { setError(null); setRetry((current) => current + 1); }}>重试这步</button></div>}
+      {state.phase === 'playing' && state.turn === 0 && <div className="solo-hint-bar">
+        {hintState.kind === 'ready' ? <div className="solo-hint-result" role="status"><p><strong>建议：{hintSpot}</strong> · {hintState.hint.reason}</p><div><button ref={adoptButtonRef} type="button" onClick={adoptHint}>采用这步</button><button type="button" onClick={() => { cancelHint(); hintFocusTarget.current = 'button'; }}>取消提示</button></div></div>
+          : <><button ref={hintButtonRef} type="button" onClick={requestHint} disabled={hintState.kind === 'pending'}>{hintState.kind === 'pending' ? '正在寻找落点…' : hintState.kind === 'error' ? '重试提示' : '提示一步'}</button>{hintState.kind === 'error' && <span role="status">{hintState.message}</span>}{hintState.kind === 'idle' && <small>建议仅供参考，你可以自行落子。</small>}</>}
+      </div>}
       {state.kind === 'connect-four'
-        ? <ConnectFourGame key={round} state={state as ConnectFourState} mySeat={0} active={!thinking} opponentLabel="电脑" onAction={humanAction} />
-        : <ReversiGame key={round} state={state as ReversiState} mySeat={0} active={!thinking} opponentLabel="电脑" onAction={humanAction} />}
+        ? <ConnectFourGame key={round} state={state as ConnectFourState} mySeat={0} active={!thinking} opponentLabel="电脑" hintColumn={hint?.action.type === 'drop' ? hint.action.col : null} onAction={humanAction} />
+        : <ReversiGame key={round} state={state as ReversiState} mySeat={0} active={!thinking} opponentLabel="电脑" hintCell={hint?.action.type === 'placeDisc' ? hint.action : null} onAction={humanAction} />}
       <div className="solo-actions">
         <button type="button" onClick={undo} disabled={!historyLength} title={!historyLength ? '还没有可以悔的棋' : '撤回上一轮你的落子和电脑应手'}>悔棋</button>
         <button type="button" onClick={start}>重新开始</button>

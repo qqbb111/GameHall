@@ -3,7 +3,7 @@ import {
   applyConnectFourAction, applyReversiAction, createConnectFourState, createReversiState, legalReversiMoves,
   type ConnectFourState, type Player,
 } from '@gamehall/game-core';
-import { chooseConnectFourMove, chooseReversiMove } from './solo-ai';
+import { chooseConnectFourMove, chooseReversiMove, recommendSoloHint } from './solo-ai';
 
 function fourAfter(columns: number[]): ConnectFourState {
   let state = createConnectFourState(0);
@@ -57,5 +57,25 @@ describe('solo computer move search', () => {
     if (!first.ok) return;
     const second = applyReversiAction(first.state, 1, chooseReversiMove(first.state, 'easy'));
     expect(second).toMatchObject({ ok: true, state: { phase: 'finished', counts: [0, 64], result: { type: 'win', winner: 1 } } });
+  });
+
+  it('人类四子提示区分立即连四、挡四与一般估计，且只给合法动作', () => {
+    expect(recommendSoloHint(fourAfter([0, 6, 1, 6, 2, 5]))).toEqual({ action: { type: 'drop', col: 3 }, reason: '这步可以立即连成四子。' });
+    const block = recommendSoloHint(fourAfter([6, 0, 6, 1, 5, 2]));
+    expect(block.action).toEqual({ type: 'drop', col: 3 });
+    expect(block.reason).toContain('挡住电脑下一手');
+    const opening = recommendSoloHint(createConnectFourState(0));
+    expect(opening.reason).toContain('建议考虑');
+    expect(opening.action.type).toBe('drop');
+    expect(() => recommendSoloHint(createConnectFourState(1))).toThrow('human turn');
+  });
+
+  it('人类黑白棋提示只给合法位置与实际翻转数量', () => {
+    const state = createReversiState(0);
+    const hint = recommendSoloHint(state);
+    expect(hint.action.type).toBe('placeDisc');
+    if (hint.action.type !== 'placeDisc') return;
+    expect(legalReversiMoves(state.board, 0)).toContainEqual({ row: hint.action.row, col: hint.action.col });
+    expect(hint.reason).toContain('翻转 1 枚棋子');
   });
 });

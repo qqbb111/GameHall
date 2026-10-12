@@ -3,8 +3,8 @@ import { CONNECT_FOUR_COLS, CONNECT_FOUR_ROWS, type ConnectFourState, type Playe
 import type { GameActionCommand } from '@gamehall/protocol';
 import './board-games.css';
 
-export function ConnectFourGame({ state, mySeat, active, onAction, opponentLabel = '好友' }: {
-  state: ConnectFourState; mySeat: Player; active: boolean; opponentLabel?: string;
+export function ConnectFourGame({ state, mySeat, active, onAction, opponentLabel = '好友', hintColumn = null }: {
+  state: ConnectFourState; mySeat: Player; active: boolean; opponentLabel?: string; hintColumn?: number | null;
   onAction: (action: GameActionCommand['action']) => Promise<unknown>;
 }) {
   const [pending, setPending] = useState(false);
@@ -18,13 +18,14 @@ export function ConnectFourGame({ state, mySeat, active, onAction, opponentLabel
   }
   return <section className="game-surface connect-four-surface" aria-label="四子连线对局">
     <div className="surface-title"><div><span>你执 {isGold ? '金色' : '珊瑚色'} · 率先连成四子</span><h2 aria-live="polite">{state.phase === 'finished' ? '本局结束' : mine ? '轮到你投放棋子' : `等待${opponentLabel}投放`}</h2></div><span className="four-turn-badge">{state.moveCount}/42 步</span></div>
-    <div className="four-columns" role="group" aria-label="选择投放列">{Array.from({ length: CONNECT_FOUR_COLS }, (_, col) => <button key={col} type="button" disabled={!mine || pending || state.board[col] !== null} aria-label={`投放第 ${col + 1} 列${state.board[col] !== null ? '，已满' : ''}`} onClick={() => void drop(col)}>↓ <span>{col + 1}</span></button>)}</div>
+    <div className="four-columns" role="group" aria-label="选择投放列">{Array.from({ length: CONNECT_FOUR_COLS }, (_, col) => <button key={col} type="button" className={hintColumn === col ? 'is-hint' : ''} disabled={!mine || pending || state.board[col] !== null} aria-label={`投放第 ${col + 1} 列${state.board[col] !== null ? '，已满' : ''}${hintColumn === col ? '，建议落点' : ''}`} onClick={() => void drop(col)}>↓ <span>{col + 1}</span></button>)}</div>
     <div className={`four-board ${mine ? 'is-interactive' : ''}`} role="grid" aria-label={`7 列 6 行四子连线棋盘，已投放 ${state.moveCount} 枚棋子`} onPointerLeave={() => setHovered(null)}>{Array.from({ length: CONNECT_FOUR_ROWS * CONNECT_FOUR_COLS }, (_, index) => {
       const cell = state.board[index]; const row = Math.floor(index / 7); const col = index % 7;
       const last = state.lastMove?.row === row && state.lastMove.col === col;
       const win = state.winningLine.some((entry) => entry.row === row && entry.col === col);
       const preview = mine && hovered === col && cell === null && (row === CONNECT_FOUR_ROWS - 1 || state.board[(row + 1) * 7 + col] !== null);
-      return <span key={index} className={`four-hole ${win ? 'is-winning' : ''} ${preview ? `is-preview ${isGold ? 'preview-gold' : 'preview-coral'}` : ''}`} role="gridcell" aria-label={`第 ${row + 1} 行第 ${col + 1} 列，${cell === null ? '空位' : cell === state.firstPlayer ? '金色棋子' : '珊瑚色棋子'}`} onPointerEnter={() => setHovered(col)} onClick={() => void drop(col)}><i className={`${cell === null ? '' : cell === state.firstPlayer ? 'gold' : 'coral'} ${last ? 'is-last' : ''}`} /></span>;
+      const suggested = hintColumn === col && cell === null && (row === CONNECT_FOUR_ROWS - 1 || state.board[(row + 1) * 7 + col] !== null);
+      return <span key={index} className={`four-hole ${win ? 'is-winning' : ''} ${suggested ? 'is-hint' : ''} ${preview ? `is-preview ${isGold ? 'preview-gold' : 'preview-coral'}` : ''}`} role="gridcell" aria-label={`第 ${row + 1} 行第 ${col + 1} 列，${cell === null ? '空位' : cell === state.firstPlayer ? '金色棋子' : '珊瑚色棋子'}${suggested ? '，建议落点' : ''}`} onPointerEnter={() => setHovered(col)} onClick={() => void drop(col)}><i className={`${cell === null ? '' : cell === state.firstPlayer ? 'gold' : 'coral'} ${last ? 'is-last' : ''}`} /></span>;
     })}</div>
     <p className="board-hint">点击或用 Tab 选择列，再按 Enter 或空格投放。棋子会落在该列最低的空位；横、竖、斜任意四子相连即获胜，棋盘放满则和棋。</p>
   </section>;

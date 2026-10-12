@@ -61,6 +61,115 @@ describe('local computer practice', () => {
     expect(FakeWorker.instances[1]!.request?.difficulty).toBe('easy');
   });
 
+  it('四子提示只预览合法列，取消不落子；采用后按玩家落子并恢复焦点', async () => {
+    start();
+    const originalSave = window.localStorage.getItem(soloProgressKey('connect-four'));
+    screen.getByRole('button', { name: '提示一步' }).focus();
+    fireEvent.click(screen.getByRole('button', { name: '提示一步' }));
+    const worker = FakeWorker.instances[0]!;
+    expect(worker.request).toMatchObject({ purpose: 'hint', difficulty: 'thoughtful', gameId: 'connect-four' });
+    expect(screen.getByRole('button', { name: '正在寻找落点…' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '投放第 1 列' }));
+    expect(screen.getByRole('grid', { name: /已投放 1 枚棋子/ })).toBeInTheDocument();
+    expect(worker.terminated).toBe(true);
+    act(() => worker.reply({ hint: { action: { type: 'drop', col: 3 }, reason: '旧建议' } }));
+    expect(screen.queryByText(/旧建议/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '悔棋' }));
+    expect(screen.getByRole('grid', { name: /已投放 0 枚棋子/ })).toBeInTheDocument();
+
+    screen.getByRole('button', { name: '提示一步' }).focus();
+    fireEvent.click(screen.getByRole('button', { name: '提示一步' }));
+    act(() => FakeWorker.instances[2]!.reply({ hint: { action: { type: 'drop', col: 3 }, reason: '建议这一列。' } }));
+    expect(screen.getByRole('button', { name: '采用这步' })).toHaveFocus();
+    expect(screen.getByRole('grid', { name: /已投放 0 枚棋子/ })).toBeInTheDocument();
+    expect(window.localStorage.getItem(soloProgressKey('connect-four'))).toBe(originalSave);
+    expect(screen.getByRole('button', { name: '投放第 4 列，建议落点' })).toHaveClass('is-hint');
+    expect(screen.getByRole('gridcell', { name: /第 6 行第 4 列，空位，建议落点/ })).toHaveClass('is-hint');
+    fireEvent.click(screen.getByRole('button', { name: '取消提示' }));
+    expect(screen.getByRole('button', { name: '提示一步' })).toHaveFocus();
+    expect(screen.getByRole('button', { name: '投放第 4 列' })).not.toHaveClass('is-hint');
+
+    fireEvent.click(screen.getByRole('button', { name: '提示一步' }));
+    act(() => FakeWorker.instances[3]!.reply({ hint: { action: { type: 'drop', col: 3 }, reason: '建议这一列。' } }));
+    fireEvent.click(screen.getByRole('button', { name: '采用这步' }));
+    expect(screen.getByRole('grid', { name: /已投放 1 枚棋子/ })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('电脑正在思考…')).toHaveFocus());
+    expect(readSoloProgress('connect-four')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 1 } } });
+  });
+
+  it('黑白棋提示标出合法格，不能自动落子；手动改落点会清提示', () => {
+    start('reversi');
+    fireEvent.click(screen.getByRole('button', { name: '提示一步' }));
+    const hint = { action: { type: 'placeDisc', row: 2, col: 3 } as const, reason: '这步可以翻转 1 枚棋子。' };
+    act(() => FakeWorker.instances[0]!.reply({ hint }));
+    expect(screen.getByRole('gridcell', { name: /第 3 行第 4 列.*建议落点/ })).toHaveClass('is-hint');
+    expect(readSoloProgress('reversi')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 0 } } });
+    fireEvent.click(screen.getByRole('gridcell', { name: '第 4 行第 3 列，空位，可落子' }));
+    expect(screen.queryByText(/这步可以翻转/)).not.toBeInTheDocument();
+    expect(readSoloProgress('reversi')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 1 } } });
+  });
+
+  it('黑白棋可采用建议，异步建议不会抢走用户移到棋盘的焦点', async () => {
+    start('reversi');
+    screen.getByRole('button', { name: '提示一步' }).focus();
+    fireEvent.click(screen.getByRole('button', { name: '提示一步' }));
+    const cell = screen.getByRole('gridcell', { name: '第 3 行第 4 列，空位，可落子' });
+    cell.focus();
+    act(() => FakeWorker.instances[0]!.reply({ hint: { action: { type: 'placeDisc', row: 2, col: 3 }, reason: '这步可以翻转 1 枚棋子。' } }));
+    expect(cell).toHaveFocus();
+    fireEvent.click(screen.getByRole('button', { name: '采用这步' }));
+    expect(readSoloProgress('reversi')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 1, turn: 1 } } });
+    await waitFor(() => expect(FakeWorker.instances).toHaveLength(2));
+    expect(FakeWorker.instances[1]!.request?.purpose).toBe('move');
+  });
+
+  it('提示拒绝错请求、认输与非法位置；超时可重试且棋盘始终可正常落子', () => {
+    start();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    fireEvent.click(screen.getByRole('button', { name: '提示一步' }));
+    const first = FakeWorker.instances[0]!;
+    act(() => first.onmessage?.({ data: { requestId: first.request!.requestId + 1, hint: { action: { type: 'drop', col: 2 }, reason: '错请求' } } } as MessageEvent<SoloWorkerResponse>));
+    expect(screen.queryByText(/错请求/)).not.toBeInTheDocument();
+    act(() => first.reply({ hint: { action: { type: 'resign' }, reason: '不可采用' } }));
+    expect(screen.getByRole('button', { name: '重试提示' })).toBeInTheDocument();
+    expect(readSoloProgress('connect-four')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 0 } } });
+    fireEvent.click(screen.getByRole('button', { name: '重试提示' }));
+    act(() => FakeWorker.instances[1]!.reply({ hint: { action: { type: 'drop', col: 7 }, reason: '越界' } }));
+    expect(screen.getByRole('button', { name: '重试提示' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '重试提示' }));
+    act(() => vi.advanceTimersByTime(7_001));
+    expect(FakeWorker.instances[2]!.terminated).toBe(true);
+    expect(screen.getByRole('button', { name: '重试提示' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '投放第 2 列' }));
+    expect(screen.getByRole('grid', { name: /已投放 1 枚棋子/ })).toBeInTheDocument();
+  });
+
+  it.each(['undo', 'restart', 'exit'] as const)('提示计算中 %s 取消旧响应', (cancel) => {
+    const { unmount, onExit } = start();
+    fireEvent.click(screen.getByRole('button', { name: '提示一步' }));
+    const old = FakeWorker.instances[0]!;
+    if (cancel === 'undo') {
+      fireEvent.click(screen.getByRole('button', { name: '投放第 1 列' }));
+      fireEvent.click(screen.getByRole('button', { name: '悔棋' }));
+    } else if (cancel === 'restart') fireEvent.click(screen.getByRole('button', { name: '重新开始' }));
+    else { fireEvent.click(screen.getAllByRole('button', { name: '返回大厅' })[0]!); unmount(); expect(onExit).toHaveBeenCalledOnce(); }
+    expect(old.terminated).toBe(true);
+    act(() => old.reply({ hint: { action: { type: 'drop', col: 3 }, reason: '过期' } }));
+    expect(screen.queryByText(/过期/)).not.toBeInTheDocument();
+    if (cancel !== 'exit') expect(screen.getByRole('grid', { name: /已投放 0 枚棋子/ })).toBeInTheDocument();
+  });
+
+  it('有结果的提示在重开后立即消失，新局不沿用旧建议', () => {
+    start();
+    fireEvent.click(screen.getByRole('button', { name: '提示一步' }));
+    act(() => FakeWorker.instances[0]!.reply({ hint: { action: { type: 'drop', col: 3 }, reason: '仅适用于旧局' } }));
+    expect(screen.getByText(/仅适用于旧局/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '重新开始' }));
+    expect(screen.queryByText(/仅适用于旧局/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '提示一步' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '投放第 4 列' })).not.toHaveClass('is-hint');
+  });
+
   it('计算中悔棋、重开与离开会取消旧请求，迟到回包不能改新局', async () => {
     const { onExit, unmount } = start();
     fireEvent.click(screen.getByRole('button', { name: '投放第 1 列' }));

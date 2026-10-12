@@ -3,8 +3,8 @@ import { legalReversiMoves, type Player, type ReversiState } from '@gamehall/gam
 import type { GameActionCommand } from '@gamehall/protocol';
 import './board-games.css';
 
-export function ReversiGame({ state, mySeat, active, onAction, opponentLabel = '好友' }: {
-  state: ReversiState; mySeat: Player; active: boolean; opponentLabel?: string;
+export function ReversiGame({ state, mySeat, active, onAction, opponentLabel = '好友', hintCell = null }: {
+  state: ReversiState; mySeat: Player; active: boolean; opponentLabel?: string; hintCell?: { row: number; col: number } | null;
   onAction: (action: GameActionCommand['action']) => Promise<unknown>;
 }) {
   const [focusIndex, setFocusIndex] = useState(19);
@@ -36,8 +36,8 @@ export function ReversiGame({ state, mySeat, active, onAction, opponentLabel = '
       const row = Math.floor(index / 8), col = index % 8;
       const last = state.lastMove?.row === row && state.lastMove.col === col;
       return <button key={index} ref={(element) => { buttons.current[index] = element; }} type="button" role="gridcell" tabIndex={focusIndex === index ? 0 : -1}
-        className={`reversi-cell ${mine && legal.has(index) ? 'is-legal' : ''} ${last ? 'is-last' : ''} ${flipped.has(index) ? 'is-flipped' : ''}`}
-        aria-label={`第 ${row + 1} 行第 ${col + 1} 列，${cell === null ? '空位' : cell === state.blackPlayer ? '黑棋' : '白棋'}${mine && legal.has(index) ? '，可落子' : ''}`}
+        className={`reversi-cell ${mine && legal.has(index) ? 'is-legal' : ''} ${hintCell?.row === row && hintCell.col === col ? 'is-hint' : ''} ${last ? 'is-last' : ''} ${flipped.has(index) ? 'is-flipped' : ''}`}
+        aria-label={`第 ${row + 1} 行第 ${col + 1} 列，${cell === null ? '空位' : cell === state.blackPlayer ? '黑棋' : '白棋'}${mine && legal.has(index) ? '，可落子' : ''}${hintCell?.row === row && hintCell.col === col ? '，建议落点' : ''}`}
         aria-disabled={!mine || !legal.has(index) || pending} onFocus={() => setFocusIndex(index)} onKeyDown={(event) => key(event, index)} onClick={() => void place(index)}>
         {cell !== null ? <i className={cell === state.blackPlayer ? 'black' : 'white'} /> : mine && legal.has(index) ? <i className="legal-hint" /> : null}
       </button>;

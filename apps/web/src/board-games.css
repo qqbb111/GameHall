@@ -17,6 +17,8 @@
 .four-hole i.coral { background: radial-gradient(circle at 35% 28%,#ffd0b7,var(--board-coral) 46%,#a34445); }
 .four-hole i.is-last { animation: four-drop .34s cubic-bezier(.2,.7,.3,1.15) both; }
 .four-hole.is-winning i { outline: 3px solid #fff3c2; outline-offset: -3px; box-shadow: 0 0 15px #ffe596; }
+.four-columns button.is-hint { outline: 3px solid #fff4c7; outline-offset: 2px; background: #fff0c6; }
+.four-hole.is-hint { outline: 3px solid #fff4c7; outline-offset: -3px; box-shadow: 0 0 0 3px #e8b95a; }
 @keyframes four-drop { from { transform: translateY(-130%); opacity: .35; } to { transform: translateY(0); opacity: 1; } }
 @media (max-width: 560px) { .four-board { border-radius: 12px; } .four-columns button { font-size: .8rem; } .four-columns button span { display: none; } }
 @media (prefers-reduced-motion: reduce) { .four-hole i.is-last { animation: none; } .four-columns button { transition: none; } }
@@ -31,6 +33,7 @@
 .reversi-cell i.black { background:radial-gradient(circle at 34% 27%,#6b7471,#101c1c 62%); }.reversi-cell i.white { background:radial-gradient(circle at 34% 27%,#fff,#d5d9cb 66%); }
 .reversi-cell i.legal-hint { width:22%;height:22%;border-radius:50%;background:#e9d39c;box-shadow:0 0 0 4px #f6e9bb30; }
 .reversi-cell.is-last::after { content:'';position:absolute;bottom:8%;right:9%;width:10%;aspect-ratio:1;border-radius:50%;background:#eac578; }
+.reversi-cell.is-hint { outline: 3px solid #fff4c7; outline-offset: -3px; z-index: 1; }
 .reversi-cell.is-flipped i:not(.legal-hint) { animation:reversi-flip .34s ease both; }
 @keyframes reversi-flip { from { transform:rotateY(85deg); } to { transform:rotateY(0); } }
 .reversi-scores { display:flex;gap:12px; }.reversi-scores span { display:grid;place-items:center;min-width:48px;padding:5px;border:1px solid #a89a78;border-radius:9px;color:#ead8ae;font-size:.78rem; }.reversi-scores b { color:#fff;font-size:1.1rem; }

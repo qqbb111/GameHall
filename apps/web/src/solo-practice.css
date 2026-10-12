@@ -22,6 +22,15 @@
 .solo-toolbar > div { display: flex; flex-wrap: wrap; gap: 8px 18px; color: #e1e8d9; }
 .solo-toolbar strong { color: #f2d289; font-size: 18px; }
 .solo-play > .game-surface { margin: 0 auto; }
+.solo-hint-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 auto 12px; padding: 10px 14px; border: 1px solid #78998577; border-radius: 12px; background: #14362d; }
+.solo-hint-bar button { min-height: 44px; padding: 8px 15px; border: 1px solid #d5b16b; border-radius: 9px; background: #254939; color: #f6e4b9; font-weight: 700; cursor: pointer; }
+.solo-hint-bar button:disabled { opacity: .7; cursor: wait; }
+.solo-hint-bar button:not(:disabled):hover { background: #356049; }
+.solo-hint-bar small, .solo-hint-bar span { color: #cbd8cb; }
+.solo-hint-result { display: flex; width: 100%; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+.solo-hint-result p { margin: 0; line-height: 1.5; }
+.solo-hint-result strong { color: #f4d58c; }
+.solo-hint-result > div { display: flex; gap: 8px; flex-wrap: wrap; }
 .solo-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 20px 0; }
 .solo-settings { margin: 18px auto 50px; max-width: 670px; padding: 14px 18px; border: 1px solid #64806a77; border-radius: 12px; background: #14362d; }
 .solo-settings summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-weight: 700; }
