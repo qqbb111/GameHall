@@ -1,13 +1,14 @@
 # GameHall
 
-![GameHall：好友棋牌桌游馆，支持璀璨宝石、五子棋、路墙棋、24 点和德州扑克。](apps/web/public/og.png)
+![GameHall：好友棋牌桌游馆，支持璀璨宝石、五子棋、四子连线、路墙棋、24 点和德州扑克。](apps/web/public/og.png)
 
 GameHall 是一个面向好友局的实时多人棋盘游戏平台。玩家使用昵称和六位邀请码创建私人房间，通过浏览器直接开始游戏；服务端负责房间生命周期、规则校验、状态持久化和实时广播。
 
-当前提供五款可玩的游戏：
+当前提供六款可玩的游戏：
 
 - 璀璨宝石：经典基础版，支持 2–4 人。
 - 五子棋：15×15 棋盘，双人对局。
+- 四子连线：7 列 6 行下落棋盘，双人对局。
 - 路墙棋：标准双人 9×9 棋盘。
 - 24 点：限时双人速度对决。
 - 德州扑克：标准无限注 2–4 人好友牌局，虚拟筹码跨手保留直至产生最终冠军。
@@ -40,13 +41,13 @@ Express / Socket.IO 服务
 ```text
 apps/web                 React + Vite 前端
 apps/server              Express + Socket.IO 服务端
-packages/game-core       五款游戏的规则引擎
+packages/game-core       六款游戏的规则引擎
 packages/protocol        客户端与服务端共享的事件协议
 docs/                    验证流程与项目文档
 render.yaml              Render 单实例部署配置
 ```
 
-`packages/game-core` 提供五款游戏的纯规则引擎，服务端统一负责房间状态、动作校验、版本推进、实时广播与恢复；前端根据共享快照渲染对应的棋盘、牌桌和结算界面。
+`packages/game-core` 提供六款游戏的纯规则引擎，服务端统一负责房间状态、动作校验、版本推进、实时广播与恢复；前端根据共享快照渲染对应的棋盘、牌桌和结算界面。
 
 运行环境要求 Node.js `24.15+`、pnpm `11.19+`。
 
@@ -85,7 +86,7 @@ pnpm verify:server    # 服务端、数据库、Socket.IO 和集成测试
 pnpm verify:full
 ```
 
-完整门禁覆盖 lint、typecheck、单元测试、真实 HTTP/Socket.IO 集成测试、生产构建和负载冒烟。集成测试覆盖五款游戏、房间边界、重复与过期动作、断线恢复、重启恢复、房间消息、房主交接、多人对局和房间重开；负载冒烟覆盖 50 个连接和 25 个活跃房间。
+完整门禁覆盖 lint、typecheck、单元测试、真实 HTTP/Socket.IO 集成测试、生产构建和负载冒烟。集成测试覆盖六款游戏、房间边界、重复与过期动作、断线恢复、重启恢复、房间消息、房主交接、多人对局和房间重开；负载冒烟覆盖 50 个连接和 25 个活跃房间。
 
 璀璨宝石的定向检查：
 
@@ -96,6 +97,15 @@ pnpm --filter @gamehall/server test:integration -- splendor
 pnpm --filter @gamehall/web test -- SplendorGame RoomPage
 ```
 
+四子连线及新棋盘游戏数据库迁移的定向检查：
+
+```bash
+pnpm --filter @gamehall/game-core test -- connect-four
+pnpm --filter @gamehall/server test -- board-games-migration
+pnpm --filter @gamehall/server test:integration -- connect-four
+pnpm --filter @gamehall/web test -- ConnectFourGame
+```
+
 验证矩阵和失败处理流程见 [`docs/verification-workflow.md`](docs/verification-workflow.md)。
 
 ## 游戏规则范围
@@ -104,6 +114,7 @@ pnpm --filter @gamehall/web test -- SplendorGame RoomPage
 | --- | --- |
 | 璀璨宝石 | 90 张发展卡、10 张贵族、2–4 人供应设置、保留、购买、黄金支付、贵族选择、15 分终局与平局处理 |
 | 五子棋 | 15×15、黑先、连续五子胜、无禁手、满盘和棋 |
+| 四子连线 | 7 列 6 行、棋子落在该列最低空位、横竖斜四连胜、满盘和棋；双方确认复赛后交换先手 |
 | 路墙棋 | 双人 9×9、每人十墙、直跳与受阻斜跳、墙冲突校验、双方 BFS 通路校验 |
 | 24 点 | A/J/Q/K 映射为 1/11/12/13，四牌各用一次，精确有理数计算，不执行 `eval`，每题 30 秒 |
 | 德州扑克 | 2–4 人、1000 虚拟筹码、固定 10/20 盲注、无限注下注、短盲注自动全押跑牌、弃牌死钱、公共牌、摊牌、主池/边池和同牌平分（奇数余数从庄家左侧分配）；筹码跨手保留，全体未淘汰玩家确认后发下一手，仅剩一名有筹码玩家时整局结束 |

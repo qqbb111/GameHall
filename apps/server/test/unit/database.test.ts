@@ -13,6 +13,7 @@ describe('GameHallDatabase', () => {
         { version: 3, name: 'room_messages' },
         { version: 4, name: 'splendor_multiplayer_rooms' },
         { version: 5, name: 'texas_holdem_rooms' },
+        { version: 6, name: 'new_board_game_rooms' },
       ]);
       expect(database.raw.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='server_runtime'").get()).toEqual({ name: 'server_runtime' });
       expect(database.raw.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='room_messages'").get()).toEqual({ name: 'room_messages' });

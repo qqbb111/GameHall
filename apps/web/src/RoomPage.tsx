@@ -1,16 +1,18 @@
 import { Check, Clipboard, DoorOpen, Flag, Link2, LoaderCircle, LogOut, RotateCcw, Send, ShieldCheck, TriangleAlert, Wifi, WifiOff, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { requireBinaryPlayer, type GomokuState, type QuoridorView, type TwentyFourView, type SplendorView, type TexasHoldemView } from '@gamehall/game-core';
+import { requireBinaryPlayer, type GomokuState, type ConnectFourState, type QuoridorView, type TwentyFourView, type SplendorView, type TexasHoldemView } from '@gamehall/game-core';
 import type { GameId, RoomMemberView } from '@gamehall/protocol';
 import type { GameHallClient } from './gamehall-client';
 import { GomokuGame, QuoridorGame, TexasHoldemGame, TwentyFourGame } from './game-components';
 import { ClickSpark, Reveal } from './motion-primitives';
 import { resultMessage } from './room-result';
 import { SplendorGame } from './SplendorGame';
+import { ConnectFourGame } from './ConnectFourGame';
 
 const gameNames: Record<GameId, string> = {
   splendor: '璀璨宝石',
   gomoku: '五子棋',
+  'connect-four': '四子连线',
   quoridor: '路墙棋',
   'twenty-four': '24 点速度对决',
   'texas-holdem': '德州扑克',
@@ -295,6 +297,7 @@ export function RoomPage({ client }: { client: GameHallClient }) {
             <div className={`game-stage ${result ? 'has-result' : ''}`}>
               {room.gameId === 'splendor' && <SplendorGame key={game.version} state={game.view as SplendorView} mySeat={room.mySeat} active={canPlay} members={room.members} onAction={client.submitGameAction} />}
               {room.gameId === 'gomoku' && <GomokuGame state={game.view as GomokuState} mySeat={requireBinaryPlayer(room.mySeat)} active={canPlay} onAction={client.submitGameAction} />}
+              {room.gameId === 'connect-four' && <ConnectFourGame state={game.view as ConnectFourState} mySeat={requireBinaryPlayer(room.mySeat)} active={canPlay} onAction={client.submitGameAction} />}
               {room.gameId === 'quoridor' && <QuoridorGame state={game.view as QuoridorView} mySeat={requireBinaryPlayer(room.mySeat)} active={canPlay} onAction={client.submitGameAction} />}
               {room.gameId === 'twenty-four' && <TwentyFourGame key={(game.view as TwentyFourView).round} state={game.view as TwentyFourView} mySeat={requireBinaryPlayer(room.mySeat)} active={canPlay} serverNowMs={gameClockNow} onAction={client.submitGameAction} />}
               {room.gameId === 'texas-holdem' && <TexasHoldemGame snapshotVersion={game.version} state={game.view as TexasHoldemView} mySeat={room.mySeat} active={canPlay} members={room.members} onAction={client.submitGameAction} onPresentationLockChange={setPokerPresentationLocked} />}

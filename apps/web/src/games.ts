@@ -5,13 +5,14 @@ export type GameCardInfo = {
   name: string;
   subtitle: string;
   status: 'online' | 'soon';
-  icon: 'gomoku' | 'quoridor' | 'twenty-four' | 'texas-holdem' | 'cards' | 'go' | 'splendor';
+  icon: 'gomoku' | 'quoridor' | 'twenty-four' | 'texas-holdem' | 'cards' | 'go' | 'splendor' | 'connect-four';
   accent: string;
 };
 
 export const games: GameCardInfo[] = [
   { id: 'splendor', name: '璀璨宝石', subtitle: '经典基础版 · 2–4 人宝石商会', status: 'online', icon: 'splendor', accent: 'jade' },
   { id: 'gomoku', name: '五子棋', subtitle: '15 路自由规则 · 双人对弈', status: 'online', icon: 'gomoku', accent: 'amber' },
+  { id: 'connect-four', name: '四子连线', subtitle: '七列下落 · 抢先连四', status: 'online', icon: 'connect-four', accent: 'amber' },
   { id: 'quoridor', name: '路墙棋', subtitle: '步步为营 · 路径与墙的博弈', status: 'online', icon: 'quoridor', accent: 'jade' },
   { id: 'twenty-four', name: '24 点速度对决', subtitle: '四牌抢答 · 先得 5 分', status: 'online', icon: 'twenty-four', accent: 'blue' },
   { id: 'texas-holdem', name: '德州扑克', subtitle: '无限注好友牌局 · 2–4 人', status: 'online', icon: 'texas-holdem', accent: 'amber' },
@@ -25,6 +26,7 @@ export const games: GameCardInfo[] = [
 export const gameNames: Record<GameId, string> = {
   splendor: '璀璨宝石',
   gomoku: '五子棋',
+  'connect-four': '四子连线',
   quoridor: '路墙棋',
   'twenty-four': '24 点速度对决',
   'texas-holdem': '德州扑克',

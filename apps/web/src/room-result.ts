@@ -1,4 +1,4 @@
-import type { GomokuState, SplendorView, QuoridorView, TwentyFourView, TexasHoldemView, PokerSeat } from '@gamehall/game-core';
+import type { GomokuState, ConnectFourState, SplendorView, QuoridorView, TwentyFourView, TexasHoldemView, PokerSeat } from '@gamehall/game-core';
 import type { GameId } from '@gamehall/protocol';
 
 export function resultMessage(gameId: GameId, view: unknown, mySeat: number): string | null {
@@ -34,7 +34,7 @@ export function resultMessage(gameId: GameId, view: unknown, mySeat: number): st
       ? `你赢得了整局，共完成 ${result.handsPlayed} 手！`
       : `整局结束，玩家 ${result.winner + 1} 成为最终冠军。`;
   }
-  const state = view as GomokuState | QuoridorView;
+  const state = view as GomokuState | ConnectFourState | QuoridorView;
   if (state.phase !== 'finished' || !state.result) return null;
   if (state.result.type === 'draw') return '棋盘战成和局，再来一场？';
   if (state.result.reason === 'disconnect') return state.result.winner === mySeat ? '好友超时未重连，你赢得本局。' : '你因断线超时输掉了本局。';

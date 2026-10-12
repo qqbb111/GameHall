@@ -1,0 +1,24 @@
+.connect-four-surface { --board-gold: #f5ca79; --board-coral: #e77d6b; }
+.four-turn-badge { padding: 8px 13px; border: 1px solid #b39a67; border-radius: 99px; color: #f7d596; font-weight: 700; }
+.four-columns,.four-board { width: min(100%, 560px); margin-inline: auto; display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); gap: clamp(3px,1vw,8px); }
+.four-columns { margin-top: 20px; margin-bottom: 8px; }
+.four-columns button { min-width: 0; padding: 9px 0; border: 1px solid #c4ad80; border-radius: 10px; background: #e8d6a9; color: #253d37; font-weight: 800; cursor: pointer; transition: transform .16s ease,background .16s ease; }
+.four-columns button:not(:disabled):is(:hover,:focus-visible) { transform: translateY(-3px); background: #fff0c6; outline: 2px solid #f8cd77; outline-offset: 2px; }
+.four-columns button:disabled { opacity: .48; cursor: default; }
+.four-columns button span { display: inline-block; margin-left: 3px; }
+.four-board { aspect-ratio: 7/6; padding: clamp(6px,1.5vw,13px); border: 3px solid #d8ba75; border-radius: 20px; background: linear-gradient(145deg,#39756f,#194e4c); box-shadow: inset 0 4px 14px #072e2f,0 14px 28px #061f2280; }
+.four-hole { display: grid; place-items: center; min-width: 0; min-height: 0; border-radius: 50%; background: #072e31; box-shadow: inset 0 4px 8px #061c208c; }
+.four-board.is-interactive .four-hole { cursor: pointer; }
+.four-hole.is-preview i { background: #f1c77a77; border: 2px dashed #f7dfad; box-sizing: border-box; }
+.four-hole i { width: 86%; height: 86%; border-radius: 50%; }
+.four-hole i.gold,.four-hole i.coral { box-shadow: inset -5px -7px 10px #0003,inset 3px 3px 7px #fff9,0 2px 5px #0008; }
+.four-hole i.gold { background: radial-gradient(circle at 35% 28%,#fff2c3,var(--board-gold) 46%,#bd7c3f); }
+.four-hole i.coral { background: radial-gradient(circle at 35% 28%,#ffd0b7,var(--board-coral) 46%,#a34445); }
+.four-hole i.is-last { animation: four-drop .34s cubic-bezier(.2,.7,.3,1.15) both; }
+.four-hole.is-winning i { outline: 3px solid #fff3c2; outline-offset: -3px; box-shadow: 0 0 15px #ffe596; }
+@keyframes four-drop { from { transform: translateY(-130%); opacity: .35; } to { transform: translateY(0); opacity: 1; } }
+@media (max-width: 560px) { .four-board { border-radius: 12px; } .four-columns button { font-size: .8rem; } .four-columns button span { display: none; } }
+@media (prefers-reduced-motion: reduce) { .four-hole i.is-last { animation: none; } .four-columns button { transition: none; } }
+.home-four { display:grid;grid-template-columns:repeat(7,17px);gap:5px;padding:10px;border:4px solid #d5ae64;border-radius:12px;background:#28625b;box-shadow:0 10px 20px #001b1b77;transform:rotate(-8deg); }
+.home-four i { width:17px;height:17px;border-radius:50%;box-shadow:inset -3px -3px 5px #0004,inset 2px 2px 4px #fff6; }
+.home-four i.gold { background:#e9bb6d; }.home-four i.coral { background:#d97664; }

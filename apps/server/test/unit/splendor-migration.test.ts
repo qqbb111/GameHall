@@ -48,7 +48,7 @@ describe('SQLite v3 → current file upgrade', () => {
         }
         expect(db.raw.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
         expect(db.raw.prepare('PRAGMA integrity_check').get()).toEqual({ integrity_check: 'ok' });
-        expect(db.raw.prepare('SELECT MAX(version) AS version, COUNT(*) AS count FROM schema_migrations').get()).toEqual({ version: 5, count: 5 });
+        expect(db.raw.prepare('SELECT MAX(version) AS version, COUNT(*) AS count FROM schema_migrations').get()).toEqual({ version: 6, count: 6 });
         expect(db.raw.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'").all()).toHaveLength(6);
         const rooms = db.raw.prepare('SELECT state_json FROM rooms ORDER BY id').all() as { state_json: string }[];
         expect(rooms.map((room) => JSON.parse(room.state_json))).toEqual(states);

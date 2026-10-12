@@ -22,8 +22,10 @@ import { generateRandomNickname } from './random-nickname';
 import { parseRoomCodeInput, removeRoomQueryFromAddress } from './room-code';
 import { GemMark } from './GemMark';
 import './splendor.css';
+import './board-games.css';
 
 function GameGlyph({ kind }: { kind: GameCardInfo['icon'] }) {
+  if (kind === 'connect-four') return <div className="home-four" aria-hidden="true">{[0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0].map((value,index)=><i key={index} className={value ? 'coral' : 'gold'} />)}</div>;
   if (kind === 'splendor') return <div className="splendor-home-gems" data-motion="hover-replay" aria-hidden="true">
     <svg className="splendor-gem-aura" viewBox="0 0 240 160" focusable="false"><ellipse cx="120" cy="87" rx="100" ry="48" /><ellipse cx="120" cy="87" rx="82" ry="37" /><path d="M120 2V25M120 139V158M8 87H28M212 87H232M34 25L50 40M190 134L208 150M205 24L188 40M30 150L48 134" /></svg>
     <span className="splendor-gem-dust">{Array.from({ length: 6 }, (_, index) => <i key={index} style={{ '--spark-index': index } as CSSProperties} />)}</span>
@@ -110,7 +112,7 @@ function TableOpeningGuide({ nickname, onChooseGame }: { nickname: string; onCho
         </li>
         <li className={`opening-step ${hasNickname ? 'is-active' : 'is-pending'}`} aria-current={hasNickname ? 'step' : undefined}>
           <span className="opening-step-index"><Gamepad2 size={18} /><small>02</small></span>
-          <span className="opening-step-copy"><b>挑一张桌</b><strong>璀璨宝石 · 德州扑克 · 五子棋 · 24 点</strong><small>点击游戏卡，房间立即创建</small></span>
+          <span className="opening-step-copy"><b>挑一张桌</b><strong>璀璨宝石 · 四子连线 · 德州扑克 · 五子棋</strong><small>点击游戏卡，房间立即创建</small></span>
           <button type="button" onClick={onChooseGame} disabled={!hasNickname}>去选游戏 <ArrowRight size={15} /></button>
         </li>
         <li className="opening-step is-pending">
@@ -278,7 +280,7 @@ export function HomePage({ client }: { client: GameHallClient }) {
           <Reveal distance={22} respectReducedMotion={false}>
             <div className="section-heading">
               <div><span>FEATURED TABLES</span><h2 id="catalog-title">今晚玩什么？</h2></div>
-              <p>五张桌已经亮灯。选一局，把邀请码发给好友。</p>
+              <p>六张桌已经亮灯。选一局，把邀请码发给好友。</p>
             </div>
           </Reveal>
 

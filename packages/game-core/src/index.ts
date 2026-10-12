@@ -1,5 +1,6 @@
 export * from './types';
 export * from './gomoku';
+export * from './connect-four';
 export * from './quoridor';
 export * from './twenty-four';
 export * from './splendor';
