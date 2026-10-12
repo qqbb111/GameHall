@@ -258,17 +258,48 @@ describe('24 点单人流程', () => {
   });
   it('另一窗口写入后暂停当前题组，玩家明确选择共享进度', async () => {
     await start();
-    await waitFor(async () => expect((await readTwentyFourSnapshot()).kind).toBe('valid'));
+    fireEvent.change(screen.getByLabelText('输入算式'), { target: { value: '7+(3*' } });
+    await waitFor(async () => {
+      const saved = await readTwentyFourSnapshot();
+      expect(saved.kind === 'valid' && saved.progress.draft).toBe('7+(3*');
+    });
     const prior = await readTwentyFourSnapshot();
     if (prior.kind !== 'valid') throw new Error('missing saved progress');
-    const elsewhere = { ...prior.progress, draft: '8+' };
+    const elsewhere = { ...prior.progress, draft: '7+(3*6' };
     expect((await writeTwentyFourProgress(elsewhere, prior.token, () => true)).kind).toBe('saved');
     fireEvent(window, new Event('focus'));
-    await screen.findByText('另一窗口的 24 点进度已改变');
+    const conflict = await screen.findByText('另一窗口的 24 点进度已改变');
+    const currentPreview = screen.getByRole('region', { name: '当前标签预览' });
+    const sharedPreview = screen.getByRole('region', { name: '共享存档预览' });
+    expect(currentPreview).toHaveTextContent('7+(3*');
+    expect(sharedPreview).toHaveTextContent('7+(3*6');
+    expect(currentPreview).toHaveTextContent('第 1 题');
+    expect(sharedPreview).toHaveTextContent('第 1 题');
+    expect(currentPreview).not.toHaveTextContent(pack[9]!.solution);
+    expect(sharedPreview.querySelectorAll('button,input')).toHaveLength(0);
+    expect(conflict.closest('.solo-conflict')).toHaveTextContent('选择前不会覆盖另一窗口');
     expect(screen.getByRole('button', { name: '提交答案' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '接着共享进度' }));
-    await waitFor(() => expect(screen.getByLabelText('输入算式')).toHaveValue('8+'));
+    await waitFor(() => expect(screen.getByLabelText('输入算式')).toHaveValue('7+(3*6'));
     expect(screen.getByText('已暂停，点击继续后作答')).toBeInTheDocument();
+  });
+  it('冲突预览区分挑战阶段、提示与剩余时间，不展示未来解法', async () => {
+    const initial = newTwentyFourProgress('challenge', pack);
+    const shared = { ...initial, phase: 'answered' as const, answers: [{ kind: 'revealed' as const, expression: null, hints: 2 }], remainingMs: 12_300 };
+    const saved = await writeTwentyFourProgress(shared, null, () => true);
+    if (saved.kind !== 'saved') throw new Error('seed failed');
+    writeTwentyFourDraft({ progress: { ...initial, draft: '7+', hints: 2, remainingMs: 24_500 }, baseToken: null });
+    render(<TwentyFourPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    await screen.findByText('另一窗口的 24 点进度已改变');
+    const localPreview = screen.getByRole('region', { name: '当前标签预览' });
+    const sharedPreview = screen.getByRole('region', { name: '共享存档预览' });
+    expect(localPreview).toHaveTextContent('作答中');
+    expect(localPreview).toHaveTextContent('已看 2/3 步');
+    expect(localPreview).toHaveTextContent('24.5 秒');
+    expect(sharedPreview).toHaveTextContent('已作答，待下一题');
+    expect(sharedPreview).toHaveTextContent('12.3 秒');
+    expect(sharedPreview).not.toHaveTextContent(pack[9]!.solution);
+    expect(sharedPreview.querySelectorAll('button,input')).toHaveLength(0);
   });
   it('同内容草稿即使带旧 token 也使用共享最新 token，继续编辑正常保存', async () => {
     const same = newTwentyFourProgress('practice', pack);

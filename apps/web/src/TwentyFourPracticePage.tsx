@@ -13,6 +13,22 @@ function summary(progress: TwentyFourProgress): string {
   return `${progress.mode === 'practice' ? '不限时练习' : '60 秒挑战'} · ${progress.answers.length}/10 题 · 独立解出 ${result.independent} 题 · 参考解出 ${result.assisted} 题`;
 }
 
+const previewSuits = { S: '♠', H: '♥', D: '♦', C: '♣' } as const;
+function ConflictPreview({ title, progress }: { title: string; progress: TwentyFourProgress }) {
+  const hand = progress.phase === 'finished' ? null : progress.pack[progress.index];
+  const phase = progress.phase === 'playing' ? '作答中' : progress.phase === 'answered' ? '已作答，待下一题'
+    : progress.finishReason === 'time' ? '时间到，已结算' : '十题完成，已结算';
+  return <section className="twenty-four-conflict-preview" aria-label={`${title}预览`}>
+    <strong>{title}</strong><p>{summary(progress)}</p>
+    <dl><div><dt>阶段</dt><dd>{phase}</dd></div>
+      {hand && <div><dt>当前题与牌</dt><dd>第 {progress.index + 1} 题 · {hand.cards.map((card) => `${card.rank === 1 ? 'A' : card.rank === 11 ? 'J' : card.rank === 12 ? 'Q' : card.rank === 13 ? 'K' : card.rank}${previewSuits[card.suit]}`).join('、')}</dd></div>}
+      {hand && <div><dt>草稿</dt><dd className="twenty-four-conflict-draft">{progress.draft || '（空）'}</dd></div>}
+      {hand && <div><dt>提示</dt><dd>{progress.phase === 'playing' ? `已看 ${progress.hints}/3 步` : '本题已作答'}</dd></div>}
+      {progress.mode === 'challenge' && <div><dt>剩余时间</dt><dd>{(progress.remainingMs / 1000).toFixed(1)} 秒</dd></div>}
+    </dl>
+  </section>;
+}
+
 export function TwentyFourPracticePage({ recoveredRoom, onExit }: { recoveredRoom: boolean; onExit: () => void }) {
   const [booted, setBooted] = useState(false);
   const [mode, setMode] = useState<TwentyFourMode>('practice');
@@ -378,7 +394,10 @@ export function TwentyFourPracticePage({ recoveredRoom, onExit }: { recoveredRoo
       {saveNotice && <p className="solo-save-note" role="status">{saveNotice}</p>}
       {unsaved && <p className="solo-save-note is-warning" role="status">浏览器无法保存当前草稿；刷新后可能丢失本次进度。</p>}
       {conflict && <div className="solo-conflict" role="status"><strong>另一窗口的 24 点进度已改变</strong>
-        <p>当前：{progress ? summary(progress) : '尚未开始'}</p><p>共享：{conflict.kind === 'valid' ? summary(conflict.progress) : conflict.kind === 'empty' ? '暂无记录' : '存档无法校验'}</p>
+        <div className="twenty-four-conflict-previews">
+          {progress ? <ConflictPreview title="当前标签" progress={progress} /> : <p>当前：尚未开始</p>}
+          {conflict.kind === 'valid' ? <ConflictPreview title="共享存档" progress={conflict.progress} /> : <p>共享：{conflict.kind === 'empty' ? '暂无记录' : '存档无法校验'}</p>}
+        </div>
         <small>选择前不会覆盖另一窗口。计时已暂停。</small><div className="solo-conflict-actions">
           {conflict.kind === 'valid' && <button type="button" onClick={() => void adoptShared()}>接着共享进度</button>}
           {progress && <button type="button" onClick={() => void keepCurrent()}>保存当前题组</button>}
