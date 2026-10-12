@@ -46,10 +46,13 @@ export function TwentyFourPracticePage({ recoveredRoom, onExit }: { recoveredRoo
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [unsaved, setUnsaved] = useState(false);
   const [conflict, setConflict] = useState<Snapshot | null>(null);
+  const [conflictNotice, setConflictNotice] = useState<string | null>(null);
   const conflictRef = useRef<Snapshot | null>(null);
   const knownToken = useRef<string | null>(null);
   const pendingToken = useRef<string | null>(null);
   const epoch = useRef(0);
+  const sharedReadGeneration = useRef(0);
+  const choiceGeneration = useRef(0);
   const sequence = useRef(0);
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const writing = useRef(false);
@@ -105,8 +108,10 @@ export function TwentyFourPracticePage({ recoveredRoom, onExit }: { recoveredRoo
     }
     runningRef.current = false;
     setRunning(false);
+    sharedReadGeneration.current++;
     conflictRef.current = snapshot;
     setConflict(snapshot);
+    setConflictNotice(null);
   }, []);
 
   const persist = useCallback((next: TwentyFourProgress, forceShared = false) => {
@@ -212,11 +217,22 @@ export function TwentyFourPracticePage({ recoveredRoom, onExit }: { recoveredRoo
     if (!booted) return;
     let active = true;
     const check = async () => {
-      if (writing.current || queuedWrites.current || conflictRef.current) return;
+      if (!conflictRef.current && (writing.current || queuedWrites.current)) return;
+      const readGeneration = ++sharedReadGeneration.current;
       const seq = sequence.current, thisEpoch = epoch.current, token = knownToken.current;
       const shared = await readTwentyFourSnapshot();
-      if (!active || seq !== sequence.current || thisEpoch !== epoch.current || token !== knownToken.current || shared.kind === 'unavailable') return;
+      if (!active || !mounted.current || readGeneration !== sharedReadGeneration.current || seq !== sequence.current
+          || thisEpoch !== epoch.current || token !== knownToken.current || shared.kind === 'unavailable') return;
       const latest = shared.kind === 'valid' || shared.kind === 'invalid' ? shared.token : null;
+      const observed = conflictRef.current;
+      if (observed) {
+        const observedToken = observed.kind === 'valid' || observed.kind === 'invalid' ? observed.token : null;
+        if (latest !== observedToken) {
+          conflictRef.current = shared; setConflict(shared);
+          setConflictNotice('共享进度又有更新，请按新预览选择。');
+        }
+        return;
+      }
       if (pendingToken.current && latest === pendingToken.current) {
         knownToken.current = latest;
         pendingToken.current = null;
@@ -232,6 +248,8 @@ export function TwentyFourPracticePage({ recoveredRoom, onExit }: { recoveredRoo
 
   async function start(nextMode = mode, trigger?: HTMLElement) {
     if (generating) return;
+    choiceGeneration.current++;
+    sharedReadGeneration.current++;
     let focusMoved = false;
     const onFocusMoved = (event: FocusEvent) => { if (event.target !== trigger) focusMoved = true; };
     const onPointerMoved = (event: PointerEvent) => { if (event.target !== trigger) focusMoved = true; };
@@ -329,28 +347,47 @@ export function TwentyFourPracticePage({ recoveredRoom, onExit }: { recoveredRoo
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [restartOpen]);
-  function exit() { pause(); generator.current.cancel(); generation.current++; onExit(); }
+  function exit() { choiceGeneration.current++; sharedReadGeneration.current++; pause(); generator.current.cancel(); generation.current++; onExit(); }
   async function adoptShared() {
+    const observed = conflictRef.current;
+    if (!observed || observed.kind !== 'valid') return;
+    const choice = ++choiceGeneration.current;
+    sharedReadGeneration.current++;
     pause(); epoch.current++; await saveQueue.current;
+    if (!mounted.current || choice !== choiceGeneration.current || conflictRef.current !== observed) return;
     const snapshot = await readTwentyFourSnapshot();
-    if (snapshot.kind !== 'valid') { setError('共享进度暂不可读取，请稍后重试。'); return; }
+    if (!mounted.current || choice !== choiceGeneration.current || conflictRef.current !== observed) return;
+    if (snapshot.kind === 'unavailable') { setConflictNotice('共享进度暂不可读取，请稍后重试。'); return; }
+    if (snapshot.kind !== 'valid' || snapshot.token !== observed.token) {
+      sharedReadGeneration.current++;
+      conflictRef.current = snapshot; setConflict(snapshot);
+      setConflictNotice('共享进度又有更新，请按新预览选择。');
+      return;
+    }
+    sharedReadGeneration.current++;
     knownToken.current = snapshot.token;
     pendingToken.current = null;
-    conflictRef.current = null; setConflict(null); clearTwentyFourDraft();
-    progressRef.current = snapshot.progress; setProgress(snapshot.progress); setMode(snapshot.progress.mode);
+    conflictRef.current = null; setConflict(null); setConflictNotice(null); clearTwentyFourDraft();
+    progressRef.current = observed.progress; setProgress(observed.progress); setMode(observed.progress.mode);
     setEditorRevision((revision) => revision + 1);
     setError(null); setSaveNotice('已切换到另一窗口保存的题组，计时已暂停');
   }
   async function keepCurrent() {
+    const observed = conflictRef.current;
+    if (!observed) return;
+    const choice = ++choiceGeneration.current;
+    sharedReadGeneration.current++;
     pause(); await saveQueue.current;
+    if (!mounted.current || choice !== choiceGeneration.current || conflictRef.current !== observed) return;
     const local = progressRef.current;
     if (!local) return;
     const latest = await readTwentyFourSnapshot();
+    if (!mounted.current || choice !== choiceGeneration.current || conflictRef.current !== observed) return;
     if (latest.kind === 'unavailable') { setError('共享存档暂不可读取，当前进度仍在此标签。'); return; }
-    const observed = conflictRef.current;
     const observedToken = observed?.kind === 'valid' || observed?.kind === 'invalid' ? observed.token : null;
     const latestToken = latest.kind === 'valid' || latest.kind === 'invalid' ? latest.token : null;
     if (pendingToken.current && latestToken === pendingToken.current) {
+      sharedReadGeneration.current++;
       knownToken.current = latestToken;
       pendingToken.current = null;
       conflictRef.current = null; setConflict(null);
@@ -358,17 +395,22 @@ export function TwentyFourPracticePage({ recoveredRoom, onExit }: { recoveredRoo
       setError(null); setSaveNotice('已确认当前题组的保存，计时仍暂停');
       return;
     }
-    if (latestToken !== observedToken) { conflictRef.current = latest; setConflict(latest); setError('另一窗口又更新了，请重新比较后选择。'); return; }
+    if (latestToken !== observedToken) { sharedReadGeneration.current++; conflictRef.current = latest; setConflict(latest); setConflictNotice('另一窗口又更新了，请重新比较后选择。'); return; }
     const currentEpoch = ++epoch.current;
-    const result = await writeTwentyFourProgress(local, latestToken, () => currentEpoch === epoch.current,
+    const result = await writeTwentyFourProgress(local, latestToken, () => currentEpoch === epoch.current && choice === choiceGeneration.current,
       (token) => {
-        if (!mounted.current || currentEpoch !== epoch.current) return;
+        if (!mounted.current || currentEpoch !== epoch.current || choice !== choiceGeneration.current) return;
         knownToken.current = latestToken;
         pendingToken.current = token;
         setUnsaved(!writeTwentyFourDraft({ progress: local, baseToken: latestToken, pendingToken: token }));
       });
-    if (currentEpoch !== epoch.current) return;
-    if (result.kind === 'conflict') { conflictRef.current = result.snapshot; setConflict(result.snapshot); return; }
+    if (!mounted.current || currentEpoch !== epoch.current || choice !== choiceGeneration.current) return;
+    if (result.kind === 'conflict') {
+      sharedReadGeneration.current++;
+      conflictRef.current = result.snapshot; setConflict(result.snapshot);
+      setConflictNotice('另一窗口又更新了，请重新比较后选择。');
+      return;
+    }
     if (result.kind === 'uncertain') {
       knownToken.current = latestToken;
       pendingToken.current = result.token;
@@ -379,7 +421,8 @@ export function TwentyFourPracticePage({ recoveredRoom, onExit }: { recoveredRoo
     if (result.kind !== 'saved') { setError('保存失败，当前进度仍在此标签。'); return; }
     knownToken.current = result.token;
     pendingToken.current = null;
-    conflictRef.current = null; setConflict(null); clearTwentyFourDraft(); setUnsaved(false);
+    sharedReadGeneration.current++;
+    conflictRef.current = null; setConflict(null); setConflictNotice(null); clearTwentyFourDraft(); setUnsaved(false);
     setError(null); setSaveNotice('当前题组已保存，计时仍暂停');
   }
 
@@ -394,6 +437,7 @@ export function TwentyFourPracticePage({ recoveredRoom, onExit }: { recoveredRoo
       {saveNotice && <p className="solo-save-note" role="status">{saveNotice}</p>}
       {unsaved && <p className="solo-save-note is-warning" role="status">浏览器无法保存当前草稿；刷新后可能丢失本次进度。</p>}
       {conflict && <div className="solo-conflict" role="status"><strong>另一窗口的 24 点进度已改变</strong>
+        {conflictNotice && <p className="twenty-four-conflict-notice">{conflictNotice}</p>}
         <div className="twenty-four-conflict-previews">
           {progress ? <ConflictPreview title="当前标签" progress={progress} /> : <p>当前：尚未开始</p>}
           {conflict.kind === 'valid' ? <ConflictPreview title="共享存档" progress={conflict.progress} /> : <p>共享：{conflict.kind === 'empty' ? '暂无记录' : '存档无法校验'}</p>}

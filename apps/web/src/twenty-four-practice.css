@@ -33,6 +33,7 @@
 .twenty-four-conflict-previews { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .twenty-four-conflict-preview { min-width: 0; padding: 12px; border: 1px solid #806c4b; border-radius: 11px; background: #18382f; }
 .twenty-four-conflict-preview p { margin: 5px 0 10px; color: #f5d99f; }
+.twenty-four-conflict-notice { margin: 0; color: #ffe1a1; }
 .twenty-four-conflict-preview dl { display: grid; gap: 5px; margin: 0; }
 .twenty-four-conflict-preview dl > div { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 8px; }
 .twenty-four-conflict-preview dt { color: #d4dfca; }

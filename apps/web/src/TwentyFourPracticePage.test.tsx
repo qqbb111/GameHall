@@ -301,6 +301,132 @@ describe('24 点单人流程', () => {
     expect(sharedPreview).not.toHaveTextContent(pack[9]!.solution);
     expect(sharedPreview.querySelectorAll('button,input')).toHaveLength(0);
   });
+  it('冲突期间只读追踪共享新版；选择时若再次变化，先展示新版而不丢本标签草稿', async () => {
+    const initial = newTwentyFourProgress('practice', pack);
+    const first = await writeTwentyFourProgress({ ...initial, draft: '2*(9-' }, null, () => true);
+    if (first.kind !== 'saved') throw new Error('seed failed');
+    const local = { ...initial, draft: '7+(3*' };
+    const pendingToken = 'idb:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    writeTwentyFourDraft({ progress: local, baseToken: null, pendingToken });
+    render(<TwentyFourPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    await screen.findByText('另一窗口的 24 点进度已改变');
+    const sharedPreview = screen.getByRole('region', { name: '共享存档预览' });
+    const second = await writeTwentyFourProgress({ ...initial, draft: '2*(9-4)+' }, first.token, () => true);
+    if (second.kind !== 'saved') throw new Error('second save failed');
+    fireEvent.focus(window);
+    await waitFor(() => expect(sharedPreview).toHaveTextContent('2*(9-4)+'));
+    expect(screen.getByRole('region', { name: '当前标签预览' })).toHaveTextContent('7+(3*');
+    expect(store.readTwentyFourDraft()?.progress.draft).toBe('7+(3*');
+    expect(store.readTwentyFourDraft()?.pendingToken).toBe(pendingToken);
+
+    const third = await writeTwentyFourProgress({ ...initial, draft: '2*(9-4)+6' }, second.token, () => true);
+    if (third.kind !== 'saved') throw new Error('third save failed');
+    fireEvent.click(screen.getByRole('button', { name: '接着共享进度' }));
+    await waitFor(() => expect(sharedPreview).toHaveTextContent('2*(9-4)+6'));
+    expect(screen.getByText('共享进度又有更新，请按新预览选择。')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '当前标签预览' })).toHaveTextContent('7+(3*');
+    expect(store.readTwentyFourDraft()?.progress.draft).toBe('7+(3*');
+    expect(store.readTwentyFourDraft()?.pendingToken).toBe(pendingToken);
+    expect((await readTwentyFourSnapshot()).token).toBe(third.token);
+    fireEvent.click(screen.getByRole('button', { name: '接着共享进度' }));
+    await waitFor(() => expect(screen.getByLabelText('输入算式')).toHaveValue('2*(9-4)+6'));
+    expect(screen.queryByText('另一窗口的 24 点进度已改变')).not.toBeInTheDocument();
+    expect(store.readTwentyFourDraft()).toBeNull();
+  });
+  it('冲突的较慢旧读取不能覆盖较新的共享预览', async () => {
+    const initial = newTwentyFourProgress('practice', pack);
+    const first = await writeTwentyFourProgress(initial, null, () => true);
+    if (first.kind !== 'saved') throw new Error('seed failed');
+    writeTwentyFourDraft({ progress: { ...initial, draft: '本标签' }, baseToken: null });
+    render(<TwentyFourPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    await screen.findByText('另一窗口的 24 点进度已改变');
+    const newer = { ...initial, draft: '共享新版' };
+    const second = await writeTwentyFourProgress(newer, first.token, () => true);
+    if (second.kind !== 'saved') throw new Error('second save failed');
+    let resolveOld: ((snapshot: store.Snapshot) => void) | undefined;
+    vi.spyOn(store, 'readTwentyFourSnapshot')
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }))
+      .mockResolvedValueOnce({ kind: 'valid', progress: newer, token: second.token });
+    fireEvent.focus(window);
+    fireEvent.focus(window);
+    await waitFor(() => expect(screen.getByRole('region', { name: '共享存档预览' })).toHaveTextContent('共享新版'));
+    await act(async () => { resolveOld?.({ kind: 'valid', progress: initial, token: first.token }); });
+    expect(screen.getByRole('region', { name: '共享存档预览' })).toHaveTextContent('共享新版');
+    expect(screen.getByRole('region', { name: '当前标签预览' })).toHaveTextContent('本标签');
+  });
+  it('选择时发现未见新版后，先前的后台读取不能把预览倒退', async () => {
+    const initial = newTwentyFourProgress('practice', pack);
+    const first = await writeTwentyFourProgress(initial, null, () => true);
+    if (first.kind !== 'saved') throw new Error('seed failed');
+    writeTwentyFourDraft({ progress: { ...initial, draft: 'local' }, baseToken: null });
+    render(<TwentyFourPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    await screen.findByText('另一窗口的 24 点进度已改变');
+    const newer = { ...initial, draft: 'newer' };
+    const second = await writeTwentyFourProgress(newer, first.token, () => true);
+    if (second.kind !== 'saved') throw new Error('second save failed');
+    let finishOld: ((snapshot: store.Snapshot) => void) | undefined;
+    const read = vi.spyOn(store, 'readTwentyFourSnapshot')
+      .mockImplementationOnce(() => new Promise((resolve) => { finishOld = resolve; }))
+      .mockResolvedValueOnce({ kind: 'valid', progress: newer, token: second.token });
+    fireEvent.focus(window);
+    await waitFor(() => expect(read).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: '接着共享进度' }));
+    await waitFor(() => expect(screen.getByRole('region', { name: '共享存档预览' })).toHaveTextContent('newer'));
+    await act(async () => { finishOld?.({ kind: 'valid', progress: initial, token: first.token }); });
+    expect(screen.getByRole('region', { name: '共享存档预览' })).toHaveTextContent('newer');
+    expect(screen.getByRole('region', { name: '当前标签预览' })).toHaveTextContent('local');
+  });
+  it('共享读取失败或记录消失时保留本标签进度，退出后迟到选择不会清草稿', async () => {
+    const initial = newTwentyFourProgress('practice', pack);
+    const first = await writeTwentyFourProgress(initial, null, () => true);
+    if (first.kind !== 'saved') throw new Error('seed failed');
+    writeTwentyFourDraft({ progress: { ...initial, draft: 'local' }, baseToken: null });
+    const onExit = vi.fn();
+    const view = render(<TwentyFourPracticePage recoveredRoom={false} onExit={onExit} />);
+    await screen.findByText('另一窗口的 24 点进度已改变');
+    const read = vi.spyOn(store, 'readTwentyFourSnapshot').mockResolvedValueOnce({ kind: 'unavailable', token: null })
+      .mockResolvedValueOnce({ kind: 'empty', token: null });
+    fireEvent.click(screen.getByRole('button', { name: '接着共享进度' }));
+    expect(await screen.findByText('共享进度暂不可读取，请稍后重试。')).toBeInTheDocument();
+    expect(store.readTwentyFourDraft()?.progress.draft).toBe('local');
+    fireEvent.click(screen.getByRole('button', { name: '接着共享进度' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: '接着共享进度' })).not.toBeInTheDocument());
+    expect(screen.getByText('共享：暂无记录')).toBeInTheDocument();
+    expect(store.readTwentyFourDraft()?.progress.draft).toBe('local');
+    read.mockRestore();
+    const second = await writeTwentyFourProgress({ ...initial, draft: 'new' }, first.token, () => true);
+    if (second.kind !== 'saved') throw new Error('second save failed');
+    fireEvent.focus(window);
+    await waitFor(() => expect(screen.getByRole('button', { name: '接着共享进度' })).toBeInTheDocument());
+    let finish: ((snapshot: store.Snapshot) => void) | undefined;
+    vi.spyOn(store, 'readTwentyFourSnapshot').mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    fireEvent.click(screen.getByRole('button', { name: '接着共享进度' }));
+    fireEvent.click(screen.getAllByRole('button', { name: '返回大厅' })[0]!);
+    view.unmount();
+    await act(async () => { finish?.({ kind: 'valid', progress: { ...initial, draft: 'new' }, token: second.token }); });
+    expect(onExit).toHaveBeenCalledOnce();
+    expect(store.readTwentyFourDraft()?.progress.draft).toBe('local');
+  });
+  it('连续两次选择共享进度时，较早的迟到读取不能覆盖较新选择', async () => {
+    const initial = newTwentyFourProgress('practice', pack);
+    const shared = { ...initial, draft: '共享草稿' };
+    const saved = await writeTwentyFourProgress(shared, null, () => true);
+    if (saved.kind !== 'saved') throw new Error('seed failed');
+    writeTwentyFourDraft({ progress: { ...initial, draft: '本标签草稿' }, baseToken: null });
+    render(<TwentyFourPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    await screen.findByText('另一窗口的 24 点进度已改变');
+    let finishOld: ((snapshot: store.Snapshot) => void) | undefined;
+    const read = vi.spyOn(store, 'readTwentyFourSnapshot')
+      .mockImplementationOnce(() => new Promise((resolve) => { finishOld = resolve; }))
+      .mockResolvedValueOnce({ kind: 'valid', progress: shared, token: saved.token });
+    fireEvent.click(screen.getByRole('button', { name: '接着共享进度' }));
+    await waitFor(() => expect(read).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: '接着共享进度' }));
+    await waitFor(() => expect(screen.getByLabelText('输入算式')).toHaveValue('共享草稿'));
+    await act(async () => { finishOld?.({ kind: 'valid', progress: initial, token: saved.token }); });
+    expect(screen.getByLabelText('输入算式')).toHaveValue('共享草稿');
+    expect(screen.queryByText('另一窗口的 24 点进度已改变')).not.toBeInTheDocument();
+  });
   it('同内容草稿即使带旧 token 也使用共享最新 token，继续编辑正常保存', async () => {
     const same = newTwentyFourProgress('practice', pack);
     const first = await writeTwentyFourProgress(same, null, () => true);
