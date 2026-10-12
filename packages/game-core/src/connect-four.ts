@@ -22,7 +22,7 @@ export function createConnectFourState(firstPlayer: Player): ConnectFourState {
 
 function at(row: number, col: number): number { return row * CONNECT_FOUR_COLS + col; }
 function inside(row: number, col: number): boolean { return row >= 0 && row < CONNECT_FOUR_ROWS && col >= 0 && col < CONNECT_FOUR_COLS; }
-function line(board: Cell[], row: number, col: number, player: Player): Array<{ row: number; col: number }> {
+export function connectFourLine(board: Cell[], row: number, col: number, player: Player): Array<{ row: number; col: number }> {
   for (const [dr, dc] of [[0, 1], [1, 0], [1, 1], [1, -1]] as const) {
     const cells = [{ row, col }];
     for (const sign of [-1, 1]) {
@@ -47,7 +47,7 @@ export function applyConnectFourAction(state: ConnectFourState, actor: Player, a
   if (row < 0) return ruleError('COLUMN_FULL', '这一列已经放满');
   const board = [...state.board]; board[at(row, action.col)] = actor;
   const moveCount = state.moveCount + 1;
-  const winningLine = line(board, row, action.col, actor);
+  const winningLine = connectFourLine(board, row, action.col, actor);
   return { ok: true, state: { ...state, board, moveCount, lastMove: { row, col: action.col, player: actor }, winningLine,
     turn: winningLine.length || moveCount === 42 ? actor : otherPlayer(actor),
     phase: winningLine.length || moveCount === 42 ? 'finished' : 'playing',

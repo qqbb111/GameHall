@@ -63,6 +63,42 @@ describe('local solo progress', () => {
     expect(readSoloProgress('connect-four')).toEqual({ kind: 'empty' });
   });
 
+  it('拒绝联机核心可解码但单人不可达的四连棋盘或错误棋色数量', () => {
+    const first = createConnectFourState(0);
+    let state = first;
+    for (const col of [0, 6, 1, 6, 2, 5, 3]) {
+      const result = applyConnectFourAction(state, state.turn, { type: 'drop', col });
+      if (!result.ok) throw new Error('bad fixture');
+      state = result.state;
+    }
+    const won = JSON.parse(encodeSoloProgress({ gameId: 'connect-four', state, history: [], difficulty: 'easy', starter: 'human' })) as Record<string, unknown>;
+    const falsePlaying = { ...state, phase: 'playing', result: null, turn: 1, winningLine: [] };
+    expect(() => decodeSoloProgress('connect-four', JSON.stringify({ ...won, state: JSON.stringify(falsePlaying) }))).toThrow();
+    const wrongColors = fourProgress();
+    if (wrongColors.state.kind !== 'connect-four') throw new Error('bad fixture');
+    const board = [...wrongColors.state.board]; board[37] = 0;
+    expect(() => decodeSoloProgress('connect-four', JSON.stringify({ ...won, state: JSON.stringify({ ...wrongColors.state, board }) }))).toThrow();
+  });
+
+  it('黑白棋自动跳过与自然终局可恢复；无合法步、计数不符和错误比分拒绝', () => {
+    const board = Array<0 | 1 | null>(64).fill(0);
+    board[0] = null; board[1] = 1; board[63] = null; board[62] = 1;
+    const near = { ...createReversiState(0), board, counts: [60, 2] as [number, number], moveCount: 58 };
+    const first = applyReversiAction(near, 0, { type: 'placeDisc', row: 0, col: 0 });
+    if (!first.ok) throw new Error('bad fixture');
+    const progress: SoloProgress = { gameId: 'reversi', state: first.state, history: [], difficulty: 'easy', starter: 'human' };
+    expect(decodeSoloProgress('reversi', encodeSoloProgress(progress)).state).toEqual(first.state);
+    const final = applyReversiAction(first.state, 0, { type: 'placeDisc', row: 7, col: 7 });
+    if (!final.ok) throw new Error('bad fixture');
+    expect(decodeSoloProgress('reversi', encodeSoloProgress({ ...progress, state: final.state })).state).toEqual(final.state);
+    const raw = JSON.parse(encodeSoloProgress(progress)) as Record<string, unknown>;
+    for (const bad of [
+      { ...first.state, moveCount: 58 },
+      { ...first.state, turn: 1, lastPass: null },
+      { ...final.state, result: { type: 'win', winner: 1, reason: 'score' } },
+    ]) expect(() => decodeSoloProgress('reversi', JSON.stringify({ ...raw, state: JSON.stringify(bad) }))).toThrow();
+  });
+
   it('浏览器存储访问和写入抛错时只报告不可用，不影响纯棋局', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked'); });
     expect(readSoloProgress('connect-four')).toEqual({ kind: 'unavailable' });
