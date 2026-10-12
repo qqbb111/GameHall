@@ -42,8 +42,15 @@ function previewColor(state: SoloState, player: 0 | 1): string {
   return state.blackPlayer === player ? '黑色' : '白色';
 }
 
-function ConflictBoardPreview({ title, state, starter, difficulty, other }: {
-  title: string; state: SoloState; starter: SoloStarter; difficulty: SoloDifficulty; other: SoloState;
+function differentPreviewCells(current: SoloState, saved: SoloState): number[] {
+  return current.board.flatMap((cell, index) => {
+    const other = saved.board[index];
+    return cell !== other || (cell !== null && other !== null && previewColor(current, cell) !== previewColor(saved, other)) ? [index] : [];
+  });
+}
+
+function ConflictBoardPreview({ title, state, starter, difficulty, differences }: {
+  title: string; state: SoloState; starter: SoloStarter; difficulty: SoloDifficulty; differences: number[];
 }) {
   const columns = state.kind === 'connect-four' ? 7 : 8;
   return <figure className="solo-conflict-preview">
@@ -52,7 +59,7 @@ function ConflictBoardPreview({ title, state, starter, difficulty, other }: {
     <div className={`solo-preview-board ${state.kind}`} aria-hidden="true">
       {state.board.map((cell, index) => {
         const color = cell === null ? '' : previewColor(state, cell);
-        return <span key={index} className={`${cell === null ? 'is-empty' : color === '金色' ? 'is-gold' : color === '珊瑚色' ? 'is-coral' : color === '黑色' ? 'is-black' : 'is-white'} ${cell !== other.board[index] ? 'is-different' : ''}`} data-cell={`${Math.floor(index / columns) + 1}-${index % columns + 1}`} data-owner={cell === null ? 'empty' : cell === 0 ? 'human' : 'computer'}><i /></span>;
+        return <span key={index} className={`${cell === null ? 'is-empty' : color === '金色' ? 'is-gold' : color === '珊瑚色' ? 'is-coral' : color === '黑色' ? 'is-black' : 'is-white'} ${differences.includes(index) ? 'is-different' : ''}`} data-cell={`${Math.floor(index / columns) + 1}-${index % columns + 1}`} data-owner={cell === null ? 'empty' : cell === 0 ? 'human' : 'computer'}><i /></span>;
       })}
     </div>
   </figure>;
@@ -610,8 +617,8 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
   const hintSpot = hint?.action.type === 'drop' ? `第 ${hint.action.col + 1} 列`
     : hint?.action.type === 'placeDisc' ? `第 ${hint.action.row + 1} 行第 ${hint.action.col + 1} 列` : '';
   const savedConflictProgress = conflict?.read.kind === 'valid' ? conflict.read.progress : null;
-  const differentCells = state && savedConflictProgress
-    ? state.board.filter((cell, index) => cell !== savedConflictProgress.state.board[index]).length : 0;
+  const differentCells = state && savedConflictProgress ? differentPreviewCells(state, savedConflictProgress.state) : [];
+  const previewColumns = gameId === 'connect-four' ? 7 : 8;
   return <><main className="solo-shell" ref={shellRef}>
     <header className="solo-header">
       <div><span className="solo-eyebrow">本地单人练习</span><h1 tabIndex={-1}>与电脑练习 · {name}</h1><p>自己练一局，随时可以悔棋或重开。</p></div>
@@ -626,8 +633,9 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     {conflict && state && <div className="solo-conflict" role="status">
       <div className="solo-conflict-intro"><strong>另一窗口更新了这款练习</strong><p>当前棋盘：{progressSummary(state, activeStarter, activeDifficulty)}</p><p>已保存：{conflict.read.kind === 'valid' ? progressSummary(conflict.read.progress.state, conflict.read.progress.starter, conflict.read.progress.difficulty) : conflict.read.kind === 'empty' ? '记录已清除' : conflict.read.kind === 'invalid' ? '记录损坏，无法预览' : '记录暂不可读取，无法预览'}</p><small>你可以继续在当前棋盘落子；选择前不会覆盖另一窗口的进度。</small></div>
       {savedConflictProgress && <div className="solo-conflict-compare">
-        <p>{differentCells === 0 ? '两盘棋子布局相同，请比较设置和进度。' : `两盘有 ${differentCells} 格棋子不同；金色边框标出差异，黑白棋也会标出翻色的格子。`}</p>
-        <div className="solo-conflict-previews"><ConflictBoardPreview title="当前棋盘" state={state} starter={activeStarter} difficulty={activeDifficulty} other={savedConflictProgress.state} /><ConflictBoardPreview title="已保存" state={savedConflictProgress.state} starter={savedConflictProgress.starter} difficulty={savedConflictProgress.difficulty} other={state} /></div>
+        <p>{differentCells.length === 0 ? '两盘棋子的归属和显示颜色相同，请比较设置和进度。' : `两盘有 ${differentCells.length} 格棋子归属或颜色不同；金色边框标出差异。`}</p>
+        {differentCells.length > 0 && <span className="solo-preview-accessible">差异位置：{differentCells.map((index) => `第 ${Math.floor(index / previewColumns) + 1} 行第 ${index % previewColumns + 1} 列`).join('、')}。</span>}
+        <div className="solo-conflict-previews"><ConflictBoardPreview title="当前棋盘" state={state} starter={activeStarter} difficulty={activeDifficulty} differences={differentCells} /><ConflictBoardPreview title="已保存" state={savedConflictProgress.state} starter={savedConflictProgress.starter} difficulty={savedConflictProgress.difficulty} differences={differentCells} /></div>
       </div>}
       {conflict.read.kind !== 'valid' && <p className="solo-conflict-unavailable">{conflict.read.kind === 'empty' ? '共享记录已清除，没有可预览的棋盘。' : conflict.read.kind === 'invalid' ? '共享记录损坏，不能显示棋盘；请确认当前局面后再保存。' : '暂时无法读取共享记录，不能显示棋盘。'}</p>}
       <div className="solo-conflict-actions">{conflict.read.kind === 'valid' && <button type="button" onClick={resumeShared}>接着已保存的练习</button>}<button type="button" disabled={resolvingConflict || shareLimited} onClick={() => void saveCurrentOverShared()}>{resolvingConflict ? '正在保存…' : '保存当前棋局'}</button></div>

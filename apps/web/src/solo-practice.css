@@ -45,6 +45,7 @@
 .solo-conflict small { color: #e1d9c6; }
 .solo-conflict-compare { min-width: 0; }
 .solo-conflict-compare > p { color: #f5d99f; font-size: 13px; }
+.solo-preview-accessible { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .solo-conflict-previews { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .solo-conflict-preview { min-width: 0; margin: 0; padding: 10px; border: 1px solid #806c4b; border-radius: 11px; background: #18382f; }
 .solo-conflict-preview figcaption { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 9px; font-size: 12px; }

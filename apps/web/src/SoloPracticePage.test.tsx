@@ -575,7 +575,7 @@ describe('local computer practice', () => {
     await screen.findByText('另一窗口更新了这款练习');
     expect(screen.getByText(/当前棋盘：4 步.*最近第 4 列/)).toBeInTheDocument();
     expect(screen.getByText(/已保存：4 步.*最近第 4 列/)).toBeInTheDocument();
-    expect(screen.getByText(/两盘有 4 格棋子不同/)).toBeInTheDocument();
+    expect(screen.getByText(/两盘有 4 格棋子归属或颜色不同/)).toBeInTheDocument();
     const previews = container.querySelectorAll('.solo-conflict-preview');
     expect(previews).toHaveLength(2);
     expect(previews[0]!.querySelectorAll('.solo-preview-board > span')).toHaveLength(42);
@@ -588,6 +588,31 @@ describe('local computer practice', () => {
     expect(screen.getByRole('button', { name: '接着已保存的练习' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '保存当前棋局' })).toBeInTheDocument();
     expect(await shared('connect-four')).toEqual({ kind: 'valid', progress: saved });
+  });
+
+  it('同一玩家棋子在两盘颜色不同也标差异', async () => {
+    const play = (starter: 'human' | 'computer', columns: number[]): SoloProgress => {
+      let state = createConnectFourState(starter === 'human' ? 0 : 1);
+      for (const col of columns) {
+        const result = applyConnectFourAction(state, state.turn, { type: 'drop', col });
+        if (!result.ok) throw new Error('bad fixture');
+        state = result.state;
+      }
+      return { gameId: 'connect-four', state, history: [], difficulty: 'easy', starter };
+    };
+    const current = play('human', [2, 3]);
+    const saved = play('computer', [3, 2]);
+    expect(current.state.board[5 * 7 + 2]).toBe(0);
+    expect(saved.state.board[5 * 7 + 2]).toBe(0);
+    expect(writeSoloDraft({ progress: current, baseToken: null })).toBe(true);
+    await saveShared(saved);
+    const { container } = render(<SoloPracticePage gameId="connect-four" recoveredRoom={false} onExit={vi.fn()} />);
+    await screen.findByText('另一窗口更新了这款练习');
+    expect(screen.getByText(/两盘有 2 格棋子归属或颜色不同/)).toBeInTheDocument();
+    const previews = container.querySelectorAll('.solo-conflict-preview');
+    expect(previews[0]!.querySelector('[data-cell="6-3"]')).toHaveClass('is-gold', 'is-different');
+    expect(previews[1]!.querySelector('[data-cell="6-3"]')).toHaveClass('is-coral', 'is-different');
+    expect(screen.getByText(/差异位置：第 6 行第 3 列/)).toBeInTheDocument();
   });
 
   it('黑白棋预览标出颜色翻转，且损坏记录不伪造棋盘', async () => {
