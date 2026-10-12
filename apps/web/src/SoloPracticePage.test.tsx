@@ -112,7 +112,12 @@ describe('local computer practice', () => {
     act(() => hintWorker.reply({ hint: { action: { type: 'drop', col: 3 }, reason: '当前建议' } }));
     expect(screen.getByRole('button', { name: '继续这盘' })).toHaveFocus();
     expect(screen.getByText(/当前建议/)).toBeInTheDocument();
-    fireEvent.mouseDown(screen.getByRole('alertdialog').parentElement!);
+    const backdrop = screen.getByRole('alertdialog').parentElement!;
+    fireEvent.mouseDown(backdrop);
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    fireEvent.mouseUp(backdrop);
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    fireEvent.click(backdrop);
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
     expect(restart).toHaveFocus();
     expect(screen.getByText(/当前建议/)).toBeInTheDocument();

@@ -568,7 +568,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
         <fieldset><legend>谁先手</legend><label><input type="radio" name="next-starter" checked={starter === 'human'} onChange={() => setStarter('human')} />我先手</label><label><input type="radio" name="next-starter" checked={starter === 'computer'} onChange={() => setStarter('computer')} />电脑先手</label></fieldset>
       </details>
     </div>}
-  </main>{confirmRestart && createPortal(<div className="solo-confirm-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeRestart(); }}>
+  </main>{confirmRestart && createPortal(<div className="solo-confirm-backdrop" onClick={(event) => { if (event.target === event.currentTarget) closeRestart(); }}>
     <div ref={restartDialogRef} className="solo-confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="solo-restart-title" aria-describedby="solo-restart-description">
       <h2 id="solo-restart-title">重新开始这局？</h2>
       <p id="solo-restart-description">这盘练习会清空，新一局会用“{starter === 'human' ? '我先手' : '电脑先手'} · {difficulty === 'easy' ? '轻松' : '认真'}”设置。</p>
