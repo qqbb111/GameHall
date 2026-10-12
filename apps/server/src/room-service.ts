@@ -624,6 +624,10 @@ export class RoomService {
       this.emitSnapshots(room.id);
       return { ok: true, roomId: room.id, version };
     }
+    // The remaining waiting host or a finished room closes here. The leaving
+    // session may have several tabs; none should receive a room:closed notice
+    // for its own acknowledged leave, while other members still need it.
+    this.leaveSessionSockets(sessionId, room.id);
     this.closeRoom(room.id, 'room_closed');
     return { ok: true, roomId: room.id, version: room.version + 1 };
   }
