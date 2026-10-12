@@ -5,7 +5,7 @@ const practiceEntryKey = '__gamehallPracticeEntryV1';
 
 export function practiceFromSearch(search: string): PracticeGameId | null {
   const value = new URLSearchParams(search).get('practice');
-  return value === 'connect-four' || value === 'reversi' || value === 'dots-and-boxes' || value === 'twenty-four' ? value : null;
+  return value === 'connect-four' || value === 'reversi' || value === 'dots-and-boxes' || value === 'gomoku' || value === 'twenty-four' ? value : null;
 }
 
 function addressWithPractice(gameId: PracticeGameId | null): string {

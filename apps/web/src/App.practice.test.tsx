@@ -75,6 +75,20 @@ describe('practice browser navigation with real board', () => {
     expect(window.location.search).toBe('?room=ABC234&practice=dots-and-boxes');
   });
 
+  it('五子棋可由离线直达地址进入，保留已恢复好友房的返回入口', async () => {
+    vi.stubGlobal('Worker', FakeWorker);
+    vi.stubGlobal('matchMedia', () => ({ matches: true }));
+    window.history.replaceState(null, '', '/?room=ABC234&practice=gomoku#board');
+    mocks.useClient.mockReturnValue({ loading: true, room: { roomId: 'room', members: [], mySeat: 0 } } as unknown as GameHallClient);
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: '与电脑练习 · 五子棋' })).toBeInTheDocument();
+    expect(await screen.findByText(/已恢复你的好友房/)).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: '开始练习' }));
+    expect(screen.getByRole('grid', { name: '15乘15五子棋棋盘' })).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: '返回对局' })[0]!);
+    expect(screen.getByRole('heading', { name: 'room' })).toBeInTheDocument();
+  });
+
   it('24 点可离线直达、前进后退返回原 URL，已恢复房间时提示返回对局', async () => {
     vi.stubGlobal('scrollTo', vi.fn());
     window.history.replaceState(null, '', '/?room=ABC234&practice=twenty-four#board');

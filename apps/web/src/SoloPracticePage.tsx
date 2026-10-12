@@ -1,22 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  applyConnectFourAction, applyDotsAndBoxesAction, applyReversiAction, createConnectFourState, createDotsAndBoxesState, createReversiState, legalReversiMoves,
-  type ConnectFourState, type DotsAndBoxesState, type ReversiState,
+  applyConnectFourAction, applyDotsAndBoxesAction, applyGomokuAction, applyReversiAction, createConnectFourState, createDotsAndBoxesState, createGomokuState, createReversiState, legalReversiMoves,
+  type ConnectFourState, type DotsAndBoxesState, type GomokuState, type ReversiState,
 } from '@gamehall/game-core';
 import type { GameActionCommand } from '@gamehall/protocol';
 import { ConnectFourGame } from './ConnectFourGame';
 import { ReversiGame } from './ReversiGame';
 import { DotsAndBoxesGame } from './DotsAndBoxesGame';
+import { GomokuGame } from './game-components';
 import { openDotsEdges, type DotsEdge } from './dots-solo';
 import type { SoloAction, SoloDifficulty, SoloGameId, SoloHint, SoloState } from './solo-ai';
 import type { SoloWorkerRequest, SoloWorkerResponse } from './solo-ai.worker';
 import { canShareSoloProgress, clearSoloDraft, readSoloDraft, writeSoloDraft,
-  readSoloSnapshot, soloProgressKey, type SoloProgress, type SoloSnapshot, type SoloStarter } from './solo-progress';
+  readSoloSnapshot, soloProgressKey, GOMOKU_HISTORY_MAX, type SoloProgress, type SoloSnapshot, type SoloStarter } from './solo-progress';
 import { readSharedSoloSnapshot, subscribeSharedSoloProgress, writeSharedSoloProgress } from './solo-shared-store';
 import './solo-practice.css';
 
-const names: Record<SoloGameId, string> = { 'connect-four': '四子连线', reversi: '黑白棋', 'dots-and-boxes': '点格棋' };
+const names: Record<SoloGameId, string> = { 'connect-four': '四子连线', reversi: '黑白棋', 'dots-and-boxes': '点格棋', gomoku: '五子棋' };
 type HintState = { kind: 'idle' | 'pending' } | { kind: 'ready'; hint: SoloHint } | { kind: 'error'; message: string };
 
 async function bootProgress(gameId: SoloGameId) {
@@ -40,7 +41,8 @@ function progressSummary(state: SoloState, starter: SoloStarter, difficulty: Sol
   const position = state.kind === 'connect-four'
     ? state.lastMove ? ` · 最近第 ${state.lastMove.col + 1} 列` : ''
     : state.kind === 'reversi' ? ` · 黑 ${state.counts[state.blackPlayer]}：白 ${state.counts[state.blackPlayer === 0 ? 1 : 0]}`
-      : ` · 你 ${state.scores[0]}：电脑 ${state.scores[1]}`;
+      : state.kind === 'gomoku' ? state.lastMove ? ` · 最近第 ${state.lastMove.row + 1} 行第 ${state.lastMove.col + 1} 列` : ''
+        : ` · 你 ${state.scores[0]}：电脑 ${state.scores[1]}`;
   return `${state.kind === 'dots-and-boxes' ? state.edgeCount : state.moveCount} 步 · ${state.phase === 'finished' ? '已结束' : '进行中'}${position} · ${starter === 'human' ? '你先手' : '电脑先手'} · ${difficulty === 'easy' ? '轻松' : '认真'}`;
 }
 
@@ -82,7 +84,7 @@ function ConflictBoardPreview({ title, state, starter, difficulty, differences }
       })}</div>
     </figure>;
   }
-  const columns = state.kind === 'connect-four' ? 7 : 8;
+  const columns = state.kind === 'connect-four' ? 7 : state.kind === 'gomoku' ? 15 : 8;
   return <figure className="solo-conflict-preview">
     <figcaption><strong>{title}</strong><span>{progressSummary(state, starter, difficulty)}</span></figcaption>
     <div className="solo-preview-legend"><span>你 · {previewColor(state, 0)}</span><span>电脑 · {previewColor(state, 1)}</span></div>
@@ -97,7 +99,8 @@ function ConflictBoardPreview({ title, state, starter, difficulty, differences }
 
 function initialState(gameId: SoloGameId, starter: SoloStarter): SoloState {
   return gameId === 'connect-four' ? createConnectFourState(starter === 'human' ? 0 : 1)
-    : gameId === 'reversi' ? createReversiState(starter === 'human' ? 0 : 1) : createDotsAndBoxesState(starter === 'human' ? 0 : 1);
+    : gameId === 'reversi' ? createReversiState(starter === 'human' ? 0 : 1)
+      : gameId === 'gomoku' ? createGomokuState(starter === 'human' ? 0 : 1) : createDotsAndBoxesState(starter === 'human' ? 0 : 1);
 }
 
 function computerAction(state: SoloState, action: SoloAction | undefined): SoloState | null {
@@ -110,6 +113,11 @@ function computerAction(state: SoloState, action: SoloAction | undefined): SoloS
   if (state.kind === 'dots-and-boxes') {
     if (action?.type !== 'drawEdge') return null;
     const result = applyDotsAndBoxesAction(state, 1, action);
+    return result.ok ? result.state : null;
+  }
+  if (state.kind === 'gomoku') {
+    if (action?.type !== 'place') return null;
+    const result = applyGomokuAction(state, 1, action);
     return result.ok ? result.state : null;
   }
   if (action?.type !== 'placeDisc' || !legalReversiMoves(state.board, 1).some(({ row, col }) => row === action.row && col === action.col)) return null;
@@ -127,6 +135,7 @@ function validHumanHint(state: SoloState, hint: SoloHint | undefined): hint is S
   if (state.kind === 'dots-and-boxes') {
     return action?.type === 'drawEdge' && openDotsEdges(state).some((edge) => edge.orientation === action.orientation && edge.row === action.row && edge.col === action.col);
   }
+  if (state.kind === 'gomoku') return action?.type === 'place' && applyGomokuAction(state, 0, action).ok;
   if (action?.type !== 'placeDisc' || !Number.isInteger(action.row) || !Number.isInteger(action.col)) return false;
   if (!legalReversiMoves(state.board, 0).some(({ row, col }) => row === action.row && col === action.col)) return false;
   return applyReversiAction(state, 0, action).ok;
@@ -155,6 +164,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
   const stateRef = useRef<SoloState | null>(null);
   const history = useRef<SoloState[]>([]);
   const trace = useRef<DotsEdge[]>([]);
+  const gomokuMoves = useRef<Array<{ row: number; col: number }>>([]);
   const [historyLength, setHistoryLength] = useState(0);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [unsaved, setUnsaved] = useState(false);
@@ -203,6 +213,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
       if (progress) {
         history.current = [...progress.history];
         trace.current = [...(progress.trace ?? [])];
+        gomokuMoves.current = [...(progress.gomokuMoves ?? [])];
         stateRef.current = progress.state;
         activeDifficultyRef.current = progress.difficulty;
         activeStarterRef.current = progress.starter;
@@ -235,6 +246,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
   const persist = useCallback((current: SoloState) => {
     const progress: SoloProgress = { gameId, state: current, history: [...history.current],
       ...(gameId === 'dots-and-boxes' ? { trace: [...trace.current] } : {}),
+      ...(gameId === 'gomoku' ? { gomokuMoves: [...gomokuMoves.current] } : {}),
       difficulty: activeDifficultyRef.current, starter: activeStarterRef.current };
     latestProgressRef.current = progress;
     const sequence = ++saveSequence.current;
@@ -453,6 +465,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
         if (!next) { fail('电脑这步未能落下，请点“重试这步”'); return; }
         worker.terminate(); workerRef.current = null;
         if (state.kind === 'dots-and-boxes' && event.data.action?.type === 'drawEdge') trace.current.push(event.data.action);
+        if (state.kind === 'gomoku' && event.data.action?.type === 'place') gomokuMoves.current.push({ row: event.data.action.row, col: event.data.action.col });
         stateRef.current = next;
         setState(next);
         persist(next);
@@ -494,6 +507,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     const next = initialState(gameId, starter);
     history.current = [];
     trace.current = [];
+    gomokuMoves.current = [];
     setHistoryLength(0);
     stateRef.current = next;
     activeDifficultyRef.current = difficulty;
@@ -559,6 +573,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     cancelComputer();
     cancelHint();
     if (previous.kind === 'dots-and-boxes') trace.current = trace.current.slice(0, previous.edgeCount);
+    if (previous.kind === 'gomoku') gomokuMoves.current = gomokuMoves.current.slice(0, previous.moveCount);
     stateRef.current = previous;
     setState(previous);
     setHistoryLength(history.current.length);
@@ -580,11 +595,16 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     } else if (current.kind === 'dots-and-boxes' && action.type === 'drawEdge') {
       const result = applyDotsAndBoxesAction(current, 0, action);
       if (result.ok) next = result.state;
+    } else if (current.kind === 'gomoku' && action.type === 'place') {
+      const result = applyGomokuAction(current, 0, action);
+      if (result.ok) next = result.state;
     }
     if (!next) return false;
     cancelHint();
     history.current.push(current);
+    if (current.kind === 'gomoku' && history.current.length > GOMOKU_HISTORY_MAX) history.current.shift();
     if (action.type === 'drawEdge') trace.current.push(action);
+    if (current.kind === 'gomoku' && action.type === 'place') gomokuMoves.current.push({ row: action.row, col: action.col });
     humanMoveAt.current = performance.now();
     setHistoryLength(history.current.length);
     stateRef.current = next;
@@ -615,6 +635,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     stateRef.current = progress.state;
     history.current = [...progress.history];
     trace.current = [...(progress.trace ?? [])];
+    gomokuMoves.current = [...(progress.gomokuMoves ?? [])];
     setHistoryLength(progress.history.length);
     activeDifficultyRef.current = progress.difficulty;
     activeStarterRef.current = progress.starter;
@@ -668,6 +689,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     if (!current) { setResolvingConflict(false); return; }
     const progress: SoloProgress = { gameId, state: current, history: [...history.current],
       ...(gameId === 'dots-and-boxes' ? { trace: [...trace.current] } : {}),
+      ...(gameId === 'gomoku' ? { gomokuMoves: [...gomokuMoves.current] } : {}),
       difficulty: activeDifficultyRef.current, starter: activeStarterRef.current };
     const sequence = saveSequence.current;
     const epoch = ++saveEpoch.current;
@@ -714,16 +736,17 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
   const name = names[gameId];
   const color = state?.kind === 'connect-four'
     ? state.firstPlayer === 0 ? '金色' : '珊瑚色'
-    : state?.kind === 'reversi' ? state.blackPlayer === 0 ? '黑色' : '白色' : state?.kind === 'dots-and-boxes' ? '金色' : '';
+    : state?.kind === 'reversi' || state?.kind === 'gomoku' ? state.blackPlayer === 0 ? '黑色' : '白色' : state?.kind === 'dots-and-boxes' ? '金色' : '';
   const opponentColor = state?.kind === 'connect-four' ? color === '金色' ? '珊瑚色' : '金色'
     : state?.kind === 'dots-and-boxes' ? '珊瑚色' : color === '黑色' ? '白色' : '黑色';
   const hint = hintState.kind === 'ready' ? hintState.hint : null;
   const hintSpot = hint?.action.type === 'drop' ? `第 ${hint.action.col + 1} 列`
     : hint?.action.type === 'placeDisc' ? `第 ${hint.action.row + 1} 行第 ${hint.action.col + 1} 列`
+    : hint?.action.type === 'place' ? `第 ${hint.action.row + 1} 行第 ${hint.action.col + 1} 列`
     : hint?.action.type === 'drawEdge' ? `${hint.action.orientation === 'H' ? '横边' : '竖边'}第 ${hint.action.row + 1} 行第 ${hint.action.col + 1} 列` : '';
   const savedConflictProgress = conflict?.read.kind === 'valid' ? conflict.read.progress : null;
   const differentCells = state && savedConflictProgress ? differentPreviewCells(state, savedConflictProgress.state) : [];
-  const previewColumns = gameId === 'connect-four' ? 7 : gameId === 'reversi' ? 8 : 4;
+  const previewColumns = gameId === 'connect-four' ? 7 : gameId === 'reversi' ? 8 : gameId === 'gomoku' ? 15 : 4;
   const differenceDescription = gameId === 'dots-and-boxes'
     ? differentCells.map((index) => index < 12 ? `横边第 ${Math.floor(index / 3) + 1} 行第 ${index % 3 + 1} 列`
       : index < 24 ? `竖边第 ${Math.floor((index - 12) / 4) + 1} 行第 ${(index - 12) % 4 + 1} 列`
@@ -754,7 +777,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
       <h2>开始前选一下</h2>
       <fieldset><legend>难度</legend><label><input type="radio" name="solo-difficulty" checked={difficulty === 'easy'} onChange={() => setDifficulty('easy')} />轻松</label><label><input type="radio" name="solo-difficulty" checked={difficulty === 'thoughtful'} onChange={() => setDifficulty('thoughtful')} />认真</label></fieldset>
       <fieldset><legend>谁先手</legend><label><input type="radio" name="solo-starter" checked={starter === 'human'} onChange={() => setStarter('human')} />我先手</label><label><input type="radio" name="solo-starter" checked={starter === 'computer'} onChange={() => setStarter('computer')} />电脑先手</label></fieldset>
-      <p>{gameId === 'connect-four' ? '先手执金色，点击整列投放，先连成四子获胜。' : gameId === 'reversi' ? '先手执黑色，夹住对方棋子才能落子；无合法步会自动跳过。' : '轮流画空边，封成一格得 1 分并继续行动；24 条边画完按得分结算。'}</p>
+      <p>{gameId === 'connect-four' ? '先手执金色，点击整列投放，先连成四子获胜。' : gameId === 'reversi' ? '先手执黑色，夹住对方棋子才能落子；无合法步会自动跳过。' : gameId === 'gomoku' ? '先手执黑色，在 15 路棋盘上轮流落子，先连成五子获胜。' : '轮流画空边，封成一格得 1 分并继续行动；24 条边画完按得分结算。'}</p>
       <button type="button" className="solo-primary" onClick={start}>开始练习</button>
     </section> : <div className="solo-play">
       <div className="solo-toolbar">
@@ -769,7 +792,8 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
       {state.kind === 'connect-four'
         ? <ConnectFourGame key={round} state={state as ConnectFourState} mySeat={0} active={!thinking} opponentLabel="电脑" hintColumn={hint?.action.type === 'drop' ? hint.action.col : null} onAction={humanAction} />
         : state.kind === 'reversi' ? <ReversiGame key={round} state={state as ReversiState} mySeat={0} active={!thinking} opponentLabel="电脑" hintCell={hint?.action.type === 'placeDisc' ? hint.action : null} onAction={humanAction} />
-          : <DotsAndBoxesGame key={round} state={state as DotsAndBoxesState} mySeat={0} active={!thinking} opponentLabel="电脑" hintEdge={hint?.action.type === 'drawEdge' ? hint.action : null} onAction={humanAction} />}
+          : state.kind === 'gomoku' ? <GomokuGame key={round} state={state as GomokuState} mySeat={0} active={!thinking} opponentLabel="电脑" hintCell={hint?.action.type === 'place' ? hint.action : null} onAction={humanAction} />
+            : <DotsAndBoxesGame key={round} state={state as DotsAndBoxesState} mySeat={0} active={!thinking} opponentLabel="电脑" hintEdge={hint?.action.type === 'drawEdge' ? hint.action : null} onAction={humanAction} />}
       <div className="solo-actions">
         <button type="button" onClick={undo} disabled={!historyLength} title={!historyLength ? '还没有可以悔的棋' : '撤回上一轮你的落子和电脑应手'}>悔棋</button>
         <button ref={restartButtonRef} type="button" onClick={requestRestart}>重新开始</button>

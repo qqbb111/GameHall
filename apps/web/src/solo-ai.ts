@@ -1,13 +1,13 @@
 import {
-  applyConnectFourAction, applyReversiAction, legalReversiMoves, otherPlayer, reversiFlips,
-  type ConnectFourAction, type ConnectFourState, type DotsAndBoxesAction, type DotsAndBoxesState, type Player, type ReversiAction, type ReversiState,
+  applyConnectFourAction, applyReversiAction, applyGomokuAction, legalReversiMoves, otherPlayer, reversiFlips, GOMOKU_SIZE,
+  type ConnectFourAction, type ConnectFourState, type DotsAndBoxesAction, type DotsAndBoxesState, type GomokuAction, type GomokuState, type Player, type ReversiAction, type ReversiState,
 } from '@gamehall/game-core';
 import { chooseDotsMove, dotsHint } from './dots-solo';
 
 export type SoloDifficulty = 'easy' | 'thoughtful';
-export type SoloGameId = 'connect-four' | 'reversi' | 'dots-and-boxes';
-export type SoloState = ConnectFourState | ReversiState | DotsAndBoxesState;
-export type SoloAction = ConnectFourAction | ReversiAction | DotsAndBoxesAction;
+export type SoloGameId = 'connect-four' | 'reversi' | 'dots-and-boxes' | 'gomoku';
+export type SoloState = ConnectFourState | ReversiState | DotsAndBoxesState | GomokuState;
+export type SoloAction = ConnectFourAction | ReversiAction | DotsAndBoxesAction | GomokuAction;
 export type SoloHint = { action: SoloAction; reason: string };
 
 const FOUR_WINDOWS: number[][] = [];
@@ -154,14 +154,86 @@ export function chooseReversiMove(state: ReversiState, difficulty: SoloDifficult
   return { type: 'placeDisc', ...selected };
 }
 
+function gomokuCandidates(state: GomokuState): Array<{ row: number; col: number }> {
+  if (state.moveCount === 0) return [{ row: 7, col: 7 }];
+  const moves: Array<{ row: number; col: number; distance: number }> = [];
+  for (let row = 0; row < GOMOKU_SIZE; row++) for (let col = 0; col < GOMOKU_SIZE; col++) {
+    if (state.board[row * GOMOKU_SIZE + col] !== null) continue;
+    let nearby = false;
+    for (let dr = -2; dr <= 2 && !nearby; dr++) for (let dc = -2; dc <= 2; dc++) {
+      const r = row + dr, c = col + dc;
+      if (r >= 0 && r < GOMOKU_SIZE && c >= 0 && c < GOMOKU_SIZE && state.board[r * GOMOKU_SIZE + c] !== null) nearby = true;
+    }
+    if (nearby) moves.push({ row, col, distance: Math.abs(row - 7) + Math.abs(col - 7) });
+  }
+  return moves.sort((a, b) => a.distance - b.distance || a.row - b.row || a.col - b.col);
+}
+
+function gomokuAfter(state: GomokuState, actor: Player, row: number, col: number): GomokuState {
+  const result = applyGomokuAction({ ...state, turn: actor }, actor, { type: 'place', row, col });
+  if (!result.ok) throw new Error('invalid gomoku move');
+  return result.state;
+}
+
+function gomokuPotential(state: GomokuState, actor: Player, row: number, col: number): number {
+  let score = 0;
+  for (const [dr, dc] of [[1, 0], [0, 1], [1, 1], [1, -1]]) {
+    let count = 1, open = 0;
+    for (const sign of [-1, 1]) {
+      let r = row + dr! * sign, c = col + dc! * sign;
+      while (r >= 0 && r < 15 && c >= 0 && c < 15 && state.board[r * 15 + c] === actor) {
+        count++; r += dr! * sign; c += dc! * sign;
+      }
+      if (r >= 0 && r < 15 && c >= 0 && c < 15 && state.board[r * 15 + c] === null) open++;
+    }
+    score += count >= 5 ? 100_000 : count === 4 ? (open === 2 ? 8_000 : 1_500)
+      : count === 3 ? (open === 2 ? 500 : 90) : count === 2 ? (open === 2 ? 28 : 7) : 0;
+  }
+  return score;
+}
+
+export function chooseGomokuMove(state: GomokuState, difficulty: SoloDifficulty): GomokuAction {
+  if (state.phase !== 'playing') throw new Error('finished gomoku game');
+  const moves = gomokuCandidates(state);
+  if (!moves.length) throw new Error('no gomoku moves');
+  const actor = state.turn, rival = otherPlayer(actor);
+  for (const move of moves) if (gomokuAfter(state, actor, move.row, move.col).result?.type === 'win') return { type: 'place', row: move.row, col: move.col };
+  for (const move of moves) if (gomokuAfter(state, rival, move.row, move.col).result?.type === 'win') return { type: 'place', row: move.row, col: move.col };
+  let selected = moves[0]!, best = -Infinity;
+  // Fixed candidate and reply limits keep the worker responsive even late in a long game.
+  for (const move of moves.slice(0, difficulty === 'easy' ? 32 : 64)) {
+    const next = gomokuAfter(state, actor, move.row, move.col);
+    let value = gomokuPotential(next, actor, move.row, move.col) + gomokuPotential(next, rival, move.row, move.col) * .65;
+    if (difficulty === 'thoughtful') {
+      const reply = gomokuCandidates(next).slice(0, 40);
+      let worst = 0;
+      for (const candidate of reply) {
+        const after = gomokuAfter(next, rival, candidate.row, candidate.col);
+        worst = Math.max(worst, after.result?.type === 'win' ? 100_000 : gomokuPotential(after, rival, candidate.row, candidate.col));
+      }
+      value -= worst * .8;
+    }
+    if (value > best) { best = value; selected = move; }
+  }
+  return { type: 'place', row: selected.row, col: selected.col };
+}
+
 export function chooseSoloMove(state: SoloState, difficulty: SoloDifficulty): SoloAction {
   return state.kind === 'connect-four' ? chooseConnectFourMove(state, difficulty)
-    : state.kind === 'reversi' ? chooseReversiMove(state, difficulty) : chooseDotsMove(state, difficulty);
+    : state.kind === 'reversi' ? chooseReversiMove(state, difficulty)
+      : state.kind === 'gomoku' ? chooseGomokuMove(state, difficulty) : chooseDotsMove(state, difficulty);
 }
 
 export function recommendSoloHint(state: SoloState): SoloHint {
   if (state.phase !== 'playing' || state.turn !== 0) throw new Error('hint requires a human turn');
   if (state.kind === 'dots-and-boxes') return dotsHint(state);
+  if (state.kind === 'gomoku') {
+    const action = chooseGomokuMove(state, 'thoughtful');
+    if (action.type !== 'place') throw new Error('invalid gomoku hint');
+    if (gomokuAfter(state, 0, action.row, action.col).result?.type === 'win') return { action, reason: '这步可以立即连成五子。' };
+    if (gomokuAfter(state, 1, action.row, action.col).result?.type === 'win') return { action, reason: '这步能挡住电脑下一手的五连。' };
+    return { action, reason: '这里兼顾连线和阻挡；你仍可自由落子。' };
+  }
   const action = chooseSoloMove(state, 'thoughtful');
   if (state.kind === 'connect-four') {
     if (action.type !== 'drop') throw new Error('invalid four hint');

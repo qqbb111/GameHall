@@ -175,7 +175,7 @@ function twentyFourButtonLabel(summary: TwentyFourSummary): string {
 }
 
 export function HomePage({ client, onPractice }: { client: GameHallClient; onPractice?: (gameId: PracticeGameId) => void }) {
-  const [practiceSaves, setPracticeSaves] = useState<PracticeSummary>(() => ({ 'connect-four': draftPracticeSummary('connect-four'), reversi: draftPracticeSummary('reversi'), 'dots-and-boxes': draftPracticeSummary('dots-and-boxes') }));
+  const [practiceSaves, setPracticeSaves] = useState<PracticeSummary>(() => ({ 'connect-four': draftPracticeSummary('connect-four'), reversi: draftPracticeSummary('reversi'), 'dots-and-boxes': draftPracticeSummary('dots-and-boxes'), gomoku: draftPracticeSummary('gomoku') }));
   const [twentyFourSave, setTwentyFourSave] = useState<TwentyFourSummary>(twentyFourSummary);
   const [nickname, setNickname] = useState(readRememberedNickname);
   const [roomCode, setRoomCode] = useState(() => {
@@ -208,7 +208,7 @@ export function HomePage({ client, onPractice }: { client: GameHallClient; onPra
 
   useEffect(() => {
     let active = true;
-    const generations: Record<SoloGameId, number> = { 'connect-four': 0, reversi: 0, 'dots-and-boxes': 0 };
+    const generations: Record<SoloGameId, number> = { 'connect-four': 0, reversi: 0, 'dots-and-boxes': 0, gomoku: 0 };
     const refreshOne = async (gameId: SoloGameId) => {
       const generation = ++generations[gameId];
       const saved = await readSharedSoloSnapshot(gameId);
@@ -221,18 +221,19 @@ export function HomePage({ client, onPractice }: { client: GameHallClient; onPra
     };
     const refresh = (gameId?: SoloGameId) => {
       if (gameId) void refreshOne(gameId);
-      else { void refreshOne('connect-four'); void refreshOne('reversi'); void refreshOne('dots-and-boxes'); }
+      else { void refreshOne('connect-four'); void refreshOne('reversi'); void refreshOne('dots-and-boxes'); void refreshOne('gomoku'); }
     };
     const onStorage = (event: StorageEvent) => {
       if (event.key === null) refresh();
       else if (event.key === soloProgressKey('connect-four')) refresh('connect-four');
       else if (event.key === soloProgressKey('reversi')) refresh('reversi');
       else if (event.key === soloProgressKey('dots-and-boxes')) refresh('dots-and-boxes');
+      else if (event.key === soloProgressKey('gomoku')) refresh('gomoku');
     };
     const onVisible = () => { if (document.visibilityState === 'visible') refresh(); };
     const onLocalSave = (event: Event) => {
       const gameId = (event as CustomEvent<SoloGameId>).detail;
-      if (gameId === 'connect-four' || gameId === 'reversi' || gameId === 'dots-and-boxes') refresh(gameId);
+      if (gameId === 'connect-four' || gameId === 'reversi' || gameId === 'dots-and-boxes' || gameId === 'gomoku') refresh(gameId);
     };
     window.addEventListener('storage', onStorage);
     const unsubscribe = subscribeSharedSoloProgress((gameId) => refresh(gameId));
@@ -462,7 +463,7 @@ export function HomePage({ client, onPractice }: { client: GameHallClient; onPra
                       <button type="button" onClick={(event) => { ruleTrigger.current = event.currentTarget; setSelectedRules(game); }} aria-label={`查看${game.name}玩法规则`}>玩法规则</button>
                       <button type="button" aria-label={`${favorites.includes(game.id) ? '取消收藏' : '收藏'}${game.name}`} aria-pressed={favorites.includes(game.id)} onClick={() => toggleFavorite(game.id)}><Heart size={16} fill={favorites.includes(game.id) ? 'currentColor' : 'none'} /></button>
                     </div>
-                    {game.id === 'connect-four' || game.id === 'reversi' || game.id === 'dots-and-boxes' ? <div className="card-actions">
+                    {game.id === 'connect-four' || game.id === 'reversi' || game.id === 'dots-and-boxes' || game.id === 'gomoku' ? <div className="card-actions">
                       <button type="button" className="card-create" aria-label={`创建${game.name}房间`} disabled={pendingGameId !== null || joinPending || client.connection !== 'online'} onClick={() => void createRoom(game.id as GameId)}>创建房间 <ArrowRight size={16} /></button>
                       <button type="button" className="card-practice" data-practice-game={game.id} aria-label={`${practiceButtonLabel(practiceSaves[game.id as SoloGameId])}${game.name}`} onClick={() => onPractice?.(game.id as SoloGameId)}>{practiceButtonLabel(practiceSaves[game.id as SoloGameId])}</button>
                     </div> : game.id === 'twenty-four' ? <div className="card-actions">

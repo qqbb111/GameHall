@@ -25,7 +25,7 @@ class FakeWorker {
   }
 }
 
-async function start(gameId: 'connect-four' | 'reversi' | 'dots-and-boxes' = 'connect-four', onExit = vi.fn()) {
+async function start(gameId: 'connect-four' | 'reversi' | 'dots-and-boxes' | 'gomoku' = 'connect-four', onExit = vi.fn()) {
   const view = render(<SoloPracticePage gameId={gameId} recoveredRoom={false} onExit={onExit} />);
   fireEvent.click(await screen.findByRole('button', { name: '开始练习' }));
   return { ...view, onExit };
@@ -43,7 +43,7 @@ function reversiProgress(moveCount: number, difficulty: 'easy' | 'thoughtful' = 
   return { gameId: 'reversi', state, history: [], difficulty, starter: 'human' };
 }
 
-async function shared(gameId: 'connect-four' | 'reversi' | 'dots-and-boxes') { return (await readSharedSoloSnapshot(gameId)).read; }
+async function shared(gameId: 'connect-four' | 'reversi' | 'dots-and-boxes' | 'gomoku') { return (await readSharedSoloSnapshot(gameId)).read; }
 
 function dotsProgress(firstPlayer: 0 | 1, edges: DotsEdge[]): SoloProgress {
   let state = createDotsAndBoxesState(firstPlayer);
@@ -79,6 +79,61 @@ describe('local computer practice', () => {
     window.localStorage.clear();
     window.sessionStorage.clear();
     Reflect.deleteProperty(navigator, 'locks');
+  });
+
+  it('五子棋提示只标落点；采用、电脑应手、悔棋、迟到回包和刷新恢复共享进度', async () => {
+    const view = await start('gomoku');
+    expect(screen.getByRole('grid', { name: '15乘15五子棋棋盘' }).querySelectorAll('[role="gridcell"]')).toHaveLength(225);
+    fireEvent.click(screen.getByRole('button', { name: '提示一步' }));
+    act(() => FakeWorker.instances[0]!.reply({ hint: { action: { type: 'place', row: 7, col: 7 }, reason: '占据中心。' } }));
+    expect(screen.getByRole('gridcell', { name: /第 8 行第 8 列.*建议落点/ })).toHaveClass('is-hint');
+    await waitFor(async () => expect(await shared('gomoku')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 0 }, gomokuMoves: [] } }));
+    fireEvent.click(screen.getByRole('button', { name: '采用这步' }));
+    await waitFor(() => expect(FakeWorker.instances).toHaveLength(2));
+    const pending = FakeWorker.instances[1]!;
+    expect(pending.request).toMatchObject({ gameId: 'gomoku', purpose: 'move' });
+    act(() => pending.reply({ action: { type: 'place', row: 7, col: 8 } }));
+    await waitFor(async () => expect(await shared('gomoku')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 2 }, gomokuMoves: [{ row: 7, col: 7 }, { row: 7, col: 8 }] } }));
+    fireEvent.click(screen.getByRole('button', { name: '悔棋' }));
+    await waitFor(async () => expect(await shared('gomoku')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 0 }, gomokuMoves: [] } }));
+    act(() => pending.reply({ action: { type: 'place', row: 7, col: 9 } }));
+    expect(screen.getByRole('gridcell', { name: /第 8 行第 8 列，空位/ })).toBeInTheDocument();
+    view.unmount();
+    render(<SoloPracticePage gameId="gomoku" recoveredRoom={false} onExit={vi.fn()} />);
+    expect(await screen.findByText('已恢复上次练习')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '悔棋' })).toBeDisabled();
+  });
+
+  it('五子棋电脑先手执黑，旧回包在重新开始后不能改写新棋局', async () => {
+    render(<SoloPracticePage gameId="gomoku" recoveredRoom={false} onExit={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('radio', { name: '电脑先手' }));
+    fireEvent.click(screen.getByRole('button', { name: '开始练习' }));
+    expect(screen.getByText('你 · 白色')).toBeInTheDocument();
+    await waitFor(() => expect(FakeWorker.instances).toHaveLength(1));
+    const old = FakeWorker.instances[0]!;
+    fireEvent.click(screen.getByRole('button', { name: '重新开始' }));
+    await waitFor(() => expect(FakeWorker.instances).toHaveLength(2));
+    act(() => old.reply({ action: { type: 'place', row: 7, col: 7 } }));
+    expect(screen.getByRole('gridcell', { name: /第 8 行第 8 列，空位/ })).toBeInTheDocument();
+    act(() => FakeWorker.instances[1]!.reply({ action: { type: 'place', row: 7, col: 7 } }));
+    expect(screen.getByRole('gridcell', { name: /第 8 行第 8 列，黑子/ })).toBeInTheDocument();
+  });
+
+  it('五子棋方向键落子后电脑应手时接续合法空位，移开焦点后不抢回棋盘', async () => {
+    await start('gomoku');
+    const center = screen.getByRole('gridcell', { name: /第 8 行第 8 列，空位/ });
+    center.focus();
+    fireEvent.keyDown(center, { key: 'Enter' });
+    await waitFor(() => expect(FakeWorker.instances).toHaveLength(1));
+    act(() => FakeWorker.instances[0]!.reply({ action: { type: 'place', row: 7, col: 8 } }));
+    const next = screen.getByRole('gridcell', { name: /第 8 行第 10 列，空位/ });
+    expect(next).toHaveFocus();
+    fireEvent.keyDown(next, { key: 'Enter' });
+    await waitFor(() => expect(FakeWorker.instances).toHaveLength(2));
+    const undoButton = screen.getByRole('button', { name: '悔棋' });
+    undoButton.focus();
+    act(() => FakeWorker.instances[1]!.reply({ action: { type: 'place', row: 6, col: 8 } }));
+    expect(undoButton).toHaveFocus();
   });
 
   it('四子连线的人机两步可悔棋，重开只按明确设置生效', async () => {

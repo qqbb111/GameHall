@@ -66,7 +66,7 @@ export function subscribeSharedSoloProgress(listener: (gameId: SoloGameId) => vo
     const channel = new BroadcastChannel(CHANNEL);
     channel.onmessage = (event: MessageEvent<unknown>) => {
       const message = event.data as { gameId?: unknown; tabId?: unknown } | null;
-      if (message && message.tabId !== tabId && (message.gameId === 'connect-four' || message.gameId === 'reversi' || message.gameId === 'dots-and-boxes')) listener(message.gameId);
+      if (message && message.tabId !== tabId && (message.gameId === 'connect-four' || message.gameId === 'reversi' || message.gameId === 'dots-and-boxes' || message.gameId === 'gomoku')) listener(message.gameId);
     };
     return () => channel.close();
   } catch { return () => undefined; }

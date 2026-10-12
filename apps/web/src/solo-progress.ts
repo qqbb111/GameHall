@@ -1,5 +1,5 @@
-import { applyConnectFourAction, connectFourDefinition, connectFourLine, createConnectFourState, createDotsAndBoxesState, createReversiState, dotsAndBoxesDefinition, legalReversiMoves,
-  otherPlayer, reversiDefinition, type ConnectFourState, type DotsAndBoxesState, type ReversiState } from '@gamehall/game-core';
+import { applyConnectFourAction, applyGomokuAction, connectFourDefinition, connectFourLine, createConnectFourState, createDotsAndBoxesState, createGomokuState, createReversiState, dotsAndBoxesDefinition, gomokuDefinition, legalReversiMoves,
+  otherPlayer, reversiDefinition, type ConnectFourState, type DotsAndBoxesState, type GomokuState, type ReversiState } from '@gamehall/game-core';
 import type { SoloDifficulty, SoloGameId, SoloState } from './solo-ai';
 import { dotsAfter, type DotsEdge } from './dots-solo';
 import { secureUuid } from './secure-id';
@@ -12,6 +12,7 @@ export type SoloProgress = {
   difficulty: SoloDifficulty;
   starter: SoloStarter;
   trace?: DotsEdge[];
+  gomokuMoves?: Array<{ row: number; col: number }>;
 };
 export type SoloProgressRead =
   | { kind: 'valid'; progress: SoloProgress }
@@ -25,18 +26,21 @@ export type SoloDraft = { progress: SoloProgress; baseToken: string | null; pend
 const VERSION = 1;
 export const SOLO_PROGRESS_MAX_BYTES = 65_536;
 export const SOLO_HISTORY_MAX = 64;
+export const GOMOKU_HISTORY_MAX = 16;
 export function soloProgressKey(gameId: SoloGameId): string { return `gamehall:solo:${gameId}:v1`; }
 export function soloDraftKey(gameId: SoloGameId): string { return `gamehall:solo:${gameId}:draft:v1`; }
 export function canShareSoloProgress(): boolean { return typeof indexedDB !== 'undefined'; }
 
 function decodeState(gameId: SoloGameId, serialized: string): SoloState {
   return gameId === 'connect-four' ? connectFourDefinition.deserialize(serialized)
-    : gameId === 'reversi' ? reversiDefinition.deserialize(serialized) : dotsAndBoxesDefinition.deserialize(serialized);
+    : gameId === 'reversi' ? reversiDefinition.deserialize(serialized)
+      : gameId === 'gomoku' ? gomokuDefinition.deserialize(serialized) : dotsAndBoxesDefinition.deserialize(serialized);
 }
 
 function serializeState(state: SoloState): string {
   return state.kind === 'connect-four' ? connectFourDefinition.serialize(state as ConnectFourState)
-    : state.kind === 'reversi' ? reversiDefinition.serialize(state as ReversiState) : dotsAndBoxesDefinition.serialize(state as DotsAndBoxesState);
+    : state.kind === 'reversi' ? reversiDefinition.serialize(state as ReversiState)
+      : state.kind === 'gomoku' ? gomokuDefinition.serialize(state as GomokuState) : dotsAndBoxesDefinition.serialize(state as DotsAndBoxesState);
 }
 
 function expectedFirst(starter: SoloStarter): 0 | 1 { return starter === 'human' ? 0 : 1; }
@@ -89,8 +93,27 @@ function validReversi(state: ReversiState): boolean {
 }
 
 function validState(state: SoloState, gameId: SoloGameId, starter: SoloStarter): boolean {
-  if (state.kind !== gameId || (state.kind === 'reversi' ? state.blackPlayer : state.firstPlayer) !== expectedFirst(starter)) return false;
+  if (state.kind !== gameId || (state.kind === 'reversi' || state.kind === 'gomoku' ? state.blackPlayer : state.firstPlayer) !== expectedFirst(starter)) return false;
   return state.kind === 'connect-four' ? validFour(state) : state.kind === 'reversi' ? validReversi(state) : false;
+}
+
+function validGomokuProgress(progress: SoloProgress): boolean {
+  if (progress.gameId !== 'gomoku' || progress.state.kind !== 'gomoku' || progress.trace !== undefined
+      || !Array.isArray(progress.gomokuMoves) || progress.gomokuMoves.length > 225 || progress.history.length > GOMOKU_HISTORY_MAX) return false;
+  let replay = createGomokuState(expectedFirst(progress.starter));
+  const beforeHuman: GomokuState[] = [];
+  for (const move of progress.gomokuMoves) {
+    if (!move || Object.keys(move).sort().join(',') !== 'col,row' || !Number.isInteger(move.row) || !Number.isInteger(move.col)
+        || replay.phase !== 'playing') return false;
+    if (replay.turn === 0) beforeHuman.push(replay);
+    const result = applyGomokuAction(replay, replay.turn, { type: 'place', row: move.row, col: move.col });
+    if (!result.ok) return false;
+    replay = result.state;
+  }
+  if (JSON.stringify(replay) !== JSON.stringify(progress.state)) return false;
+  const retained = progress.history.length === 0 ? [] : beforeHuman.slice(-progress.history.length);
+  return retained.length === progress.history.length
+    && retained.every((snapshot, index) => JSON.stringify(snapshot) === JSON.stringify(progress.history[index]));
 }
 
 function validDotsProgress(progress: SoloProgress): boolean {
@@ -110,6 +133,8 @@ function validDotsProgress(progress: SoloProgress): boolean {
 }
 
 function validHistory(progress: SoloProgress): boolean {
+  if (progress.gameId === 'gomoku') return validGomokuProgress(progress);
+  if (progress.gomokuMoves !== undefined) return false;
   if (progress.gameId === 'dots-and-boxes') return validDotsProgress(progress);
   if (progress.trace !== undefined) return false;
   if (progress.state.kind === 'dots-and-boxes' || progress.history.some((state) => state.kind === 'dots-and-boxes')) return false;
@@ -133,11 +158,12 @@ function validHistory(progress: SoloProgress): boolean {
 }
 
 export function encodeSoloProgress(progress: SoloProgress): string {
-  if ((progress.gameId === 'dots-and-boxes' ? false : !validState(progress.state, progress.gameId, progress.starter)) || !validHistory(progress)
+  if ((progress.gameId === 'dots-and-boxes' || progress.gameId === 'gomoku' ? false : !validState(progress.state, progress.gameId, progress.starter)) || !validHistory(progress)
       || !['easy', 'thoughtful'].includes(progress.difficulty)) throw new Error('invalid solo progress');
   const serialized = JSON.stringify({ version: VERSION, gameId: progress.gameId, difficulty: progress.difficulty,
     starter: progress.starter, state: serializeState(progress.state), history: progress.history.map(serializeState),
-    ...(progress.gameId === 'dots-and-boxes' ? { trace: progress.trace } : {}) });
+    ...(progress.gameId === 'dots-and-boxes' ? { trace: progress.trace } : {}),
+    ...(progress.gameId === 'gomoku' ? { gomokuMoves: progress.gomokuMoves } : {}) });
   if (serialized.length > SOLO_PROGRESS_MAX_BYTES || new TextEncoder().encode(serialized).byteLength > SOLO_PROGRESS_MAX_BYTES) throw new Error('solo progress too large');
   return serialized;
 }
@@ -147,17 +173,21 @@ export function decodeSoloProgress(gameId: SoloGameId, serialized: string): Solo
   const value: unknown = JSON.parse(serialized);
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid solo progress');
   const record = value as Record<string, unknown>;
+  if (gameId === 'gomoku' && Object.keys(record).some((key) => !['version', 'gameId', 'difficulty', 'starter', 'state', 'history', 'gomokuMoves', 'revision'].includes(key))) throw new Error('invalid solo progress');
   if (record.version !== VERSION || record.gameId !== gameId || !['easy', 'thoughtful'].includes(record.difficulty as string)
       || !['human', 'computer'].includes(record.starter as string) || typeof record.state !== 'string'
-      || !Array.isArray(record.history) || record.history.length > SOLO_HISTORY_MAX
+      || !Array.isArray(record.history) || record.history.length > (gameId === 'gomoku' ? GOMOKU_HISTORY_MAX : SOLO_HISTORY_MAX)
       || !record.history.every((state) => typeof state === 'string')
       || gameId === 'dots-and-boxes' && (!Array.isArray(record.trace) || record.trace.length > 24)
       || gameId !== 'dots-and-boxes' && record.trace !== undefined
+      || gameId === 'gomoku' && (!Array.isArray(record.gomokuMoves) || record.gomokuMoves.length > 225)
+      || gameId !== 'gomoku' && record.gomokuMoves !== undefined
       || record.revision !== undefined && (typeof record.revision !== 'string' || !/^[a-zA-Z0-9-]{1,80}$/.test(record.revision))) throw new Error('invalid solo progress');
   const progress: SoloProgress = { gameId, difficulty: record.difficulty as SoloDifficulty, starter: record.starter as SoloStarter,
     state: decodeState(gameId, record.state), history: record.history.map((state) => decodeState(gameId, state as string)),
-    ...(gameId === 'dots-and-boxes' ? { trace: record.trace as DotsEdge[] } : {}) };
-  if (gameId === 'dots-and-boxes' ? !validHistory(progress) : !validState(progress.state, gameId, progress.starter) || !validHistory(progress)) throw new Error('invalid solo progress');
+    ...(gameId === 'dots-and-boxes' ? { trace: record.trace as DotsEdge[] } : {}),
+    ...(gameId === 'gomoku' ? { gomokuMoves: record.gomokuMoves as Array<{ row: number; col: number }> } : {}) };
+  if (gameId === 'dots-and-boxes' || gameId === 'gomoku' ? !validHistory(progress) : !validState(progress.state, gameId, progress.starter) || !validHistory(progress)) throw new Error('invalid solo progress');
   return progress;
 }
 

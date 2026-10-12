@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  applyConnectFourAction, applyReversiAction, createConnectFourState, createReversiState, legalReversiMoves,
+  applyConnectFourAction, applyGomokuAction, applyReversiAction, createConnectFourState, createGomokuState, createReversiState, legalReversiMoves,
   type ConnectFourState, type Player,
 } from '@gamehall/game-core';
-import { chooseConnectFourMove, chooseReversiMove, recommendSoloHint } from './solo-ai';
+import { chooseConnectFourMove, chooseGomokuMove, chooseReversiMove, recommendSoloHint } from './solo-ai';
 
 function fourAfter(columns: number[]): ConnectFourState {
   let state = createConnectFourState(0);
@@ -16,6 +16,28 @@ function fourAfter(columns: number[]): ConnectFourState {
 }
 
 describe('solo computer move search', () => {
+  it.each(['easy', 'thoughtful'] as const)('五子棋 %s 先取立即胜利并挡住对方五连，保持输入不变', (difficulty) => {
+    const build = (moves: Array<[number, number]>) => {
+      let state = createGomokuState(0);
+      for (const [row, col] of moves) {
+        const result = applyGomokuAction(state, state.turn, { type: 'place', row, col });
+        if (!result.ok) throw new Error('bad fixture');
+        state = result.state;
+      }
+      return state;
+    };
+    const win = build([[7, 3], [0, 0], [7, 4], [0, 2], [7, 5], [0, 4], [7, 6], [0, 6]]);
+    const original = JSON.stringify(win);
+    expect(chooseGomokuMove(win, difficulty)).toEqual({ type: 'place', row: 7, col: 7 });
+    expect(JSON.stringify(win)).toBe(original);
+    const block = build([[7, 3], [0, 0], [7, 4], [0, 2], [7, 5], [0, 4], [7, 6]]);
+    expect(chooseGomokuMove(block, difficulty)).toEqual({ type: 'place', row: 7, col: 7 });
+    const opening = createGomokuState(1);
+    expect(chooseGomokuMove(opening, difficulty)).toEqual({ type: 'place', row: 7, col: 7 });
+    const hint = recommendSoloHint(createGomokuState(0));
+    expect(hint.action).toEqual({ type: 'place', row: 7, col: 7 });
+    expect(createGomokuState(0).moveCount).toBe(0);
+  });
   it.each(['easy', 'thoughtful'] as const)('四子连线 %s 先拿立即胜利，也能挡住对方下一步四连', (difficulty) => {
     const win = fourAfter([6, 0, 6, 1, 5, 2, 5]);
     expect(win.turn).toBe(1);

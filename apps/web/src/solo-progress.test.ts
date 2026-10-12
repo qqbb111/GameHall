@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { applyConnectFourAction, applyReversiAction, createConnectFourState, createDotsAndBoxesState, createReversiState, type ConnectFourState } from '@gamehall/game-core';
+import { applyConnectFourAction, applyGomokuAction, applyReversiAction, createConnectFourState, createDotsAndBoxesState, createGomokuState, createReversiState, type ConnectFourState } from '@gamehall/game-core';
 import { dotsAfter, openDotsEdges } from './dots-solo';
 import { clearSoloDraft, decodeSoloProgress, encodeSoloProgress, readSoloDraft, readSoloProgress, readSoloSnapshot, saveSoloProgress,
-  SOLO_HISTORY_MAX, SOLO_PROGRESS_MAX_BYTES, soloDraftKey, soloProgressKey, writeSoloDraft, writeSoloProgress, type SoloProgress } from './solo-progress';
+  GOMOKU_HISTORY_MAX, SOLO_HISTORY_MAX, SOLO_PROGRESS_MAX_BYTES, soloDraftKey, soloProgressKey, writeSoloDraft, writeSoloProgress, type SoloProgress } from './solo-progress';
 
 function useSerialLocks() {
   let tail = Promise.resolve();
@@ -30,6 +30,43 @@ function reversiProgress(): SoloProgress {
 }
 
 describe('local solo progress', () => {
+  it.each(['human', 'computer'] as const)('五子棋 %s 先手长局保持有界悔棋历史，并拒绝伪造走法与终局', (starter) => {
+    let state = createGomokuState(starter === 'human' ? 0 : 1);
+    const history: SoloProgress['history'] = [], gomokuMoves: Array<{ row: number; col: number }> = [];
+    for (let step = 0; step < 84; step++) {
+      if (state.turn === 0) {
+        history.push(state);
+        if (history.length > GOMOKU_HISTORY_MAX) history.shift();
+      }
+      let next = null;
+      for (let index = 0; index < 225; index++) {
+        if (state.board[index] !== null) continue;
+        const move = { row: Math.floor(index / 15), col: index % 15 };
+        const result = applyGomokuAction(state, state.turn, { type: 'place', ...move });
+        if (result.ok && result.state.phase === 'playing') { next = { state: result.state, move }; break; }
+      }
+      if (!next) throw new Error('no long-game move');
+      state = next.state;
+      gomokuMoves.push(next.move);
+    }
+    const progress: SoloProgress = { gameId: 'gomoku', state, history, gomokuMoves, starter, difficulty: 'easy' };
+    const encoded = encodeSoloProgress(progress);
+    expect(encoded.length).toBeLessThan(SOLO_PROGRESS_MAX_BYTES);
+    expect(decodeSoloProgress('gomoku', encoded)).toEqual(progress);
+    let rewound = progress;
+    for (let remaining = GOMOKU_HISTORY_MAX - 1; remaining >= 0; remaining--) {
+      const previous = rewound.history.at(-1);
+      if (!previous || previous.kind !== 'gomoku') throw new Error('bad undo fixture');
+      rewound = { ...rewound, state: previous, history: rewound.history.slice(0, -1), gomokuMoves: rewound.gomokuMoves!.slice(0, previous.moveCount) };
+      expect(rewound.history).toHaveLength(remaining);
+      expect(decodeSoloProgress('gomoku', encodeSoloProgress(rewound))).toEqual(rewound);
+    }
+    const record = JSON.parse(encoded) as Record<string, unknown>;
+    expect(() => decodeSoloProgress('connect-four', encoded)).toThrow();
+    expect(() => decodeSoloProgress('gomoku', JSON.stringify({ ...record, state: JSON.stringify({ ...state, turn: state.turn === 0 ? 1 : 0 }) }))).toThrow();
+    expect(() => decodeSoloProgress('gomoku', JSON.stringify({ ...record, gomokuMoves: [...gomokuMoves, gomokuMoves[0]] }))).toThrow();
+    expect(() => decodeSoloProgress('gomoku', JSON.stringify({ ...record, history: [...history.slice(1), history[0]].map((snapshot) => JSON.stringify(snapshot)) }))).toThrow();
+  });
   afterEach(() => { window.localStorage.clear(); window.sessionStorage.clear(); Reflect.deleteProperty(navigator, 'locks'); vi.restoreAllMocks(); });
 
   it('两款棋独立 roundtrip，悔棋前状态与电脑回合原样恢复', () => {

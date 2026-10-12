@@ -12,6 +12,7 @@ import {
 } from '@gamehall/game-core';
 import type { GameActionCommand, RoomMemberView } from '@gamehall/protocol';
 import { TwentyFourExpressionEditor } from './TwentyFourExpressionEditor';
+import { useBoardKeyboardContinuity } from './useBoardKeyboardContinuity';
 
 type ActionHandler = (action: GameActionCommand['action']) => Promise<unknown>;
 const GOMOKU_STAR_POINTS = new Set(['3,3', '3,11', '7,7', '11,3', '11,11']);
@@ -23,11 +24,16 @@ function playerName(player: Player): string {
   return player === 0 ? '玩家一' : '玩家二';
 }
 
-export function GomokuGame({ state, mySeat, active, onAction }: { state: GomokuState; mySeat: Player; active: boolean; onAction: ActionHandler }) {
+export function GomokuGame({ state, mySeat, active, onAction, opponentLabel = '对手', hintCell = null }: {
+  state: GomokuState; mySeat: Player; active: boolean; onAction: ActionHandler; opponentLabel?: string; hintCell?: { row: number; col: number } | null;
+}) {
   const [focusIndex, setFocusIndex] = useState(7 * GOMOKU_SIZE + 7);
   const buttons = useRef<Array<HTMLButtonElement | null>>([]);
   const myTurn = active && state.phase === 'playing' && state.turn === mySeat;
   const myColor = state.blackPlayer === mySeat ? '黑方' : '白方';
+  const nearestEmpty = state.board[focusIndex] === null ? focusIndex : state.board.findIndex((cell, index) => cell === null && index >= focusIndex);
+  const focusTarget = nearestEmpty >= 0 ? nearestEmpty : state.board.findIndex((cell) => cell === null);
+  const { boardRef, onKeyDownCapture, onPointerDownCapture } = useBoardKeyboardContinuity(myTurn, focusTarget >= 0 ? `[data-cell-index="${focusTarget}"]` : null);
 
   function moveFocus(next: number) {
     const bounded = Math.max(0, Math.min(GOMOKU_SIZE * GOMOKU_SIZE - 1, next));
@@ -51,11 +57,11 @@ export function GomokuGame({ state, mySeat, active, onAction }: { state: GomokuS
   return (
     <section className="game-surface" aria-label="五子棋对局">
       <div className="surface-title">
-        <div><span>你执 {myColor}</span><h2 aria-live="polite">{state.phase === 'finished' ? '本局结束' : state.turn === mySeat ? '轮到你落子' : '等待对手落子'}</h2></div>
+        <div><span>你执 {myColor}</span><h2 aria-live="polite">{state.phase === 'finished' ? '本局结束' : state.turn === mySeat ? '轮到你落子' : `等待${opponentLabel}落子`}</h2></div>
         <div className={`turn-stone ${state.turn === state.blackPlayer ? 'black' : 'white'}`} aria-label={state.turn === state.blackPlayer ? '当前黑方回合' : '当前白方回合'} />
       </div>
       <div className="board-scroll" aria-label="完整五子棋棋盘">
-        <div className="gomoku-board" role="grid" aria-label="15乘15五子棋棋盘" aria-describedby="gomoku-keyboard-help">
+        <div ref={boardRef} onKeyDownCapture={onKeyDownCapture} onPointerDownCapture={onPointerDownCapture} className="gomoku-board" role="grid" aria-label="15乘15五子棋棋盘" aria-describedby="gomoku-keyboard-help">
           <span className="gomoku-grid-lines" aria-hidden="true">
             <svg viewBox="-0.5 -0.5 15 15" preserveAspectRatio="none" focusable="false">
               <path d={GOMOKU_GRID_PATH} />
@@ -72,14 +78,15 @@ export function GomokuGame({ state, mySeat, active, onAction }: { state: GomokuS
             return (
               <button
                 ref={(element) => { buttons.current[index] = element; }}
-                className={`gomoku-cell ${isStar ? 'is-star' : ''} ${myTurn && cell === null ? 'is-playable' : ''} ${isLast ? 'is-last' : ''} ${isWin ? 'is-winning' : ''}`}
+                className={`gomoku-cell ${isStar ? 'is-star' : ''} ${myTurn && cell === null ? 'is-playable' : ''} ${isLast ? 'is-last' : ''} ${isWin ? 'is-winning' : ''} ${hintCell?.row === row && hintCell.col === col ? 'is-hint' : ''}`}
+                data-cell-index={index}
                 data-row={row}
                 data-col={col}
                 key={index}
                 type="button"
                 role="gridcell"
                 tabIndex={index === focusIndex ? 0 : -1}
-                aria-label={`第 ${row + 1} 行第 ${col + 1} 列，${color}${isLast ? '，最近一步' : ''}${isWin ? '，获胜连线' : ''}`}
+                aria-label={`第 ${row + 1} 行第 ${col + 1} 列，${color}${isLast ? '，最近一步' : ''}${isWin ? '，获胜连线' : ''}${hintCell?.row === row && hintCell.col === col ? '，建议落点' : ''}`}
                 aria-disabled={!myTurn || cell !== null}
                 onFocus={() => setFocusIndex(index)}
                 onKeyDown={(event) => handleKey(event, index)}
