@@ -177,7 +177,10 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
       if (result.kind === 'conflict') { showConflict(result.snapshot); return; }
       if (result.kind === 'unsupported') { setShareLimited(true); return; }
       if (result.kind !== 'saved') {
-        const latestDraftSaved = sequence === saveSequence.current ? draftSaved : !!readSoloDraft(gameId);
+        if (sequence !== saveSequence.current) return;
+        const currentDraft = readSoloDraft(gameId);
+        const latestDraftSaved = !!currentDraft && !!latestProgressRef.current
+          && JSON.stringify(currentDraft.progress) === JSON.stringify(latestProgressRef.current);
         setUnsaved(!latestDraftSaved);
         setLocalOnly(latestDraftSaved);
         return;

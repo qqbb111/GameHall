@@ -676,6 +676,41 @@ describe('local computer practice', () => {
     await waitFor(async () => expect(await shared('connect-four')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 2 } } }));
   });
 
+  it('首笔共享写入迟到失败时，残留的旧草稿不能被误认成当前棋盘已保存', async () => {
+    await saveShared({ gameId: 'connect-four', state: createConnectFourState(0), history: [], difficulty: 'easy', starter: 'human' });
+    let releaseFirst!: () => void, releaseSecond!: () => void;
+    const firstHold = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const secondHold = new Promise<void>((resolve) => { releaseSecond = resolve; });
+    let requests = 0;
+    vi.spyOn(sharedStore, 'writeSharedSoloProgress').mockImplementation(async () => {
+      requests++;
+      if (requests === 1) await firstHold;
+      else await secondHold;
+      return { kind: 'unavailable' };
+    });
+    render(<SoloPracticePage gameId="connect-four" recoveredRoom={false} onExit={vi.fn()} />);
+    await screen.findByRole('grid', { name: /已投放 0 枚棋子/ });
+    fireEvent.click(screen.getByRole('button', { name: '投放第 1 列' }));
+    await waitFor(() => expect(requests).toBe(1));
+    expect(readSoloDraft('connect-four')?.progress.state.moveCount).toBe(1);
+    const setItem = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+      if (this === window.sessionStorage) throw new Error('session blocked');
+      return setItem.call(this, key, value);
+    });
+    act(() => FakeWorker.instances[0]!.reply({ action: { type: 'drop', col: 1 } }));
+    expect(screen.getByRole('grid', { name: /已投放 2 枚棋子/ })).toBeInTheDocument();
+    expect(readSoloDraft('connect-four')?.progress.state.moveCount).toBe(1);
+    expect(screen.getByText('当前浏览器无法保存，刷新后会重新开始。')).toBeInTheDocument();
+    await act(async () => releaseFirst());
+    await waitFor(() => expect(requests).toBe(2));
+    expect(screen.getByText('当前浏览器无法保存，刷新后会重新开始。')).toBeInTheDocument();
+    expect(screen.queryByText(/这盘仍保存在当前标签/)).not.toBeInTheDocument();
+    await act(async () => releaseSecond());
+    expect(screen.getByText('当前浏览器无法保存，刷新后会重新开始。')).toBeInTheDocument();
+    expect(await shared('connect-four')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 0 } } });
+  });
+
   it('无Web Locks时事务持久保存可跨标签读取，刷新继续', async () => {
     Reflect.deleteProperty(navigator, 'locks');
     const first = await start();
