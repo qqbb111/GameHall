@@ -46,4 +46,12 @@
 .solo-conflict-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .solo-conflict-actions button { min-height: 44px; padding: 9px 14px; border: 1px solid #e0bf80; border-radius: 9px; background: #254939; color: #fff0cd; font-weight: 700; cursor: pointer; }
 .solo-conflict-actions button:disabled { opacity: .55; cursor: not-allowed; }
+.solo-confirm-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 16px; background: #061611d9; }
+.solo-confirm-dialog { width: min(100%, 430px); padding: 24px; border: 1px solid #d8b574; border-radius: 16px; background: #19372e; color: #f7eed7; box-shadow: 0 28px 80px #0008; }
+.solo-confirm-dialog h2 { margin: 0 0 12px; font-size: 22px; }
+.solo-confirm-dialog p { margin: 0 0 22px; color: #d7e4d2; line-height: 1.6; }
+.solo-confirm-dialog > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
+.solo-confirm-dialog button { min-height: 44px; padding: 9px 15px; border: 1px solid #d8b574; border-radius: 9px; background: #254939; color: #fff0cd; font-weight: 700; cursor: pointer; }
+.solo-confirm-dialog button.is-danger { background: #e9c67d; color: #19372e; }
+.solo-confirm-dialog button:hover { filter: brightness(1.12); }
 @media (max-width: 620px) { .solo-shell { padding-inline: 8px; } .solo-header { flex-direction: column; } .solo-header button { align-self: flex-start; } .solo-toolbar { align-items: flex-start; } .solo-toolbar > div { flex-direction: column; gap: 3px; } .solo-play > .reversi-surface { padding-inline: 4px; } .solo-play .reversi-board { padding: 4px; border-width: 5px; } .solo-play .reversi-surface > :not(.reversi-board) { margin-inline: 8px; } .solo-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } .solo-actions button:last-child { grid-column: 1 / -1; } }

@@ -78,6 +78,95 @@ describe('local computer practice', () => {
     expect(FakeWorker.instances[1]!.request?.difficulty).toBe('easy');
   });
 
+  it('进行中重开先确认；Esc 与背景关闭保留棋盘、存档及电脑应手，并恢复按钮焦点', async () => {
+    start();
+    fireEvent.click(screen.getByRole('button', { name: '投放第 1 列' }));
+    await waitFor(() => expect(FakeWorker.instances).toHaveLength(1));
+    const worker = FakeWorker.instances[0]!;
+    const saved = readSoloSnapshot('connect-four').token;
+    const restart = screen.getByRole('button', { name: '重新开始' });
+    restart.focus();
+    fireEvent.click(restart);
+    const dialog = screen.getByRole('alertdialog', { name: '重新开始这局？' });
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(document.querySelector('.solo-shell')).toHaveAttribute('inert');
+    expect(screen.getByRole('button', { name: '继续这盘' })).toHaveFocus();
+    expect(worker.terminated).toBe(false);
+    expect(readSoloSnapshot('connect-four').token).toBe(saved);
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+    expect(screen.getByRole('button', { name: '清空并重新开始' })).toHaveFocus();
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(screen.getByRole('button', { name: '继续这盘' })).toHaveFocus();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(document.querySelector('.solo-shell')).not.toHaveAttribute('inert');
+    expect(restart).toHaveFocus();
+    expect(worker.terminated).toBe(false);
+    act(() => worker.reply({ action: { type: 'drop', col: 1 } }));
+    expect(screen.getByRole('grid', { name: /已投放 2 枚棋子/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '提示一步' }));
+    const hintWorker = FakeWorker.instances[1]!;
+    restart.focus();
+    fireEvent.click(restart);
+    act(() => hintWorker.reply({ hint: { action: { type: 'drop', col: 3 }, reason: '当前建议' } }));
+    expect(screen.getByRole('button', { name: '继续这盘' })).toHaveFocus();
+    expect(screen.getByText(/当前建议/)).toBeInTheDocument();
+    fireEvent.mouseDown(screen.getByRole('alertdialog').parentElement!);
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(restart).toHaveFocus();
+    expect(screen.getByText(/当前建议/)).toBeInTheDocument();
+    await waitFor(() => expect(readSoloProgress('connect-four')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 2 } } }));
+  });
+
+  it('确认重开才清除进行中棋盘与旧请求，并按待生效设置保存新局；空局与终局直接重开', async () => {
+    start();
+    fireEvent.click(screen.getByRole('button', { name: '重新开始' }));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '投放第 1 列' }));
+    await waitFor(() => expect(FakeWorker.instances).toHaveLength(1));
+    const old = FakeWorker.instances[0]!;
+    fireEvent.click(screen.getByText('新一局设置'));
+    fireEvent.click(screen.getByRole('radio', { name: '电脑先手' }));
+    fireEvent.click(screen.getByRole('radio', { name: '认真' }));
+    fireEvent.click(screen.getByRole('button', { name: '重新开始' }));
+    expect(screen.getByText(/这盘练习会清空，新一局会用“电脑先手 · 认真”设置/)).toBeInTheDocument();
+    expect(old.terminated).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: '清空并重新开始' }));
+    expect(old.terminated).toBe(true);
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('grid', { name: /已投放 0 枚棋子/ })).toBeInTheDocument();
+    expect(screen.getByText('电脑先手 · 认真')).toBeInTheDocument();
+    await waitFor(() => expect(readSoloProgress('connect-four')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 0 }, starter: 'computer', difficulty: 'thoughtful' } }));
+  });
+
+  it('确认框期间电脑可完成应手，取消后仍保留；已结束棋局直接开新局', async () => {
+    const first = start();
+    fireEvent.click(screen.getByRole('button', { name: '投放第 1 列' }));
+    await waitFor(() => expect(FakeWorker.instances).toHaveLength(1));
+    fireEvent.click(screen.getByRole('button', { name: '重新开始' }));
+    act(() => FakeWorker.instances[0]!.reply({ action: { type: 'drop', col: 1 } }));
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    expect(screen.getByRole('grid', { name: /已投放 2 枚棋子/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '继续这盘' }));
+    expect(screen.getByRole('grid', { name: /已投放 2 枚棋子/ })).toBeInTheDocument();
+    await waitFor(() => expect(readSoloProgress('connect-four')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 2 } } }));
+    first.unmount();
+
+    let finished = createConnectFourState(0);
+    for (const col of [0, 0, 1, 1, 2, 2, 3]) {
+      const moved = applyConnectFourAction(finished, finished.turn, { type: 'drop', col });
+      if (!moved.ok) throw new Error('bad finished fixture');
+      finished = moved.state;
+    }
+    expect(finished.phase).toBe('finished');
+    expect(saveSoloProgress({ gameId: 'connect-four', state: finished, history: [], difficulty: 'easy', starter: 'human' })).toBe(true);
+    render(<SoloPracticePage gameId="connect-four" recoveredRoom={false} onExit={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: '重新开始' }));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('grid', { name: /已投放 0 枚棋子/ })).toBeInTheDocument();
+  });
+
   it('四子提示只预览合法列，取消不落子；采用后按玩家落子并恢复焦点', async () => {
     start();
     const originalSave = window.localStorage.getItem(soloProgressKey('connect-four'));
@@ -202,6 +291,7 @@ describe('local computer practice', () => {
     await waitFor(() => expect(FakeWorker.instances).toHaveLength(2));
     const restarted = FakeWorker.instances[1]!;
     fireEvent.click(screen.getByRole('button', { name: '重新开始' }));
+    fireEvent.click(screen.getByRole('button', { name: '清空并重新开始' }));
     act(() => restarted.reply({ action: { type: 'drop', col: 3 } }));
     expect(screen.getByRole('grid', { name: /已投放 0 枚棋子/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '投放第 3 列' }));
@@ -299,7 +389,10 @@ describe('local computer practice', () => {
     expect(screen.getByRole('grid', { name: /已投放 1 枚棋子/ })).toBeInTheDocument();
 
     if (cancel === 'undo') fireEvent.click(screen.getByRole('button', { name: '悔棋' }));
-    else if (cancel === 'restart') fireEvent.click(screen.getByRole('button', { name: '重新开始' }));
+    else if (cancel === 'restart') {
+      fireEvent.click(screen.getByRole('button', { name: '重新开始' }));
+      fireEvent.click(screen.getByRole('button', { name: '清空并重新开始' }));
+    }
     else {
       fireEvent.click(screen.getAllByRole('button', { name: '返回大厅' })[0]!);
       unmount();

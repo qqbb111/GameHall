@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   applyConnectFourAction, applyReversiAction, createConnectFourState, createReversiState, legalReversiMoves,
   type ConnectFourState, type ReversiState,
@@ -112,6 +113,13 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
   const hintFocusTarget = useRef<'adopt' | 'button' | null>(null);
   const humanMoveAt = useRef(0);
   const playStatus = useRef<HTMLElement | null>(null);
+  const shellRef = useRef<HTMLElement | null>(null);
+  const restartButtonRef = useRef<HTMLButtonElement | null>(null);
+  const cancelRestartRef = useRef<HTMLButtonElement | null>(null);
+  const restartDialogRef = useRef<HTMLDivElement | null>(null);
+  const restartOpenRef = useRef(false);
+  const restoreRestartFocus = useRef(false);
+  const [confirmRestart, setConfirmRestart] = useState(false);
 
   const showConflict = useCallback((snapshot: SoloSnapshot) => {
     conflictRef.current = snapshot;
@@ -199,6 +207,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
   }, []);
 
   useEffect(() => {
+    if (restartOpenRef.current) { hintFocusTarget.current = null; return; }
     if (hintFocusTarget.current === 'adopt' && hintState.kind === 'ready') {
       adoptButtonRef.current?.focus({ preventScroll: true });
       hintFocusTarget.current = null;
@@ -232,7 +241,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     worker.onmessage = (event: MessageEvent<SoloWorkerResponse>) => {
       if (!stillCurrent() || event.data?.requestId !== generation) return;
       if (event.data.error || !validHumanHint(currentState, event.data.hint)) { fail(); return; }
-      if (document.activeElement === hintButtonRef.current || hintRequesterFocused.current && document.activeElement === document.body) hintFocusTarget.current = 'adopt';
+      if (!restartOpenRef.current && (document.activeElement === hintButtonRef.current || hintRequesterFocused.current && document.activeElement === document.body)) hintFocusTarget.current = 'adopt';
       finish();
       setHintState({ kind: 'ready', hint: event.data.hint });
     };
@@ -343,6 +352,52 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     setRound((current) => current + 1);
   }
 
+  function requestRestart() {
+    const current = stateRef.current;
+    if (!current || current.phase === 'finished' || current.moveCount === 0) { start(); return; }
+    restartOpenRef.current = true;
+    hintFocusTarget.current = null;
+    setConfirmRestart(true);
+  }
+
+  function closeRestart(restoreFocus = true) {
+    restartOpenRef.current = false;
+    restoreRestartFocus.current = restoreFocus;
+    setConfirmRestart(false);
+  }
+
+  useEffect(() => {
+    if (!confirmRestart) return;
+    const shell = shellRef.current;
+    const restartButton = restartButtonRef.current;
+    const hadInert = shell?.hasAttribute('inert') ?? false;
+    const oldOverflow = document.body.style.overflow;
+    shell?.setAttribute('inert', '');
+    document.body.style.overflow = 'hidden';
+    cancelRestartRef.current?.focus({ preventScroll: true });
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); closeRestart(); return; }
+      if (event.key !== 'Tab') return;
+      const buttons = Array.from(restartDialogRef.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []);
+      if (!buttons.length) return;
+      const first = buttons[0]!;
+      const last = buttons[buttons.length - 1]!;
+      if (event.shiftKey && (document.activeElement === first || !restartDialogRef.current?.contains(document.activeElement))) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !restartDialogRef.current?.contains(document.activeElement))) {
+        event.preventDefault(); first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      if (!hadInert) shell?.removeAttribute('inert');
+      document.body.style.overflow = oldOverflow;
+      if (restoreRestartFocus.current) restartButton?.focus({ preventScroll: true });
+      restoreRestartFocus.current = false;
+    };
+  }, [confirmRestart]);
+
   function undo() {
     const previous = history.current.pop();
     if (!previous) return;
@@ -358,7 +413,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
 
   async function humanAction(action: GameActionCommand['action']): Promise<boolean> {
     const current = stateRef.current;
-    if (!current || current.phase !== 'playing' || current.turn !== 0 || thinking) return false;
+    if (!current || current.phase !== 'playing' || current.turn !== 0 || thinking || restartOpenRef.current) return false;
     let next: SoloState | null = null;
     if (current.kind === 'connect-four' && action.type === 'drop') {
       const result = applyConnectFourAction(current, 0, action);
@@ -473,7 +528,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
   const hint = hintState.kind === 'ready' ? hintState.hint : null;
   const hintSpot = hint?.action.type === 'drop' ? `第 ${hint.action.col + 1} 列`
     : hint?.action.type === 'placeDisc' ? `第 ${hint.action.row + 1} 行第 ${hint.action.col + 1} 列` : '';
-  return <main className="solo-shell">
+  return <><main className="solo-shell" ref={shellRef}>
     <header className="solo-header">
       <div><span className="solo-eyebrow">本地单人练习</span><h1 tabIndex={-1}>与电脑练习 · {name}</h1><p>自己练一局，随时可以悔棋或重开。</p></div>
       {!recoveredRoom && <button type="button" className="solo-back" onClick={exit}>返回大厅</button>}
@@ -505,7 +560,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
         : <ReversiGame key={round} state={state as ReversiState} mySeat={0} active={!thinking} opponentLabel="电脑" hintCell={hint?.action.type === 'placeDisc' ? hint.action : null} onAction={humanAction} />}
       <div className="solo-actions">
         <button type="button" onClick={undo} disabled={!historyLength} title={!historyLength ? '还没有可以悔的棋' : '撤回上一轮你的落子和电脑应手'}>悔棋</button>
-        <button type="button" onClick={start}>重新开始</button>
+        <button ref={restartButtonRef} type="button" onClick={requestRestart}>重新开始</button>
         <button type="button" onClick={exit}>{recoveredRoom ? '返回对局' : '返回大厅'}</button>
       </div>
       <details className="solo-settings"><summary>新一局设置</summary><p>更改选项后，点击“重新开始”才会生效；当前棋局继续保留。</p>
@@ -513,5 +568,11 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
         <fieldset><legend>谁先手</legend><label><input type="radio" name="next-starter" checked={starter === 'human'} onChange={() => setStarter('human')} />我先手</label><label><input type="radio" name="next-starter" checked={starter === 'computer'} onChange={() => setStarter('computer')} />电脑先手</label></fieldset>
       </details>
     </div>}
-  </main>;
+  </main>{confirmRestart && createPortal(<div className="solo-confirm-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeRestart(); }}>
+    <div ref={restartDialogRef} className="solo-confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="solo-restart-title" aria-describedby="solo-restart-description">
+      <h2 id="solo-restart-title">重新开始这局？</h2>
+      <p id="solo-restart-description">这盘练习会清空，新一局会用“{starter === 'human' ? '我先手' : '电脑先手'} · {difficulty === 'easy' ? '轻松' : '认真'}”设置。</p>
+      <div><button ref={cancelRestartRef} type="button" onClick={() => closeRestart()}>继续这盘</button><button type="button" className="is-danger" onClick={() => { closeRestart(false); start(); }}>清空并重新开始</button></div>
+    </div>
+  </div>, document.body)}</>;
 }
