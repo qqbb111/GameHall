@@ -1,10 +1,11 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { io } from 'socket.io-client';
+import type { CommandAck } from '@gamehall/protocol';
 import { useGameHallClient } from './gamehall-client';
 
 type Handler = (...args: never[]) => void;
-type Ack = (error: Error | null, result?: { ok: boolean; roomId?: string; code?: string; version?: number }) => void;
+type Ack = (error: Error | null, result?: CommandAck) => void;
 
 const socketMocks = vi.hoisted(() => ({
   sockets: [] as Array<{
@@ -213,6 +214,96 @@ describe('useGameHallClient connection recovery', () => {
     expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ signal: expect.any(AbortSignal) });
   });
 
+  it.each([
+    ['room:create', true], ['room:create', false], ['room:join', true], ['room:join', false],
+  ] as const)('%s 的旧会话 ACK (%s) 不能污染新会话，最新入房仍成功', async (event, oldSucceeded) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(sessionResponse())
+      .mockResolvedValueOnce(sessionResponse(null, 'session-2')));
+    const { result } = renderHook(() => useGameHallClient());
+    await waitFor(() => expect(socketMocks.sockets).toHaveLength(1));
+    const oldSocket = socketMocks.sockets[0]!;
+    act(() => { oldSocket.connected = true; oldSocket.trigger('connect'); });
+    const enter = (code: string) => event === 'room:create'
+      ? result.current.createRoom('棋手', 'connect-four') : result.current.joinRoom('棋手', code);
+    let oldCommand!: Promise<CommandAck>;
+    act(() => { oldCommand = enter('OLD111'); });
+    const oldEmit = oldSocket.timedEmits.find((item) => item.event === event)!;
+    await act(async () => { await Promise.resolve(); });
+    act(() => oldSocket.trigger('connect_error', new Error('SESSION_REQUIRED')));
+    await waitFor(() => expect(socketMocks.sockets).toHaveLength(2));
+    const newSocket = socketMocks.sockets[1]!;
+    act(() => { newSocket.connected = true; newSocket.trigger('connect'); });
+    act(() => oldEmit.ack(null, oldSucceeded ? { ok: true, roomId: 'old-room', code: 'OLD111' }
+      : { ok: false, error: { event, commandId: 'old-command', code: 'NOT_A_MEMBER', message: '旧会话失败', retryable: false } }));
+    await act(async () => { await oldCommand; });
+    expect(result.current.error).toBeNull();
+    act(() => newSocket.trigger('room:snapshot', { roomId: 'old-room', code: 'OLD111', version: 1, status: 'waiting' }));
+    expect(result.current.room).toBeNull();
+
+    let currentCommand!: Promise<CommandAck>;
+    act(() => { currentCommand = enter('NEW222'); });
+    const latestEmit = newSocket.timedEmits.find((item) => item.event === event)!;
+    act(() => {
+      newSocket.trigger('room:snapshot', { roomId: 'new-room', code: 'NEW222', version: 1, status: 'waiting' });
+      latestEmit.ack(null, { ok: true, roomId: 'new-room', code: 'NEW222' });
+    });
+    await act(async () => { expect(await currentCommand).toMatchObject({ ok: true }); });
+    expect(result.current.room?.roomId).toBe('new-room');
+    expect(result.current.error).toBeNull();
+  });
+
+  it('旧准备与消息 ACK 在切房后不得覆盖新房状态', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(sessionResponse('ABC234')));
+    const { result } = renderHook(() => useGameHallClient());
+    await waitFor(() => expect(socketMocks.sockets).toHaveLength(1));
+    const socket = socketMocks.sockets[0]!;
+    act(() => { socket.connected = true; socket.trigger('connect'); socket.trigger('room:snapshot', { roomId: 'old', code: 'ABC234', version: 1, status: 'waiting' }); });
+    let ready!: Promise<CommandAck>;
+    let message!: Promise<CommandAck>;
+    act(() => { ready = result.current.setReady(true); message = result.current.sendMessage('今晚来一局'); });
+    let create!: Promise<CommandAck>;
+    act(() => { create = result.current.createRoom('棋手', 'connect-four'); });
+    const emitted = (event: string) => socket.timedEmits.find((item) => item.event === event)!;
+    act(() => {
+      socket.trigger('room:snapshot', { roomId: 'new', code: 'XYZ789', version: 1, status: 'waiting' });
+      emitted('room:create').ack(null, { ok: true, roomId: 'new', code: 'XYZ789' });
+    });
+    await act(async () => { await create; });
+    let currentReady!: Promise<CommandAck>;
+    act(() => { currentReady = result.current.setReady(true); });
+    act(() => socket.timedEmits.filter((item) => item.event === 'room:ready')[1]!.ack(null,
+      { ok: false, error: { event: 'room:ready', commandId: 'new-ready', code: 'CURRENT_ERROR', message: '当前房间提醒', retryable: false } }));
+    await act(async () => { await currentReady; });
+    act(() => {
+      emitted('room:message:send').ack(null, { ok: true });
+      emitted('room:ready').ack(null, { ok: false, error: { event: 'room:ready', commandId: 'old-ready', code: 'VERSION_CONFLICT', message: '旧准备失败', retryable: false } });
+    });
+    await act(async () => { await Promise.all([ready, message]); });
+    expect(result.current.room?.roomId).toBe('new');
+    expect(result.current.error?.code).toBe('CURRENT_ERROR');
+  });
+
+  it('同一会话新的入房意图优先于先前创建房间的迟到成功 ACK', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(sessionResponse()));
+    const { result } = renderHook(() => useGameHallClient());
+    await waitFor(() => expect(socketMocks.sockets).toHaveLength(1));
+    const socket = socketMocks.sockets[0]!;
+    act(() => { socket.connected = true; socket.trigger('connect'); });
+    let oldCreate!: Promise<CommandAck>;
+    let newJoin!: Promise<CommandAck>;
+    act(() => { oldCreate = result.current.createRoom('棋手', 'connect-four'); });
+    act(() => { newJoin = result.current.joinRoom('棋手', 'NEW222'); });
+    act(() => socket.timedEmits.find((item) => item.event === 'room:create')!.ack(null, { ok: true, roomId: 'old-room', code: 'OLD111' }));
+    await act(async () => { expect(await oldCreate).toMatchObject({ ok: false, error: { code: 'STALE_OPERATION' } }); });
+    act(() => {
+      socket.trigger('room:snapshot', { roomId: 'new-room', code: 'NEW222', version: 1, status: 'waiting' });
+      socket.timedEmits.find((item) => item.event === 'room:join')!.ack(null, { ok: true, roomId: 'new-room', code: 'NEW222' });
+    });
+    await act(async () => { expect(await newJoin).toMatchObject({ ok: true }); });
+    expect(result.current.room?.roomId).toBe('new-room');
+    expect(result.current.error).toBeNull();
+  });
+
   it('连接被服务端拒绝后，页面唤醒不自动重试，手动重连仍可用', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(sessionResponse()));
     const { result } = renderHook(() => useGameHallClient());
@@ -285,7 +376,7 @@ describe('useGameHallClient connection recovery', () => {
     });
     await act(async () => { await Promise.all([create, oldAction]); });
     expect(result.current.room?.roomId).toBe('new');
-    expect(result.current.error?.event).not.toBe('game:action');
+    expect(result.current.error).toBeNull();
     let newAction!: Promise<unknown>;
     act(() => { newAction = result.current.submitGameAction({ type: 'drop', col: 2 }); });
     expect(emits('game:action')).toHaveLength(3);
