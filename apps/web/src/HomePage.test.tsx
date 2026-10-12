@@ -1,5 +1,5 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GameHallClient } from './gamehall-client';
 import { HomePage } from './HomePage';
 import { NICKNAME_STORAGE_KEY } from './client-preferences';
@@ -7,6 +7,7 @@ import { applyReversiAction, createConnectFourState, createDotsAndBoxesState, cr
 import { saveSoloProgress, soloProgressKey } from './solo-progress';
 import { leavePracticeAddress } from './solo-navigation';
 import { readSharedSoloSnapshot, writeSharedSoloProgress } from './solo-shared-store';
+import * as sharedSoloStore from './solo-shared-store';
 import type { SoloProgress } from './solo-progress';
 import { fixturePack } from './twenty-four-fixture';
 import { newTwentyFourProgress } from './twenty-four-practice';
@@ -42,8 +43,26 @@ function clientStub(overrides: Partial<GameHallClient> = {}): GameHallClient {
 }
 
 describe('HomePage', () => {
-  afterEach(() => {
+  const pendingReads = new Set<Promise<unknown>>();
+  const trackRead = <T,>(pending: Promise<T>): Promise<T> => {
+    pendingReads.add(pending);
+    void pending.then(() => pendingReads.delete(pending), () => pendingReads.delete(pending));
+    return pending;
+  };
+
+  beforeEach(() => {
+    const readSolo = sharedSoloStore.readSharedSoloSnapshot;
+    const readTwentyFour = twentyFourStore.readTwentyFourSnapshot;
+    vi.spyOn(sharedSoloStore, 'readSharedSoloSnapshot').mockImplementation((gameId) => trackRead(readSolo(gameId)));
+    vi.spyOn(twentyFourStore, 'readTwentyFourSnapshot').mockImplementation(() => trackRead(readTwentyFour()));
+  });
+
+  afterEach(async () => {
+    cleanup();
     vi.useRealTimers();
+    // Home refreshes all five practice cards. Let transactions started by a
+    // mounted page finish before Vitest disposes its JSDOM window.
+    while (pendingReads.size) await Promise.all([...pendingReads]);
     vi.restoreAllMocks();
     window.localStorage.clear();
     window.sessionStorage.clear();
@@ -239,7 +258,7 @@ describe('HomePage', () => {
     expect(trigger).toHaveFocus();
   });
 
-  it('连接中的提示延迟显示且没有无效重连按钮', () => {
+  it('连接中的提示延迟显示且没有无效重连按钮', async () => {
     vi.useFakeTimers();
     render(<HomePage client={clientStub({ connection: 'connecting' })} />);
     expect(screen.queryByText('正在连接实时服务')).not.toBeInTheDocument();
@@ -248,6 +267,7 @@ describe('HomePage', () => {
     act(() => vi.advanceTimersByTime(1));
     expect(screen.getByText('正在连接实时服务')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '重新连接' })).not.toBeInTheDocument();
+    await act(async () => { await vi.runAllTimersAsync(); });
   });
 
   it('离线时立即显示错误和可访问的重连按钮', () => {
