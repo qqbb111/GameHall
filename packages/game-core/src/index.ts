@@ -2,6 +2,7 @@ export * from './types';
 export * from './gomoku';
 export * from './connect-four';
 export * from './reversi';
+export * from './dots-and-boxes';
 export * from './quoridor';
 export * from './twenty-four';
 export * from './splendor';

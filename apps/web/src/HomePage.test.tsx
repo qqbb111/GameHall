@@ -152,8 +152,8 @@ describe('HomePage', () => {
     const reveals = container.querySelectorAll('.reveal');
     expect(reveals.length).toBeGreaterThan(0);
     expect(container.querySelectorAll('.reveal[data-reduced-motion="ignore"]')).toHaveLength(reveals.length);
-    expect(container.querySelectorAll('.game-card-surface[data-reduced-motion="ignore"]')).toHaveLength(7);
-    expect(container.querySelectorAll('.featured-spark[data-reduced-motion="ignore"]')).toHaveLength(7);
+    expect(container.querySelectorAll('.game-card-surface[data-reduced-motion="ignore"]')).toHaveLength(8);
+    expect(container.querySelectorAll('.featured-spark[data-reduced-motion="ignore"]')).toHaveLength(8);
     expect(container.querySelectorAll('.game-card-surface[data-reduced-motion="respect"]')).toHaveLength(0);
     expect(screen.getAllByText('可开局 · 2–4 人')).toHaveLength(2);
   });

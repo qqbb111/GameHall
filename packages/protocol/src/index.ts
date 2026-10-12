@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const gameIds = ['gomoku', 'quoridor', 'twenty-four', 'splendor', 'texas-holdem', 'connect-four', 'reversi'] as const;
+export const gameIds = ['gomoku', 'quoridor', 'twenty-four', 'splendor', 'texas-holdem', 'connect-four', 'reversi', 'dots-and-boxes'] as const;
 export type GameId = (typeof gameIds)[number];
 export type PlayerSeat = 0 | 1 | 2 | 3;
 export type RoomStatus = 'waiting' | 'active' | 'paused' | 'finished';
@@ -34,6 +34,7 @@ export const roomMessageSchema = z.object({
 const transportActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('drop'), col: z.number().int().min(0).max(6) }).strict(),
   z.object({ type: z.literal('placeDisc'), row: z.number().int().min(0).max(7), col: z.number().int().min(0).max(7) }).strict(),
+  z.object({ type: z.literal('drawEdge'), orientation: z.enum(['H', 'V']), row: z.number().int().min(0).max(3), col: z.number().int().min(0).max(3) }).strict(),
   z.object({ type: z.literal('place'), row: z.number().int(), col: z.number().int() }).strict(),
   z.object({ type: z.literal('move'), row: z.number().int(), col: z.number().int() }).strict(),
   z.object({ type: z.literal('placeWall'), row: z.number().int(), col: z.number().int(), orientation: z.enum(['H', 'V']) }).strict(),

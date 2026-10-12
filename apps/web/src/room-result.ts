@@ -1,4 +1,4 @@
-import type { GomokuState, ConnectFourState, ReversiState, SplendorView, QuoridorView, TwentyFourView, TexasHoldemView, PokerSeat } from '@gamehall/game-core';
+import type { GomokuState, ConnectFourState, ReversiState, DotsAndBoxesState, SplendorView, QuoridorView, TwentyFourView, TexasHoldemView, PokerSeat } from '@gamehall/game-core';
 import type { GameId } from '@gamehall/protocol';
 
 export function resultMessage(gameId: GameId, view: unknown, mySeat: number): string | null {
@@ -34,10 +34,11 @@ export function resultMessage(gameId: GameId, view: unknown, mySeat: number): st
       ? `你赢得了整局，共完成 ${result.handsPlayed} 手！`
       : `整局结束，玩家 ${result.winner + 1} 成为最终冠军。`;
   }
-  const state = view as GomokuState | ConnectFourState | ReversiState | QuoridorView;
+  const state = view as GomokuState | ConnectFourState | ReversiState | DotsAndBoxesState | QuoridorView;
   if (state.phase !== 'finished' || !state.result) return null;
   if (state.result.type === 'draw') return '棋盘战成和局，再来一场？';
   if (gameId === 'reversi' && state.result.reason === 'score') return state.result.winner === mySeat ? '你的棋子更多，赢下本局！' : '好友棋子更多，再来一场？';
+  if (gameId === 'dots-and-boxes' && state.result.reason === 'score') return state.result.winner === mySeat ? '你封住更多格子，赢下本局！' : '好友封住更多格子，再来一场？';
   if (state.result.reason === 'disconnect') return state.result.winner === mySeat ? '好友超时未重连，你赢得本局。' : '你因断线超时输掉了本局。';
   if (state.result.reason === 'resign') return state.result.winner === mySeat ? '好友认输，你赢得本局。' : '你已认输，本局结束。';
   if (state.result.reason === 'leave') return state.result.winner === mySeat ? '好友离开房间，你赢得本局。' : '你已离开，本局结束。';
