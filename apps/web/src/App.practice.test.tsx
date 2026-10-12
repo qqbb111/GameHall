@@ -57,4 +57,21 @@ describe('practice browser navigation with real board', () => {
     act(() => FakeWorker.instances[1]!.reply({ action: { type: 'drop', col: 1 } }));
     expect(screen.getByRole('grid', { name: /已投放 2 枚棋子/ })).toBeInTheDocument();
   });
+
+  it('点格棋直达地址与浏览器前进后退恢复练习入口', async () => {
+    vi.stubGlobal('Worker', FakeWorker);
+    vi.stubGlobal('matchMedia', () => ({ matches: true }));
+    vi.stubGlobal('scrollTo', vi.fn());
+    window.history.replaceState(null, '', '/?room=ABC234&practice=dots-and-boxes#board');
+    mocks.useClient.mockReturnValue({ loading: true, room: null } as unknown as GameHallClient);
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: '与电脑练习 · 点格棋' })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: '开始练习' }));
+    expect(screen.getByRole('group', { name: '4乘4点、3乘3格子的点格棋棋盘' })).toBeInTheDocument();
+    act(() => { window.history.replaceState(null, '', '/?room=ABC234#board'); window.dispatchEvent(new PopStateEvent('popstate')); });
+    expect(screen.getByRole('heading', { name: 'home' })).toBeInTheDocument();
+    act(() => { window.history.replaceState(null, '', '/?room=ABC234&practice=dots-and-boxes#board'); window.dispatchEvent(new PopStateEvent('popstate')); });
+    expect(await screen.findByRole('group', { name: '4乘4点、3乘3格子的点格棋棋盘' })).toBeInTheDocument();
+    expect(window.location.search).toBe('?room=ABC234&practice=dots-and-boxes');
+  });
 });

@@ -1,12 +1,13 @@
 import {
   applyConnectFourAction, applyReversiAction, legalReversiMoves, otherPlayer, reversiFlips,
-  type ConnectFourAction, type ConnectFourState, type Player, type ReversiAction, type ReversiState,
+  type ConnectFourAction, type ConnectFourState, type DotsAndBoxesAction, type DotsAndBoxesState, type Player, type ReversiAction, type ReversiState,
 } from '@gamehall/game-core';
+import { chooseDotsMove, dotsHint } from './dots-solo';
 
 export type SoloDifficulty = 'easy' | 'thoughtful';
-export type SoloGameId = 'connect-four' | 'reversi';
-export type SoloState = ConnectFourState | ReversiState;
-export type SoloAction = ConnectFourAction | ReversiAction;
+export type SoloGameId = 'connect-four' | 'reversi' | 'dots-and-boxes';
+export type SoloState = ConnectFourState | ReversiState | DotsAndBoxesState;
+export type SoloAction = ConnectFourAction | ReversiAction | DotsAndBoxesAction;
 export type SoloHint = { action: SoloAction; reason: string };
 
 const FOUR_WINDOWS: number[][] = [];
@@ -154,11 +155,13 @@ export function chooseReversiMove(state: ReversiState, difficulty: SoloDifficult
 }
 
 export function chooseSoloMove(state: SoloState, difficulty: SoloDifficulty): SoloAction {
-  return state.kind === 'connect-four' ? chooseConnectFourMove(state, difficulty) : chooseReversiMove(state, difficulty);
+  return state.kind === 'connect-four' ? chooseConnectFourMove(state, difficulty)
+    : state.kind === 'reversi' ? chooseReversiMove(state, difficulty) : chooseDotsMove(state, difficulty);
 }
 
 export function recommendSoloHint(state: SoloState): SoloHint {
   if (state.phase !== 'playing' || state.turn !== 0) throw new Error('hint requires a human turn');
+  if (state.kind === 'dots-and-boxes') return dotsHint(state);
   const action = chooseSoloMove(state, 'thoughtful');
   if (state.kind === 'connect-four') {
     if (action.type !== 'drop') throw new Error('invalid four hint');

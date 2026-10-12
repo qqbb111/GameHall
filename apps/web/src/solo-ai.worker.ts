@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { connectFourDefinition, reversiDefinition } from '@gamehall/game-core';
+import { connectFourDefinition, dotsAndBoxesDefinition, reversiDefinition } from '@gamehall/game-core';
 import { chooseSoloMove, recommendSoloHint, type SoloAction, type SoloDifficulty, type SoloGameId, type SoloHint } from './solo-ai';
 
 export type SoloWorkerRequest = { requestId: number; purpose: 'move' | 'hint'; gameId: SoloGameId; difficulty: SoloDifficulty; stateJson: string };
@@ -10,7 +10,8 @@ self.onmessage = (event: MessageEvent<SoloWorkerRequest>) => {
   try {
     if (difficulty !== 'easy' && difficulty !== 'thoughtful') throw new Error('invalid difficulty');
     const state = gameId === 'connect-four' ? connectFourDefinition.deserialize(stateJson)
-      : gameId === 'reversi' ? reversiDefinition.deserialize(stateJson) : null;
+      : gameId === 'reversi' ? reversiDefinition.deserialize(stateJson)
+      : gameId === 'dots-and-boxes' ? dotsAndBoxesDefinition.deserialize(stateJson) : null;
     if (!state || state.phase !== 'playing') throw new Error('invalid game state');
     if (purpose !== 'move' && purpose !== 'hint') throw new Error('invalid purpose');
     if (purpose === 'hint' && state.turn !== 0) throw new Error('invalid hint turn');

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { applyConnectFourAction, applyReversiAction, createConnectFourState, createReversiState } from '@gamehall/game-core';
+import { applyConnectFourAction, applyReversiAction, createConnectFourState, createDotsAndBoxesState, createReversiState, type ConnectFourState } from '@gamehall/game-core';
+import { dotsAfter, openDotsEdges } from './dots-solo';
 import { clearSoloDraft, decodeSoloProgress, encodeSoloProgress, readSoloDraft, readSoloProgress, readSoloSnapshot, saveSoloProgress,
   SOLO_HISTORY_MAX, SOLO_PROGRESS_MAX_BYTES, soloDraftKey, soloProgressKey, writeSoloDraft, writeSoloProgress, type SoloProgress } from './solo-progress';
 
@@ -37,9 +38,42 @@ describe('local solo progress', () => {
     expect(saveSoloProgress(reversi)).toBe(true);
     expect(readSoloProgress('connect-four')).toEqual({ kind: 'valid', progress: four });
     expect(readSoloProgress('reversi')).toEqual({ kind: 'valid', progress: reversi });
-    expect(four.history[0]?.moveCount).toBe(0);
+    expect((four.history[0] as ConnectFourState | undefined)?.moveCount).toBe(0);
     expect(reversi.state.turn).toBe(1);
     expect(soloProgressKey('connect-four')).not.toBe(soloProgressKey('reversi'));
+  });
+
+  it('点格棋逐边重放核对整局、真实人类历史前缀并与旧两键隔离', () => {
+    const first = createDotsAndBoxesState(0);
+    let state = first;
+    const trace: ReturnType<typeof openDotsEdges> = [];
+    const history: SoloProgress['history'] = [];
+    while (state.phase === 'playing') {
+      const edge = openDotsEdges(state)[0]!;
+      if (state.turn === 0) history.push(state);
+      trace.push(edge);
+      state = dotsAfter(state, edge);
+    }
+    const progress: SoloProgress = { gameId: 'dots-and-boxes', state, history, trace, difficulty: 'thoughtful', starter: 'human' };
+    expect(state.edgeCount).toBe(24);
+    expect(state.scores[0] + state.scores[1]).toBe(9);
+    expect(decodeSoloProgress('dots-and-boxes', encodeSoloProgress(progress))).toEqual(progress);
+    expect(soloProgressKey('dots-and-boxes')).not.toBe(soloProgressKey('connect-four'));
+    expect(soloProgressKey('dots-and-boxes')).not.toBe(soloProgressKey('reversi'));
+    const raw = JSON.parse(encodeSoloProgress(progress)) as Record<string, unknown>;
+    const badState = { ...state, scores: [9, 0], boxes: Array(9).fill(0) };
+    const wrongHistory = [...history]; wrongHistory[0] = createDotsAndBoxesState(1);
+    const invalid = [
+      { ...raw, state: JSON.stringify(badState) },
+      { ...raw, state: JSON.stringify({ ...state, phase: 'playing', result: null }) },
+      { ...raw, state: JSON.stringify({ ...state, lastBoxes: [] }) },
+      { ...raw, trace: [...trace.slice(0, -1), trace[0]] },
+      { ...raw, trace: [...trace, trace[0]] },
+      { ...raw, history: wrongHistory.map((snapshot) => JSON.stringify(snapshot)) },
+      { ...raw, history: history.slice(1).map((snapshot) => JSON.stringify(snapshot)) },
+    ];
+    for (const record of invalid) expect(() => decodeSoloProgress('dots-and-boxes', JSON.stringify(record))).toThrow();
+    expect(() => encodeSoloProgress({ ...progress, trace: [...trace, { type: 'resign' } as never] })).toThrow();
   });
 
   it('已结束棋局也能恢复为可查看棋盘', () => {
@@ -115,7 +149,7 @@ describe('local solo progress', () => {
     vi.restoreAllMocks();
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota'); });
     expect(saveSoloProgress(fourProgress())).toBe(false);
-    expect(fourProgress().state.moveCount).toBe(2);
+    expect((fourProgress().state as ConnectFourState).moveCount).toBe(2);
   });
 
   it('v1 记录原样可读，锁内修订比较防两窗口并发与同局面 ABA 覆盖', async () => {

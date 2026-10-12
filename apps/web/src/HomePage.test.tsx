@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { GameHallClient } from './gamehall-client';
 import { HomePage } from './HomePage';
 import { NICKNAME_STORAGE_KEY } from './client-preferences';
-import { applyReversiAction, createConnectFourState, createReversiState } from '@gamehall/game-core';
+import { applyReversiAction, createConnectFourState, createDotsAndBoxesState, createReversiState } from '@gamehall/game-core';
 import { saveSoloProgress, soloProgressKey } from './solo-progress';
 import { leavePracticeAddress } from './solo-navigation';
 import { readSharedSoloSnapshot, writeSharedSoloProgress } from './solo-shared-store';
@@ -214,7 +214,7 @@ describe('HomePage', () => {
     expect(reconnect).toHaveBeenCalledTimes(1);
   });
 
-  it.each(['connecting', 'offline'] as const)('%s 时仍能免昵称进入两种电脑练习，联网开房不可操作', async (connection) => {
+  it.each(['connecting', 'offline'] as const)('%s 时仍能免昵称进入三种电脑练习，联网开房不可操作', async (connection) => {
     const onPractice = vi.fn();
     const client = clientStub({ loading: true, connection });
     render(<HomePage client={client} onPractice={onPractice} />);
@@ -222,11 +222,12 @@ describe('HomePage', () => {
     expect(screen.getByRole('button', { name: '创建黑白棋房间' })).toBeDisabled();
     fireEvent.click(await screen.findByRole('button', { name: '和电脑练习四子连线' }));
     fireEvent.click(await screen.findByRole('button', { name: '和电脑练习黑白棋' }));
-    expect(onPractice.mock.calls).toEqual([['connect-four'], ['reversi']]);
+    fireEvent.click(await screen.findByRole('button', { name: '和电脑练习点格棋' }));
+    expect(onPractice.mock.calls).toEqual([['connect-four'], ['reversi'], ['dots-and-boxes']]);
     expect(client.createRoom).not.toHaveBeenCalled();
   });
 
-  it('两款独立存档让卡片展示继续练习或查看上局，入口仍由玩家明确选择', async () => {
+  it('三款独立存档让卡片展示继续练习或查看上局，入口仍由玩家明确选择', async () => {
     expect(saveSoloProgress({ gameId: 'connect-four', state: createConnectFourState(0), history: [], difficulty: 'easy', starter: 'human' })).toBe(true);
     const board = Array<0 | 1 | null>(64).fill(0);
     board[0] = null; board[1] = 1; board[63] = null; board[62] = 1;
@@ -236,11 +237,13 @@ describe('HomePage', () => {
     const final = applyReversiAction(first.state, 0, { type: 'placeDisc', row: 7, col: 7 });
     if (!final.ok) throw new Error('bad fixture');
     expect(saveSoloProgress({ gameId: 'reversi', state: final.state, history: [], difficulty: 'thoughtful', starter: 'human' })).toBe(true);
+    expect(saveSoloProgress({ gameId: 'dots-and-boxes', state: createDotsAndBoxesState(0), history: [], trace: [], difficulty: 'easy', starter: 'human' })).toBe(true);
     const onPractice = vi.fn();
     render(<HomePage client={clientStub({ connection: 'offline' })} onPractice={onPractice} />);
     fireEvent.click(await screen.findByRole('button', { name: '继续练习四子连线' }));
     fireEvent.click(await screen.findByRole('button', { name: '查看上局练习黑白棋' }));
-    expect(onPractice.mock.calls).toEqual([['connect-four'], ['reversi']]);
+    fireEvent.click(await screen.findByRole('button', { name: '继续练习点格棋' }));
+    expect(onPractice.mock.calls).toEqual([['connect-four'], ['reversi'], ['dots-and-boxes']]);
   });
 
   it('旧大厅在共享存档变化后更新摘要，损坏的旧缓存不能盖掉已迁移棋局', async () => {

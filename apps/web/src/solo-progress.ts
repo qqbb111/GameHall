@@ -1,6 +1,7 @@
-import { applyConnectFourAction, connectFourDefinition, connectFourLine, createConnectFourState, createReversiState, legalReversiMoves,
-  otherPlayer, reversiDefinition, type ConnectFourState, type ReversiState } from '@gamehall/game-core';
+import { applyConnectFourAction, connectFourDefinition, connectFourLine, createConnectFourState, createDotsAndBoxesState, createReversiState, dotsAndBoxesDefinition, legalReversiMoves,
+  otherPlayer, reversiDefinition, type ConnectFourState, type DotsAndBoxesState, type ReversiState } from '@gamehall/game-core';
 import type { SoloDifficulty, SoloGameId, SoloState } from './solo-ai';
+import { dotsAfter, type DotsEdge } from './dots-solo';
 import { secureUuid } from './secure-id';
 
 export type SoloStarter = 'human' | 'computer';
@@ -10,6 +11,7 @@ export type SoloProgress = {
   history: SoloState[];
   difficulty: SoloDifficulty;
   starter: SoloStarter;
+  trace?: DotsEdge[];
 };
 export type SoloProgressRead =
   | { kind: 'valid'; progress: SoloProgress }
@@ -28,12 +30,13 @@ export function soloDraftKey(gameId: SoloGameId): string { return `gamehall:solo
 export function canShareSoloProgress(): boolean { return typeof indexedDB !== 'undefined'; }
 
 function decodeState(gameId: SoloGameId, serialized: string): SoloState {
-  return gameId === 'connect-four' ? connectFourDefinition.deserialize(serialized) : reversiDefinition.deserialize(serialized);
+  return gameId === 'connect-four' ? connectFourDefinition.deserialize(serialized)
+    : gameId === 'reversi' ? reversiDefinition.deserialize(serialized) : dotsAndBoxesDefinition.deserialize(serialized);
 }
 
 function serializeState(state: SoloState): string {
   return state.kind === 'connect-four' ? connectFourDefinition.serialize(state as ConnectFourState)
-    : reversiDefinition.serialize(state as ReversiState);
+    : state.kind === 'reversi' ? reversiDefinition.serialize(state as ReversiState) : dotsAndBoxesDefinition.serialize(state as DotsAndBoxesState);
 }
 
 function expectedFirst(starter: SoloStarter): 0 | 1 { return starter === 'human' ? 0 : 1; }
@@ -86,32 +89,55 @@ function validReversi(state: ReversiState): boolean {
 }
 
 function validState(state: SoloState, gameId: SoloGameId, starter: SoloStarter): boolean {
-  if (state.kind !== gameId || (state.kind === 'connect-four' ? state.firstPlayer : state.blackPlayer) !== expectedFirst(starter)) return false;
-  return state.kind === 'connect-four' ? validFour(state) : validReversi(state);
+  if (state.kind !== gameId || (state.kind === 'reversi' ? state.blackPlayer : state.firstPlayer) !== expectedFirst(starter)) return false;
+  return state.kind === 'connect-four' ? validFour(state) : state.kind === 'reversi' ? validReversi(state) : false;
+}
+
+function validDotsProgress(progress: SoloProgress): boolean {
+  if (progress.state.kind !== 'dots-and-boxes' || !Array.isArray(progress.trace) || progress.trace.length > 24
+      || progress.history.length > 24) return false;
+  let replay = createDotsAndBoxesState(expectedFirst(progress.starter));
+  const beforeHuman: DotsAndBoxesState[] = [];
+  for (const edge of progress.trace) {
+    if (!edge || edge.type !== 'drawEdge' || !['H', 'V'].includes(edge.orientation)
+        || !Number.isInteger(edge.row) || !Number.isInteger(edge.col) || Object.keys(edge).sort().join(',') !== 'col,orientation,row,type'
+        || replay.phase !== 'playing') return false;
+    if (replay.turn === 0) beforeHuman.push(replay);
+    try { replay = dotsAfter(replay, edge); } catch { return false; }
+  }
+  if (JSON.stringify(replay) !== JSON.stringify(progress.state) || beforeHuman.length !== progress.history.length) return false;
+  return beforeHuman.every((snapshot, index) => JSON.stringify(snapshot) === JSON.stringify(progress.history[index]));
 }
 
 function validHistory(progress: SoloProgress): boolean {
+  if (progress.gameId === 'dots-and-boxes') return validDotsProgress(progress);
+  if (progress.trace !== undefined) return false;
+  if (progress.state.kind === 'dots-and-boxes' || progress.history.some((state) => state.kind === 'dots-and-boxes')) return false;
+  const terminal = progress.state as ConnectFourState | ReversiState;
   if (progress.history.length > SOLO_HISTORY_MAX) return false;
   let lastMoveCount = -1;
   for (const snapshot of progress.history) {
+    const earlier = snapshot as ConnectFourState | ReversiState;
     if (!validState(snapshot, progress.gameId, progress.starter) || snapshot.phase !== 'playing' || snapshot.turn !== 0
-        || snapshot.moveCount <= lastMoveCount || snapshot.moveCount >= progress.state.moveCount) return false;
-    lastMoveCount = snapshot.moveCount;
+        || earlier.moveCount <= lastMoveCount || earlier.moveCount >= terminal.moveCount) return false;
+    lastMoveCount = earlier.moveCount;
   }
   for (const snapshot of progress.history) {
-    for (let index = 0; index < snapshot.board.length; index++) {
-      if (snapshot.board[index] === null) continue;
-      if (progress.state.board[index] === null || progress.gameId === 'connect-four' && snapshot.board[index] !== progress.state.board[index]) return false;
+    const earlier = snapshot as ConnectFourState | ReversiState;
+    for (let index = 0; index < earlier.board.length; index++) {
+      if (earlier.board[index] === null) continue;
+      if (terminal.board[index] === null || progress.gameId === 'connect-four' && earlier.board[index] !== terminal.board[index]) return false;
     }
   }
   return true;
 }
 
 export function encodeSoloProgress(progress: SoloProgress): string {
-  if (!validState(progress.state, progress.gameId, progress.starter) || !validHistory(progress)
+  if ((progress.gameId === 'dots-and-boxes' ? false : !validState(progress.state, progress.gameId, progress.starter)) || !validHistory(progress)
       || !['easy', 'thoughtful'].includes(progress.difficulty)) throw new Error('invalid solo progress');
   const serialized = JSON.stringify({ version: VERSION, gameId: progress.gameId, difficulty: progress.difficulty,
-    starter: progress.starter, state: serializeState(progress.state), history: progress.history.map(serializeState) });
+    starter: progress.starter, state: serializeState(progress.state), history: progress.history.map(serializeState),
+    ...(progress.gameId === 'dots-and-boxes' ? { trace: progress.trace } : {}) });
   if (serialized.length > SOLO_PROGRESS_MAX_BYTES || new TextEncoder().encode(serialized).byteLength > SOLO_PROGRESS_MAX_BYTES) throw new Error('solo progress too large');
   return serialized;
 }
@@ -125,10 +151,13 @@ export function decodeSoloProgress(gameId: SoloGameId, serialized: string): Solo
       || !['human', 'computer'].includes(record.starter as string) || typeof record.state !== 'string'
       || !Array.isArray(record.history) || record.history.length > SOLO_HISTORY_MAX
       || !record.history.every((state) => typeof state === 'string')
+      || gameId === 'dots-and-boxes' && (!Array.isArray(record.trace) || record.trace.length > 24)
+      || gameId !== 'dots-and-boxes' && record.trace !== undefined
       || record.revision !== undefined && (typeof record.revision !== 'string' || !/^[a-zA-Z0-9-]{1,80}$/.test(record.revision))) throw new Error('invalid solo progress');
   const progress: SoloProgress = { gameId, difficulty: record.difficulty as SoloDifficulty, starter: record.starter as SoloStarter,
-    state: decodeState(gameId, record.state), history: record.history.map((state) => decodeState(gameId, state as string)) };
-  if (!validState(progress.state, gameId, progress.starter) || !validHistory(progress)) throw new Error('invalid solo progress');
+    state: decodeState(gameId, record.state), history: record.history.map((state) => decodeState(gameId, state as string)),
+    ...(gameId === 'dots-and-boxes' ? { trace: record.trace as DotsEdge[] } : {}) };
+  if (gameId === 'dots-and-boxes' ? !validHistory(progress) : !validState(progress.state, gameId, progress.starter) || !validHistory(progress)) throw new Error('invalid solo progress');
   return progress;
 }
 

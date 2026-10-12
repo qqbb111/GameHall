@@ -2,7 +2,8 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SoloWorkerRequest, SoloWorkerResponse } from './solo-ai.worker';
-import { applyConnectFourAction, applyReversiAction, createConnectFourState, createReversiState, legalReversiMoves } from '@gamehall/game-core';
+import { applyConnectFourAction, applyReversiAction, createConnectFourState, createDotsAndBoxesState, createReversiState, legalReversiMoves, type ConnectFourState, type DotsAndBoxesState, type ReversiState } from '@gamehall/game-core';
+import { dotsAfter, type DotsEdge } from './dots-solo';
 import { readSoloDraft, saveSoloProgress, soloProgressKey, writeSoloDraft, type SoloProgress } from './solo-progress';
 import { readSharedSoloSnapshot, writeSharedSoloProgress } from './solo-shared-store';
 import * as sharedStore from './solo-shared-store';
@@ -23,7 +24,7 @@ class FakeWorker {
   }
 }
 
-async function start(gameId: 'connect-four' | 'reversi' = 'connect-four', onExit = vi.fn()) {
+async function start(gameId: 'connect-four' | 'reversi' | 'dots-and-boxes' = 'connect-four', onExit = vi.fn()) {
   const view = render(<SoloPracticePage gameId={gameId} recoveredRoom={false} onExit={onExit} />);
   fireEvent.click(await screen.findByRole('button', { name: '开始练习' }));
   return { ...view, onExit };
@@ -41,7 +42,17 @@ function reversiProgress(moveCount: number, difficulty: 'easy' | 'thoughtful' = 
   return { gameId: 'reversi', state, history: [], difficulty, starter: 'human' };
 }
 
-async function shared(gameId: 'connect-four' | 'reversi') { return (await readSharedSoloSnapshot(gameId)).read; }
+async function shared(gameId: 'connect-four' | 'reversi' | 'dots-and-boxes') { return (await readSharedSoloSnapshot(gameId)).read; }
+
+function dotsProgress(firstPlayer: 0 | 1, edges: DotsEdge[]): SoloProgress {
+  let state = createDotsAndBoxesState(firstPlayer);
+  const history: DotsAndBoxesState[] = [];
+  for (const edge of edges) {
+    if (state.turn === 0) history.push(state);
+    state = dotsAfter(state, edge);
+  }
+  return { gameId: 'dots-and-boxes', state, trace: edges, history, difficulty: 'easy', starter: firstPlayer === 0 ? 'human' : 'computer' };
+}
 
 async function saveShared(progress: SoloProgress) {
   const before = await readSharedSoloSnapshot(progress.gameId);
@@ -87,6 +98,87 @@ describe('local computer practice', () => {
     expect(screen.getByText('电脑先手 · 轻松')).toBeInTheDocument();
     await waitFor(async () => expect(FakeWorker.instances).toHaveLength(2));
     expect(FakeWorker.instances[1]!.request?.difficulty).toBe('easy');
+  });
+
+  it('点格棋提示仅预览合法边，取消与另画边清除，后台错误可重试', async () => {
+    await start('dots-and-boxes');
+    expect(screen.getByText('电脑 · 珊瑚色')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '提示一步' }));
+    const bad = FakeWorker.instances[0]!;
+    act(() => bad.reply({ hint: { action: { type: 'drawEdge', orientation: 'H', row: 9, col: 0 }, reason: '错边' } }));
+    expect(screen.getByRole('button', { name: '重试提示' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '重试提示' }));
+    act(() => FakeWorker.instances[1]!.reply({ hint: { action: { type: 'drawEdge', orientation: 'H', row: 0, col: 0 }, reason: '这条边安全' } }));
+    expect(screen.getByRole('button', { name: '横边，第 1 行第 1 列，可画' })).toHaveClass('is-hint');
+    await waitFor(async () => expect(await shared('dots-and-boxes')).toMatchObject({ kind: 'valid', progress: { state: { edgeCount: 0 }, trace: [] } }));
+    fireEvent.click(screen.getByRole('button', { name: '取消提示' }));
+    expect(screen.getByRole('button', { name: '横边，第 1 行第 1 列，可画' })).not.toHaveClass('is-hint');
+    fireEvent.click(screen.getByRole('button', { name: '提示一步' }));
+    act(() => FakeWorker.instances[2]!.reply({ hint: { action: { type: 'drawEdge', orientation: 'H', row: 0, col: 0 }, reason: '建议' } }));
+    fireEvent.click(screen.getByRole('button', { name: '竖边，第 1 行第 1 列，可画' }));
+    expect(screen.queryByText(/建议：横边/)).not.toBeInTheDocument();
+    await waitFor(() => expect(FakeWorker.instances).toHaveLength(4));
+    expect((FakeWorker.instances[3]!.request?.gameId)).toBe('dots-and-boxes');
+  });
+
+  it('点格棋人类封格后仍能画边；悔棋按每次决定回退并截断轨迹', async () => {
+    const edges: DotsEdge[] = [
+      { type: 'drawEdge', orientation: 'H', row: 0, col: 0 },
+      { type: 'drawEdge', orientation: 'H', row: 1, col: 0 },
+      { type: 'drawEdge', orientation: 'V', row: 0, col: 0 },
+    ];
+    await saveShared(dotsProgress(1, edges));
+    render(<SoloPracticePage gameId="dots-and-boxes" recoveredRoom={false} onExit={vi.fn()} />);
+    await screen.findByRole('button', { name: '竖边，第 1 行第 2 列，可画' });
+    fireEvent.click(screen.getByRole('button', { name: '竖边，第 1 行第 2 列，可画' }));
+    expect(screen.getByText('你获得 1 分，还能继续画边')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: '横边，第 1 行第 2 列，可画' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: '横边，第 1 行第 2 列，可画' }));
+    await waitFor(() => expect(FakeWorker.instances).toHaveLength(1));
+    fireEvent.click(screen.getByRole('button', { name: '悔棋' }));
+    expect(FakeWorker.instances[0]!.terminated).toBe(true);
+    expect(screen.getByRole('button', { name: '横边，第 1 行第 2 列，可画' })).toBeEnabled();
+    await waitFor(async () => expect(await shared('dots-and-boxes')).toMatchObject({ kind: 'valid', progress: { state: { edgeCount: 4 }, trace: [...edges, { type: 'drawEdge', orientation: 'V', row: 0, col: 1 }] } }));
+    fireEvent.click(screen.getByRole('button', { name: '悔棋' }));
+    await waitFor(async () => expect(await shared('dots-and-boxes')).toMatchObject({ kind: 'valid', progress: { state: { edgeCount: 3 }, trace: edges } }));
+  });
+
+  it('点格棋电脑封格后继续请求，重开时旧回包不能进入新轨迹', async () => {
+    const edges: DotsEdge[] = [
+      { type: 'drawEdge', orientation: 'H', row: 0, col: 0 },
+      { type: 'drawEdge', orientation: 'H', row: 1, col: 0 },
+      { type: 'drawEdge', orientation: 'V', row: 0, col: 0 },
+    ];
+    await saveShared(dotsProgress(0, edges));
+    render(<SoloPracticePage gameId="dots-and-boxes" recoveredRoom={false} onExit={vi.fn()} />);
+    await waitFor(() => expect(FakeWorker.instances).toHaveLength(1));
+    act(() => FakeWorker.instances[0]!.reply({ action: { type: 'drawEdge', orientation: 'V', row: 0, col: 1 } }));
+    await waitFor(() => expect(FakeWorker.instances).toHaveLength(2));
+    expect(screen.getByText('电脑获得 1 分，正在继续画边…')).toBeInTheDocument();
+    const old = FakeWorker.instances[1]!;
+    fireEvent.click(screen.getByRole('button', { name: '重新开始' }));
+    fireEvent.click(screen.getByRole('button', { name: '清空并重新开始' }));
+    expect(old.terminated).toBe(true);
+    act(() => old.reply({ action: { type: 'drawEdge', orientation: 'H', row: 0, col: 1 } }));
+    await waitFor(async () => expect(await shared('dots-and-boxes')).toMatchObject({ kind: 'valid', progress: { state: { edgeCount: 0 }, trace: [] } }));
+  });
+
+  it('点格棋跨标签差异预览标出边归属，显式保存当前分叉仍保留轨迹', async () => {
+    const horizontal: DotsEdge = { type: 'drawEdge', orientation: 'H', row: 0, col: 0 };
+    const vertical: DotsEdge = { type: 'drawEdge', orientation: 'V', row: 0, col: 0 };
+    const current = dotsProgress(0, [horizontal]);
+    const saved = dotsProgress(0, [vertical]);
+    expect(writeSoloDraft({ progress: current, baseToken: null })).toBe(true);
+    await saveShared(saved);
+    const { container } = render(<SoloPracticePage gameId="dots-and-boxes" recoveredRoom={false} onExit={vi.fn()} />);
+    expect(await screen.findByText('另一窗口更新了这款练习')).toBeInTheDocument();
+    expect(screen.getByText(/两盘有 2 条边或方格归属不同/)).toBeInTheDocument();
+    expect(screen.getByText(/差异位置：横边第 1 行第 1 列、竖边第 1 行第 1 列/)).toBeInTheDocument();
+    expect(container.querySelectorAll('.solo-dots-preview')).toHaveLength(2);
+    expect(container.querySelectorAll('.solo-dots-preview .is-different')).toHaveLength(4);
+    expect(container.querySelector('.solo-dots-preview button')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '保存当前棋局' }));
+    await waitFor(async () => expect(await shared('dots-and-boxes')).toEqual({ kind: 'valid', progress: current }));
   });
 
   it('进行中重开先确认；Esc 与背景关闭保留棋盘、存档及电脑应手，并恢复按钮焦点', async () => {
@@ -527,13 +619,13 @@ describe('local computer practice', () => {
 
     if (old.state.turn === 1) {
       const worker = FakeWorker.instances.find((item) => !item.terminated)!;
-      const move = legalReversiMoves(old.state.board, 1)[0]!;
+      const move = legalReversiMoves((old.state as ReversiState).board, 1)[0]!;
       act(() => worker.reply({ action: { type: 'placeDisc', ...move } }));
     } else {
-      const move = legalReversiMoves(old.state.board, 0)[0]!;
+      const move = legalReversiMoves((old.state as ReversiState).board, 0)[0]!;
       fireEvent.click(screen.getByRole('gridcell', { name: new RegExp(`第 ${move.row + 1} 行第 ${move.col + 1} 列，空位，可落子`) }));
     }
-    expect(readSoloDraft('reversi')?.progress.state.moveCount).toBe(8);
+    expect((readSoloDraft('reversi')?.progress.state as ReversiState | undefined)?.moveCount).toBe(8);
     expect(await shared('reversi')).toEqual({ kind: 'valid', progress: newer });
     act(() => window.dispatchEvent(new Event('pagehide')));
     fireEvent.click(screen.getAllByRole('button', { name: '返回大厅' })[0]!);
@@ -602,8 +694,8 @@ describe('local computer practice', () => {
     };
     const current = play('human', [2, 3]);
     const saved = play('computer', [3, 2]);
-    expect(current.state.board[5 * 7 + 2]).toBe(0);
-    expect(saved.state.board[5 * 7 + 2]).toBe(0);
+    expect((current.state as ConnectFourState).board[5 * 7 + 2]).toBe(0);
+    expect((saved.state as ConnectFourState).board[5 * 7 + 2]).toBe(0);
     expect(writeSoloDraft({ progress: current, baseToken: null })).toBe(true);
     await saveShared(saved);
     const { container } = render(<SoloPracticePage gameId="connect-four" recoveredRoom={false} onExit={vi.fn()} />);
@@ -622,7 +714,7 @@ describe('local computer practice', () => {
     await saveShared(saved);
     const { container, unmount } = render(<SoloPracticePage gameId="reversi" recoveredRoom={false} onExit={vi.fn()} />);
     await screen.findByText('另一窗口更新了这款练习');
-    const colorChanged = current.state.board.findIndex((cell, index) => cell !== null && saved.state.board[index] !== null && cell !== saved.state.board[index]);
+    const colorChanged = (current.state as ReversiState).board.findIndex((cell, index) => cell !== null && (saved.state as ReversiState).board[index] !== null && cell !== (saved.state as ReversiState).board[index]);
     expect(colorChanged).toBeGreaterThanOrEqual(0);
     const marked = container.querySelectorAll('.solo-conflict-preview')[0]!.querySelectorAll('.solo-preview-board > span')[colorChanged]!;
     expect(marked).toHaveClass('is-different');
@@ -679,7 +771,7 @@ describe('local computer practice', () => {
     fireEvent.click(screen.getByRole('button', { name: '保存当前棋局' }));
     await waitFor(async () => expect(await shared('connect-four')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 0 } } }));
     fireEvent.click(screen.getByRole('button', { name: '投放第 2 列' }));
-    expect(readSoloDraft('connect-four')?.progress.state.moveCount).toBe(1);
+    expect((readSoloDraft('connect-four')?.progress.state as ConnectFourState | undefined)?.moveCount).toBe(1);
     await act(async () => release());
     await waitFor(async () => expect(await shared('connect-four')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 1 } } }));
     expect(screen.queryByText('另一窗口更新了这款练习')).not.toBeInTheDocument();
@@ -772,7 +864,7 @@ describe('local computer practice', () => {
     await screen.findByRole('grid', { name: /已投放 0 枚棋子/ });
     fireEvent.click(screen.getByRole('button', { name: '投放第 1 列' }));
     await waitFor(() => expect(requests).toBe(1));
-    expect(readSoloDraft('connect-four')?.progress.state.moveCount).toBe(1);
+    expect((readSoloDraft('connect-four')?.progress.state as ConnectFourState | undefined)?.moveCount).toBe(1);
     const setItem = Storage.prototype.setItem;
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
       if (this === window.sessionStorage) throw new Error('session blocked');
@@ -780,7 +872,7 @@ describe('local computer practice', () => {
     });
     act(() => FakeWorker.instances[0]!.reply({ action: { type: 'drop', col: 1 } }));
     expect(screen.getByRole('grid', { name: /已投放 2 枚棋子/ })).toBeInTheDocument();
-    expect(readSoloDraft('connect-four')?.progress.state.moveCount).toBe(1);
+    expect((readSoloDraft('connect-four')?.progress.state as ConnectFourState | undefined)?.moveCount).toBe(1);
     expect(screen.getByText('当前浏览器无法保存，刷新后会重新开始。')).toBeInTheDocument();
     await act(async () => releaseFirst());
     await waitFor(() => expect(requests).toBe(2));
@@ -795,7 +887,7 @@ describe('local computer practice', () => {
     Reflect.deleteProperty(navigator, 'locks');
     const first = await start();
     fireEvent.click(screen.getByRole('button', { name: '投放第 1 列' }));
-    expect(readSoloDraft('connect-four')?.progress.state.moveCount).toBe(1);
+    expect((readSoloDraft('connect-four')?.progress.state as ConnectFourState | undefined)?.moveCount).toBe(1);
     await waitFor(async () => expect(await shared('connect-four')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 1 } } }));
     first.unmount();
     render(<SoloPracticePage gameId="connect-four" recoveredRoom={false} onExit={vi.fn()} />);
@@ -816,7 +908,7 @@ describe('local computer practice', () => {
     expect(await screen.findByRole('grid', { name: /已投放 1 枚棋子/ })).toBeInTheDocument();
     expect(screen.queryByText('另一窗口更新了这款练习')).not.toBeInTheDocument();
     expect(screen.getByText(/只保存在当前标签/)).toBeInTheDocument();
-    expect(readSoloDraft('connect-four')?.progress.state.moveCount).toBe(1);
+    expect((readSoloDraft('connect-four')?.progress.state as ConnectFourState | undefined)?.moveCount).toBe(1);
     vi.stubGlobal('indexedDB', workingIndexedDB);
     fireEvent.click(screen.getByRole('button', { name: '重试保存' }));
     await waitFor(async () => expect(await shared('connect-four')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 1 } } }));

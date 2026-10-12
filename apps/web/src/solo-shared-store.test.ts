@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { applyConnectFourAction, createConnectFourState } from '@gamehall/game-core';
+import { applyConnectFourAction, createConnectFourState, createDotsAndBoxesState, createReversiState } from '@gamehall/game-core';
+import { dotsAfter, type DotsEdge } from './dots-solo';
 import { readSharedSoloSnapshot, writeSharedSoloProgress } from './solo-shared-store';
 import { readSoloSnapshot, saveSoloProgress, soloProgressKey, type SoloProgress } from './solo-progress';
 
@@ -49,6 +50,26 @@ describe('IndexedDB solo practice authority', () => {
     const again = await writeSharedSoloProgress(progress(), winner.token);
     expect(again.kind).toBe('saved');
     expect(await writeSharedSoloProgress(progress(2), winner.token)).toMatchObject({ kind: 'conflict' });
+  });
+
+  it('keeps dots trace under its own key and CAS revisions without changing existing games', async () => {
+    Reflect.deleteProperty(navigator, 'locks');
+    const fourBefore = await readSharedSoloSnapshot('connect-four');
+    const revBefore = await readSharedSoloSnapshot('reversi');
+    expect((await writeSharedSoloProgress(progress(), fourBefore.token)).kind).toBe('saved');
+    expect((await writeSharedSoloProgress({ gameId: 'reversi', state: createReversiState(0), history: [], difficulty: 'easy', starter: 'human' }, revBefore.token)).kind).toBe('saved');
+    const first = createDotsAndBoxesState(0);
+    const h: DotsEdge = { type: 'drawEdge', orientation: 'H', row: 0, col: 0 };
+    const v: DotsEdge = { type: 'drawEdge', orientation: 'V', row: 0, col: 0 };
+    const left: SoloProgress = { gameId: 'dots-and-boxes', state: dotsAfter(first, h), trace: [h], history: [first], difficulty: 'easy', starter: 'human' };
+    const right: SoloProgress = { gameId: 'dots-and-boxes', state: dotsAfter(first, v), trace: [v], history: [first], difficulty: 'thoughtful', starter: 'human' };
+    const [a, b] = await Promise.all([writeSharedSoloProgress(left, null), writeSharedSoloProgress(right, null)]);
+    expect([a.kind, b.kind].sort()).toEqual(['conflict', 'saved']);
+    const saved = await readSharedSoloSnapshot('dots-and-boxes');
+    expect(saved.read).toEqual({ kind: 'valid', progress: a.kind === 'saved' ? left : right });
+    expect((await readSharedSoloSnapshot('connect-four')).read).toEqual({ kind: 'valid', progress: progress() });
+    expect((await readSharedSoloSnapshot('reversi')).read).toEqual({ kind: 'valid', progress: { gameId: 'reversi', state: createReversiState(0), history: [], difficulty: 'easy', starter: 'human' } });
+    expect(await writeSharedSoloProgress(a.kind === 'saved' ? right : left, null)).toMatchObject({ kind: 'conflict' });
   });
 
   it('an aborted transaction never becomes a saved record or localStorage mirror', async () => {

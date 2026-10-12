@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  applyConnectFourAction, applyReversiAction, createConnectFourState, createReversiState, legalReversiMoves,
-  type ConnectFourState, type ReversiState,
+  applyConnectFourAction, applyDotsAndBoxesAction, applyReversiAction, createConnectFourState, createDotsAndBoxesState, createReversiState, legalReversiMoves,
+  type ConnectFourState, type DotsAndBoxesState, type ReversiState,
 } from '@gamehall/game-core';
 import type { GameActionCommand } from '@gamehall/protocol';
 import { ConnectFourGame } from './ConnectFourGame';
 import { ReversiGame } from './ReversiGame';
+import { DotsAndBoxesGame } from './DotsAndBoxesGame';
+import { openDotsEdges, type DotsEdge } from './dots-solo';
 import type { SoloAction, SoloDifficulty, SoloGameId, SoloHint, SoloState } from './solo-ai';
 import type { SoloWorkerRequest, SoloWorkerResponse } from './solo-ai.worker';
 import { canShareSoloProgress, clearSoloDraft, readSoloDraft, writeSoloDraft,
@@ -14,7 +16,7 @@ import { canShareSoloProgress, clearSoloDraft, readSoloDraft, writeSoloDraft,
 import { readSharedSoloSnapshot, subscribeSharedSoloProgress, writeSharedSoloProgress } from './solo-shared-store';
 import './solo-practice.css';
 
-const names: Record<SoloGameId, string> = { 'connect-four': '四子连线', reversi: '黑白棋' };
+const names: Record<SoloGameId, string> = { 'connect-four': '四子连线', reversi: '黑白棋', 'dots-and-boxes': '点格棋' };
 type HintState = { kind: 'idle' | 'pending' } | { kind: 'ready'; hint: SoloHint } | { kind: 'error'; message: string };
 
 async function bootProgress(gameId: SoloGameId) {
@@ -33,16 +35,25 @@ async function bootProgress(gameId: SoloGameId) {
 function progressSummary(state: SoloState, starter: SoloStarter, difficulty: SoloDifficulty): string {
   const position = state.kind === 'connect-four'
     ? state.lastMove ? ` · 最近第 ${state.lastMove.col + 1} 列` : ''
-    : ` · 黑 ${state.counts[state.blackPlayer]}：白 ${state.counts[state.blackPlayer === 0 ? 1 : 0]}`;
-  return `${state.moveCount} 步 · ${state.phase === 'finished' ? '已结束' : '进行中'}${position} · ${starter === 'human' ? '你先手' : '电脑先手'} · ${difficulty === 'easy' ? '轻松' : '认真'}`;
+    : state.kind === 'reversi' ? ` · 黑 ${state.counts[state.blackPlayer]}：白 ${state.counts[state.blackPlayer === 0 ? 1 : 0]}`
+      : ` · 你 ${state.scores[0]}：电脑 ${state.scores[1]}`;
+  return `${state.kind === 'dots-and-boxes' ? state.edgeCount : state.moveCount} 步 · ${state.phase === 'finished' ? '已结束' : '进行中'}${position} · ${starter === 'human' ? '你先手' : '电脑先手'} · ${difficulty === 'easy' ? '轻松' : '认真'}`;
 }
 
 function previewColor(state: SoloState, player: 0 | 1): string {
   if (state.kind === 'connect-four') return state.firstPlayer === player ? '金色' : '珊瑚色';
+  if (state.kind === 'dots-and-boxes') return player === 0 ? '金色' : '珊瑚色';
   return state.blackPlayer === player ? '黑色' : '白色';
 }
 
 function differentPreviewCells(current: SoloState, saved: SoloState): number[] {
+  if (current.kind === 'dots-and-boxes' && saved.kind === 'dots-and-boxes') {
+    return [...current.horizontal, ...current.vertical, ...current.boxes].flatMap((cell, index) => {
+      const other = [...saved.horizontal, ...saved.vertical, ...saved.boxes][index];
+      return cell !== other ? [index] : [];
+    });
+  }
+  if (current.kind === 'dots-and-boxes' || saved.kind === 'dots-and-boxes') return [];
   return current.board.flatMap((cell, index) => {
     const other = saved.board[index];
     return cell !== other || (cell !== null && other !== null && previewColor(current, cell) !== previewColor(saved, other)) ? [index] : [];
@@ -52,6 +63,21 @@ function differentPreviewCells(current: SoloState, saved: SoloState): number[] {
 function ConflictBoardPreview({ title, state, starter, difficulty, differences }: {
   title: string; state: SoloState; starter: SoloStarter; difficulty: SoloDifficulty; differences: number[];
 }) {
+  if (state.kind === 'dots-and-boxes') {
+    return <figure className="solo-conflict-preview"><figcaption><strong>{title}</strong><span>{progressSummary(state, starter, difficulty)}</span></figcaption>
+      <div className="solo-preview-legend"><span>你 · 金色</span><span>电脑 · 珊瑚色</span><span>高亮表示两盘归属不同</span></div>
+      <div className="solo-dots-preview" aria-hidden="true">{Array.from({ length: 49 }, (_, index) => {
+        const gridRow = Math.floor(index / 7), gridCol = index % 7;
+        if (gridRow % 2 === 0 && gridCol % 2 === 0) return <span key={index} className="dot" />;
+        const box = gridRow % 2 === 1 && gridCol % 2 === 1;
+        const horizontal = gridRow % 2 === 0;
+        const cellIndex = box ? 24 + Math.floor(gridRow / 2) * 3 + Math.floor(gridCol / 2)
+          : horizontal ? Math.floor(gridRow / 2) * 3 + Math.floor(gridCol / 2) : 12 + Math.floor(gridRow / 2) * 4 + Math.floor(gridCol / 2);
+        const owner = box ? state.boxes[cellIndex - 24] : horizontal ? state.horizontal[cellIndex] : state.vertical[cellIndex - 12];
+        return <span key={index} className={`${box ? 'box' : horizontal ? 'horizontal' : 'vertical'} ${owner === 0 ? 'mine' : owner === 1 ? 'theirs' : ''} ${differences.includes(cellIndex) ? 'is-different' : ''}`} />;
+      })}</div>
+    </figure>;
+  }
   const columns = state.kind === 'connect-four' ? 7 : 8;
   return <figure className="solo-conflict-preview">
     <figcaption><strong>{title}</strong><span>{progressSummary(state, starter, difficulty)}</span></figcaption>
@@ -67,7 +93,7 @@ function ConflictBoardPreview({ title, state, starter, difficulty, differences }
 
 function initialState(gameId: SoloGameId, starter: SoloStarter): SoloState {
   return gameId === 'connect-four' ? createConnectFourState(starter === 'human' ? 0 : 1)
-    : createReversiState(starter === 'human' ? 0 : 1);
+    : gameId === 'reversi' ? createReversiState(starter === 'human' ? 0 : 1) : createDotsAndBoxesState(starter === 'human' ? 0 : 1);
 }
 
 function computerAction(state: SoloState, action: SoloAction | undefined): SoloState | null {
@@ -75,6 +101,11 @@ function computerAction(state: SoloState, action: SoloAction | undefined): SoloS
   if (state.kind === 'connect-four') {
     if (action?.type !== 'drop' || !Number.isInteger(action.col) || state.board[action.col] !== null) return null;
     const result = applyConnectFourAction(state, 1, action);
+    return result.ok ? result.state : null;
+  }
+  if (state.kind === 'dots-and-boxes') {
+    if (action?.type !== 'drawEdge') return null;
+    const result = applyDotsAndBoxesAction(state, 1, action);
     return result.ok ? result.state : null;
   }
   if (action?.type !== 'placeDisc' || !legalReversiMoves(state.board, 1).some(({ row, col }) => row === action.row && col === action.col)) return null;
@@ -89,6 +120,9 @@ function validHumanHint(state: SoloState, hint: SoloHint | undefined): hint is S
     if (action?.type !== 'drop' || !Number.isInteger(action.col) || action.col < 0 || action.col >= 7 || state.board[action.col] !== null) return false;
     return applyConnectFourAction(state, 0, action).ok;
   }
+  if (state.kind === 'dots-and-boxes') {
+    return action?.type === 'drawEdge' && openDotsEdges(state).some((edge) => edge.orientation === action.orientation && edge.row === action.row && edge.col === action.col);
+  }
   if (action?.type !== 'placeDisc' || !Number.isInteger(action.row) || !Number.isInteger(action.col)) return false;
   if (!legalReversiMoves(state.board, 0).some(({ row, col }) => row === action.row && col === action.col)) return false;
   return applyReversiAction(state, 0, action).ok;
@@ -97,6 +131,8 @@ function validHumanHint(state: SoloState, hint: SoloHint | undefined): hint is S
 function resultText(state: SoloState): string {
   if (state.result?.type === 'draw') return '平局，来一局新的？';
   if (state.result?.type === 'win') return state.result.winner === 0 ? '你赢了！' : '电脑赢了，再试一次？';
+  if (state.kind === 'dots-and-boxes' && state.lastBoxes.length) return state.turn === 0
+    ? `你获得 ${state.lastBoxes.length} 分，还能继续画边` : `电脑获得 ${state.lastBoxes.length} 分，正在继续画边…`;
   return state.turn === 0 ? '轮到你' : '电脑正在思考…';
 }
 
@@ -114,6 +150,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
   const [state, setState] = useState<SoloState | null>(null);
   const stateRef = useRef<SoloState | null>(null);
   const history = useRef<SoloState[]>([]);
+  const trace = useRef<DotsEdge[]>([]);
   const [historyLength, setHistoryLength] = useState(0);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [unsaved, setUnsaved] = useState(false);
@@ -159,6 +196,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
       const progress = loaded.progress;
       if (progress) {
         history.current = [...progress.history];
+        trace.current = [...(progress.trace ?? [])];
         stateRef.current = progress.state;
         activeDifficultyRef.current = progress.difficulty;
         activeStarterRef.current = progress.starter;
@@ -189,6 +227,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
 
   const persist = useCallback((current: SoloState) => {
     const progress: SoloProgress = { gameId, state: current, history: [...history.current],
+      ...(gameId === 'dots-and-boxes' ? { trace: [...trace.current] } : {}),
       difficulty: activeDifficultyRef.current, starter: activeStarterRef.current };
     latestProgressRef.current = progress;
     const sequence = ++saveSequence.current;
@@ -377,13 +416,16 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
         const next = computerAction(state, event.data.action);
         if (!next) { fail('电脑这步未能落下，请点“重试这步”'); return; }
         worker.terminate(); workerRef.current = null;
+        if (state.kind === 'dots-and-boxes' && event.data.action?.type === 'drawEdge') trace.current.push(event.data.action);
         stateRef.current = next;
         setState(next);
         persist(next);
         setThinking(false);
       };
       const animated = !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-      const delay = animated && state.lastMove?.player === 0 ? Math.max(0, 350 - (performance.now() - humanMoveAt.current)) : 0;
+      const delay = !animated ? 0 : state.kind === 'dots-and-boxes'
+        ? state.lastEdge?.player === 0 ? Math.max(0, 350 - (performance.now() - humanMoveAt.current)) : 240
+        : state.lastMove?.player === 0 ? Math.max(0, 350 - (performance.now() - humanMoveAt.current)) : 0;
       if (delay > 0) responseTimer = window.setTimeout(applyReply, delay);
       else applyReply();
     };
@@ -415,6 +457,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     cancelHint();
     const next = initialState(gameId, starter);
     history.current = [];
+    trace.current = [];
     setHistoryLength(0);
     stateRef.current = next;
     activeDifficultyRef.current = difficulty;
@@ -430,7 +473,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
 
   function requestRestart() {
     const current = stateRef.current;
-    if (!current || current.phase === 'finished' || current.moveCount === 0) { start(); return; }
+    if (!current || current.phase === 'finished' || (current.kind === 'dots-and-boxes' ? current.edgeCount : current.moveCount) === 0) { start(); return; }
     restartOpenRef.current = true;
     hintFocusTarget.current = null;
     setConfirmRestart(true);
@@ -479,6 +522,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     if (!previous) return;
     cancelComputer();
     cancelHint();
+    if (previous.kind === 'dots-and-boxes') trace.current = trace.current.slice(0, previous.edgeCount);
     stateRef.current = previous;
     setState(previous);
     setHistoryLength(history.current.length);
@@ -497,10 +541,14 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     } else if (current.kind === 'reversi' && action.type === 'placeDisc') {
       const result = applyReversiAction(current, 0, action);
       if (result.ok) next = result.state;
+    } else if (current.kind === 'dots-and-boxes' && action.type === 'drawEdge') {
+      const result = applyDotsAndBoxesAction(current, 0, action);
+      if (result.ok) next = result.state;
     }
     if (!next) return false;
     cancelHint();
     history.current.push(current);
+    if (action.type === 'drawEdge') trace.current.push(action);
     humanMoveAt.current = performance.now();
     setHistoryLength(history.current.length);
     stateRef.current = next;
@@ -530,6 +578,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     const progress = latest.read.progress;
     stateRef.current = progress.state;
     history.current = [...progress.history];
+    trace.current = [...(progress.trace ?? [])];
     setHistoryLength(progress.history.length);
     activeDifficultyRef.current = progress.difficulty;
     activeStarterRef.current = progress.starter;
@@ -572,6 +621,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     const current = stateRef.current;
     if (!current) { setResolvingConflict(false); return; }
     const progress: SoloProgress = { gameId, state: current, history: [...history.current],
+      ...(gameId === 'dots-and-boxes' ? { trace: [...trace.current] } : {}),
       difficulty: activeDifficultyRef.current, starter: activeStarterRef.current };
     const sequence = saveSequence.current;
     const epoch = ++saveEpoch.current;
@@ -611,14 +661,21 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
   const name = names[gameId];
   const color = state?.kind === 'connect-four'
     ? state.firstPlayer === 0 ? '金色' : '珊瑚色'
-    : state?.kind === 'reversi' ? state.blackPlayer === 0 ? '黑色' : '白色' : '';
-  const opponentColor = state?.kind === 'connect-four' ? color === '金色' ? '珊瑚色' : '金色' : color === '黑色' ? '白色' : '黑色';
+    : state?.kind === 'reversi' ? state.blackPlayer === 0 ? '黑色' : '白色' : state?.kind === 'dots-and-boxes' ? '金色' : '';
+  const opponentColor = state?.kind === 'connect-four' ? color === '金色' ? '珊瑚色' : '金色'
+    : state?.kind === 'dots-and-boxes' ? '珊瑚色' : color === '黑色' ? '白色' : '黑色';
   const hint = hintState.kind === 'ready' ? hintState.hint : null;
   const hintSpot = hint?.action.type === 'drop' ? `第 ${hint.action.col + 1} 列`
-    : hint?.action.type === 'placeDisc' ? `第 ${hint.action.row + 1} 行第 ${hint.action.col + 1} 列` : '';
+    : hint?.action.type === 'placeDisc' ? `第 ${hint.action.row + 1} 行第 ${hint.action.col + 1} 列`
+    : hint?.action.type === 'drawEdge' ? `${hint.action.orientation === 'H' ? '横边' : '竖边'}第 ${hint.action.row + 1} 行第 ${hint.action.col + 1} 列` : '';
   const savedConflictProgress = conflict?.read.kind === 'valid' ? conflict.read.progress : null;
   const differentCells = state && savedConflictProgress ? differentPreviewCells(state, savedConflictProgress.state) : [];
-  const previewColumns = gameId === 'connect-four' ? 7 : 8;
+  const previewColumns = gameId === 'connect-four' ? 7 : gameId === 'reversi' ? 8 : 4;
+  const differenceDescription = gameId === 'dots-and-boxes'
+    ? differentCells.map((index) => index < 12 ? `横边第 ${Math.floor(index / 3) + 1} 行第 ${index % 3 + 1} 列`
+      : index < 24 ? `竖边第 ${Math.floor((index - 12) / 4) + 1} 行第 ${(index - 12) % 4 + 1} 列`
+        : `方格第 ${Math.floor((index - 24) / 3) + 1} 行第 ${(index - 24) % 3 + 1} 列`).join('、')
+    : differentCells.map((index) => `第 ${Math.floor(index / previewColumns) + 1} 行第 ${index % previewColumns + 1} 列`).join('、');
   return <><main className="solo-shell" ref={shellRef}>
     <header className="solo-header">
       <div><span className="solo-eyebrow">本地单人练习</span><h1 tabIndex={-1}>与电脑练习 · {name}</h1><p>自己练一局，随时可以悔棋或重开。</p></div>
@@ -633,8 +690,8 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     {conflict && state && <div className="solo-conflict" role="status">
       <div className="solo-conflict-intro"><strong>另一窗口更新了这款练习</strong><p>当前棋盘：{progressSummary(state, activeStarter, activeDifficulty)}</p><p>已保存：{conflict.read.kind === 'valid' ? progressSummary(conflict.read.progress.state, conflict.read.progress.starter, conflict.read.progress.difficulty) : conflict.read.kind === 'empty' ? '记录已清除' : conflict.read.kind === 'invalid' ? '记录损坏，无法预览' : '记录暂不可读取，无法预览'}</p><small>你可以继续在当前棋盘落子；选择前不会覆盖另一窗口的进度。</small></div>
       {savedConflictProgress && <div className="solo-conflict-compare">
-        <p>{differentCells.length === 0 ? '两盘棋子的归属和显示颜色相同，请比较设置和进度。' : `两盘有 ${differentCells.length} 格棋子归属或颜色不同；金色边框标出差异。`}</p>
-        {differentCells.length > 0 && <span className="solo-preview-accessible">差异位置：{differentCells.map((index) => `第 ${Math.floor(index / previewColumns) + 1} 行第 ${index % previewColumns + 1} 列`).join('、')}。</span>}
+        <p>{differentCells.length === 0 ? '两盘棋子的归属和显示颜色相同，请比较设置和进度。' : gameId === 'dots-and-boxes' ? `两盘有 ${differentCells.length} 条边或方格归属不同；金色边框标出差异。` : `两盘有 ${differentCells.length} 格棋子归属或颜色不同；金色边框标出差异。`}</p>
+        {differentCells.length > 0 && <span className="solo-preview-accessible">差异位置：{differenceDescription}。</span>}
         <div className="solo-conflict-previews"><ConflictBoardPreview title="当前棋盘" state={state} starter={activeStarter} difficulty={activeDifficulty} differences={differentCells} /><ConflictBoardPreview title="已保存" state={savedConflictProgress.state} starter={savedConflictProgress.starter} difficulty={savedConflictProgress.difficulty} differences={differentCells} /></div>
       </div>}
       {conflict.read.kind !== 'valid' && <p className="solo-conflict-unavailable">{conflict.read.kind === 'empty' ? '共享记录已清除，没有可预览的棋盘。' : conflict.read.kind === 'invalid' ? '共享记录损坏，不能显示棋盘；请确认当前局面后再保存。' : '暂时无法读取共享记录，不能显示棋盘。'}</p>}
@@ -644,7 +701,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
       <h2>开始前选一下</h2>
       <fieldset><legend>难度</legend><label><input type="radio" name="solo-difficulty" checked={difficulty === 'easy'} onChange={() => setDifficulty('easy')} />轻松</label><label><input type="radio" name="solo-difficulty" checked={difficulty === 'thoughtful'} onChange={() => setDifficulty('thoughtful')} />认真</label></fieldset>
       <fieldset><legend>谁先手</legend><label><input type="radio" name="solo-starter" checked={starter === 'human'} onChange={() => setStarter('human')} />我先手</label><label><input type="radio" name="solo-starter" checked={starter === 'computer'} onChange={() => setStarter('computer')} />电脑先手</label></fieldset>
-      <p>{gameId === 'connect-four' ? '先手执金色，点击整列投放，先连成四子获胜。' : '先手执黑色，夹住对方棋子才能落子；无合法步会自动跳过。'}</p>
+      <p>{gameId === 'connect-four' ? '先手执金色，点击整列投放，先连成四子获胜。' : gameId === 'reversi' ? '先手执黑色，夹住对方棋子才能落子；无合法步会自动跳过。' : '轮流画空边，封成一格得 1 分并继续行动；24 条边画完按得分结算。'}</p>
       <button type="button" className="solo-primary" onClick={start}>开始练习</button>
     </section> : <div className="solo-play">
       <div className="solo-toolbar">
@@ -658,7 +715,8 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
       </div>}
       {state.kind === 'connect-four'
         ? <ConnectFourGame key={round} state={state as ConnectFourState} mySeat={0} active={!thinking} opponentLabel="电脑" hintColumn={hint?.action.type === 'drop' ? hint.action.col : null} onAction={humanAction} />
-        : <ReversiGame key={round} state={state as ReversiState} mySeat={0} active={!thinking} opponentLabel="电脑" hintCell={hint?.action.type === 'placeDisc' ? hint.action : null} onAction={humanAction} />}
+        : state.kind === 'reversi' ? <ReversiGame key={round} state={state as ReversiState} mySeat={0} active={!thinking} opponentLabel="电脑" hintCell={hint?.action.type === 'placeDisc' ? hint.action : null} onAction={humanAction} />
+          : <DotsAndBoxesGame key={round} state={state as DotsAndBoxesState} mySeat={0} active={!thinking} opponentLabel="电脑" hintEdge={hint?.action.type === 'drawEdge' ? hint.action : null} onAction={humanAction} />}
       <div className="solo-actions">
         <button type="button" onClick={undo} disabled={!historyLength} title={!historyLength ? '还没有可以悔的棋' : '撤回上一轮你的落子和电脑应手'}>悔棋</button>
         <button ref={restartButtonRef} type="button" onClick={requestRestart}>重新开始</button>
