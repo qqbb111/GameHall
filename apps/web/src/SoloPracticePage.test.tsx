@@ -2,9 +2,9 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SoloWorkerRequest, SoloWorkerResponse } from './solo-ai.worker';
-import { applyConnectFourAction, applyReversiAction, createConnectFourState, createDotsAndBoxesState, createReversiState, legalReversiMoves, type ConnectFourState, type DotsAndBoxesState, type ReversiState } from '@gamehall/game-core';
+import { applyConnectFourAction, applyGomokuAction, applyReversiAction, createConnectFourState, createDotsAndBoxesState, createGomokuState, createReversiState, legalReversiMoves, type ConnectFourState, type DotsAndBoxesState, type ReversiState } from '@gamehall/game-core';
 import { dotsAfter, type DotsEdge } from './dots-solo';
-import { readSoloDraft, saveSoloProgress, soloProgressKey, writeSoloDraft, type SoloProgress } from './solo-progress';
+import { readSoloDraft, saveSoloProgress, soloProgressKey, writeSoloDraft, type SoloProgress, type SoloSnapshot } from './solo-progress';
 import { readSharedSoloSnapshot, writeSharedSoloProgress } from './solo-shared-store';
 import * as sharedStore from './solo-shared-store';
 import { SoloPracticePage } from './SoloPracticePage';
@@ -53,6 +53,28 @@ function dotsProgress(firstPlayer: 0 | 1, edges: DotsEdge[]): SoloProgress {
     state = dotsAfter(state, edge);
   }
   return { gameId: 'dots-and-boxes', state, trace: edges, history, difficulty: 'easy', starter: firstPlayer === 0 ? 'human' : 'computer' };
+}
+
+function conflictPractice(gameId: 'connect-four' | 'gomoku', count: number): SoloProgress {
+  if (gameId === 'connect-four') {
+    let state = createConnectFourState(0);
+    for (const col of [2, 3, 2, 3, 4, 4].slice(0, count)) {
+      const result = applyConnectFourAction(state, state.turn, { type: 'drop', col });
+      if (!result.ok) throw new Error('bad four fixture');
+      state = result.state;
+    }
+    return { gameId, state, history: [], difficulty: 'easy', starter: 'human' };
+  }
+  let state = createGomokuState(0);
+  const history: SoloProgress['history'] = [];
+  const gomokuMoves = [{ row: 7, col: 7 }, { row: 7, col: 8 }, { row: 8, col: 7 }, { row: 8, col: 8 }, { row: 6, col: 7 }, { row: 6, col: 8 }].slice(0, count);
+  for (const move of gomokuMoves) {
+    if (state.turn === 0) history.push(state);
+    const result = applyGomokuAction(state, state.turn, { type: 'place', ...move });
+    if (!result.ok) throw new Error('bad gomoku fixture');
+    state = result.state;
+  }
+  return { gameId, state, history, gomokuMoves, difficulty: 'easy', starter: 'human' };
 }
 
 async function saveShared(progress: SoloProgress) {
@@ -703,6 +725,51 @@ describe('local computer practice', () => {
     }
     expect(await shared('reversi')).toEqual({ kind: 'valid', progress: newer });
     expect(readSoloDraft('reversi')).toBeNull();
+  });
+
+  it.each(['connect-four', 'gomoku'] as const)('%s 接着共享棋局前再次核对：未展示的新版本先更新预览，第二次选择才采用', async (gameId) => {
+    const local = conflictPractice(gameId, 4);
+    const shown = conflictPractice(gameId, 5);
+    const latest = conflictPractice(gameId, 6);
+    expect(writeSoloDraft({ progress: local, baseToken: null })).toBe(true);
+    await saveShared(shown);
+    render(<SoloPracticePage gameId={gameId} recoveredRoom={false} onExit={vi.fn()} />);
+    await screen.findByText(/已保存：5 步/);
+    await saveShared(latest);
+    expect(screen.getByText(/已保存：5 步/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '接着已保存的练习' }));
+    expect(await screen.findByText('另一窗口又更新了，请按新预览选择。')).toBeInTheDocument();
+    expect(screen.getByText(/已保存：6 步/)).toBeInTheDocument();
+    expect(screen.getByText(/当前棋盘：4 步/)).toBeInTheDocument();
+    expect(readSoloDraft(gameId)?.progress).toEqual(local);
+    fireEvent.click(screen.getByRole('button', { name: '接着已保存的练习' }));
+    await waitFor(() => expect(screen.queryByText('另一窗口更新了这款练习')).not.toBeInTheDocument());
+    if (gameId === 'connect-four') expect(screen.getByRole('grid', { name: /已投放 6 枚棋子/ })).toBeInTheDocument();
+    else expect(screen.getByRole('gridcell', { name: /第 7 行第 9 列，白子，最近一步/ })).toBeInTheDocument();
+    expect(readSoloDraft(gameId)).toBeNull();
+    expect(await shared(gameId)).toEqual({ kind: 'valid', progress: latest });
+  });
+
+  it.each(['connect-four', 'gomoku'] as const)('%s 接着共享棋局的读取期间，本地再落子后迟到回包不能覆盖分支', async (gameId) => {
+    const local = conflictPractice(gameId, 4);
+    const shown = conflictPractice(gameId, 5);
+    expect(writeSoloDraft({ progress: local, baseToken: null })).toBe(true);
+    await saveShared(shown);
+    render(<SoloPracticePage gameId={gameId} recoveredRoom={false} onExit={vi.fn()} />);
+    await screen.findByText(/已保存：5 步/);
+    const snapshot = await readSharedSoloSnapshot(gameId);
+    let release!: (value: SoloSnapshot) => void;
+    const delayed = new Promise<SoloSnapshot>((resolve) => { release = resolve; });
+    vi.spyOn(sharedStore, 'readSharedSoloSnapshot').mockImplementationOnce(() => delayed);
+    fireEvent.click(screen.getByRole('button', { name: '接着已保存的练习' }));
+    if (gameId === 'connect-four') fireEvent.click(screen.getByRole('button', { name: '投放第 1 列' }));
+    else fireEvent.click(screen.getByRole('gridcell', { name: /第 10 行第 9 列，空位/ }));
+    expect(readSoloDraft(gameId)?.progress.state).toMatchObject({ moveCount: 5 });
+    await act(async () => { release(snapshot); await delayed; });
+    expect(screen.getByText(/当前棋盘：5 步/)).toBeInTheDocument();
+    expect(screen.getByText(/已保存：5 步/)).toBeInTheDocument();
+    expect(readSoloDraft(gameId)?.progress.state).toMatchObject({ moveCount: 5 });
+    expect(await shared(gameId)).toEqual({ kind: 'valid', progress: shown });
   });
 
   it('四子连线相同四步和最近列仍显示两盘真实差异，预览不可操作', async () => {

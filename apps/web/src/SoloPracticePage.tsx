@@ -172,7 +172,9 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
   const [localOnly, setLocalOnly] = useState(false);
   const [resolvingConflict, setResolvingConflict] = useState(false);
   const [conflict, setConflict] = useState<SoloSnapshot | null>(null);
+  const [conflictNotice, setConflictNotice] = useState<string | null>(null);
   const conflictRef = useRef<SoloSnapshot | null>(null);
+  const conflictChoiceGeneration = useRef(0);
   const knownTokenRef = useRef<string | null>(null);
   const pendingTokenRef = useRef<string | null>(null);
   const latestProgressRef = useRef<SoloProgress | null>(null);
@@ -241,6 +243,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
   const showConflict = useCallback((snapshot: SoloSnapshot) => {
     conflictRef.current = snapshot;
     setConflict(snapshot);
+    setConflictNotice(null);
   }, []);
 
   const persist = useCallback((current: SoloState) => {
@@ -621,17 +624,31 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
   }
 
   async function resumeShared() {
-    if (resolvingConflict) return;
+    const observed = conflictRef.current;
+    if (resolvingConflict || !observed || observed.read.kind !== 'valid') return;
+    const choice = ++conflictChoiceGeneration.current;
     const sequence = saveSequence.current;
     const epoch = saveEpoch.current;
     setResolvingConflict(true);
     const latest = await readSharedSoloSnapshot(gameId);
-    if (epoch !== saveEpoch.current || sequence !== saveSequence.current) { setResolvingConflict(false); return; }
-    if (latest.read.kind !== 'valid') { showConflict(latest); setResolvingConflict(false); return; }
+    if (choice !== conflictChoiceGeneration.current || epoch !== saveEpoch.current || sequence !== saveSequence.current
+        || conflictRef.current !== observed) { setResolvingConflict(false); return; }
+    if (latest.read.kind === 'unavailable') {
+      setConflictNotice('共享进度暂不可读取，请稍后重试。');
+      setResolvingConflict(false);
+      return;
+    }
+    if (latest.token !== observed.token || latest.read.kind !== observed.read.kind) {
+      showConflict(latest);
+      setConflictNotice('另一窗口又更新了，请按新预览选择。');
+      setResolvingConflict(false);
+      return;
+    }
+    if (latest.read.kind !== 'valid') { setResolvingConflict(false); return; }
     saveEpoch.current++;
     cancelComputer();
     cancelHint();
-    const progress = latest.read.progress;
+    const progress = observed.read.progress;
     stateRef.current = progress.state;
     history.current = [...progress.history];
     trace.current = [...(progress.trace ?? [])];
@@ -649,6 +666,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     clearSoloDraft(gameId);
     conflictRef.current = null;
     setConflict(null);
+    setConflictNotice(null);
     setResolvingConflict(false);
     setUnsaved(false);
     setLocalOnly(false);
@@ -764,14 +782,14 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     {shareLimited && !unsaved && state && <p className="solo-save-note is-warning" role="status">此浏览器暂不能安全同步多窗口；这盘只保存在当前标签，刷新仍可继续。<button type="button" onClick={() => { if (stateRef.current) persist(stateRef.current); }}>重试保存</button></p>}
     {localOnly && !shareLimited && !unsaved && !conflict && <p className="solo-save-note is-warning" role="status">暂时未能同步到其他窗口，这盘仍保存在当前标签。<button type="button" onClick={() => { if (stateRef.current) persist(stateRef.current); }}>重试保存</button></p>}
     {conflict && state && <div className="solo-conflict" role="status">
-      <div className="solo-conflict-intro"><strong>另一窗口更新了这款练习</strong><p>当前棋盘：{progressSummary(state, activeStarter, activeDifficulty)}</p><p>已保存：{conflict.read.kind === 'valid' ? progressSummary(conflict.read.progress.state, conflict.read.progress.starter, conflict.read.progress.difficulty) : conflict.read.kind === 'empty' ? '记录已清除' : conflict.read.kind === 'invalid' ? '记录损坏，无法预览' : '记录暂不可读取，无法预览'}</p><small>你可以继续在当前棋盘落子；选择前不会覆盖另一窗口的进度。</small></div>
+      <div className="solo-conflict-intro"><strong>另一窗口更新了这款练习</strong><p>当前棋盘：{progressSummary(state, activeStarter, activeDifficulty)}</p><p>已保存：{conflict.read.kind === 'valid' ? progressSummary(conflict.read.progress.state, conflict.read.progress.starter, conflict.read.progress.difficulty) : conflict.read.kind === 'empty' ? '记录已清除' : conflict.read.kind === 'invalid' ? '记录损坏，无法预览' : '记录暂不可读取，无法预览'}</p>{conflictNotice && <p className="solo-conflict-notice" role="alert">{conflictNotice}</p>}<small>你可以继续在当前棋盘落子；选择前不会覆盖另一窗口的进度。</small></div>
       {savedConflictProgress && <div className="solo-conflict-compare">
         <p>{differentCells.length === 0 ? '两盘棋子的归属和显示颜色相同，请比较设置和进度。' : gameId === 'dots-and-boxes' ? `两盘有 ${differentCells.length} 条边或方格归属不同；金色边框标出差异。` : `两盘有 ${differentCells.length} 格棋子归属或颜色不同；金色边框标出差异。`}</p>
         {differentCells.length > 0 && <span className="solo-preview-accessible">差异位置：{differenceDescription}。</span>}
         <div className="solo-conflict-previews"><ConflictBoardPreview title="当前棋盘" state={state} starter={activeStarter} difficulty={activeDifficulty} differences={differentCells} /><ConflictBoardPreview title="已保存" state={savedConflictProgress.state} starter={savedConflictProgress.starter} difficulty={savedConflictProgress.difficulty} differences={differentCells} /></div>
       </div>}
       {conflict.read.kind !== 'valid' && <p className="solo-conflict-unavailable">{conflict.read.kind === 'empty' ? '共享记录已清除，没有可预览的棋盘。' : conflict.read.kind === 'invalid' ? '共享记录损坏，不能显示棋盘；请确认当前局面后再保存。' : '暂时无法读取共享记录，不能显示棋盘。'}</p>}
-      <div className="solo-conflict-actions">{conflict.read.kind === 'valid' && <button type="button" onClick={resumeShared}>接着已保存的练习</button>}<button type="button" disabled={resolvingConflict || shareLimited} onClick={() => void saveCurrentOverShared()}>{resolvingConflict ? '正在保存…' : '保存当前棋局'}</button></div>
+      <div className="solo-conflict-actions">{conflict.read.kind === 'valid' && <button type="button" disabled={resolvingConflict} onClick={resumeShared}>{resolvingConflict ? '正在核对…' : '接着已保存的练习'}</button>}<button type="button" disabled={resolvingConflict || shareLimited} onClick={() => void saveCurrentOverShared()}>{resolvingConflict ? '正在保存…' : '保存当前棋局'}</button></div>
     </div>}
     {!state ? <section className="solo-setup" aria-label="练习设置">
       <h2>开始前选一下</h2>
