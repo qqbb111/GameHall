@@ -14,7 +14,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom';
 import type { GameId } from '@gamehall/protocol';
 import type { SoloGameId } from './solo-ai';
-import { readSoloProgress, soloProgressKey } from './solo-progress';
+import { readSoloDraft, readSoloProgress, soloProgressKey } from './solo-progress';
 import { readFavoriteGames, readRememberedNickname, rememberFavoriteGames } from './client-preferences';
 import type { GameHallClient } from './gamehall-client';
 import { games, type GameCardInfo } from './games';
@@ -152,6 +152,8 @@ function validNickname(value: string): boolean {
 type PracticeSummary = Record<SoloGameId, 'none' | 'active' | 'finished'>;
 
 function readPracticeSummary(gameId: SoloGameId): PracticeSummary[SoloGameId] {
+  const draft = readSoloDraft(gameId);
+  if (draft) return draft.progress.state.phase === 'finished' ? 'finished' : 'active';
   const saved = readSoloProgress(gameId);
   return saved.kind === 'valid' ? saved.progress.state.phase === 'finished' ? 'finished' : 'active' : 'none';
 }
@@ -203,11 +205,17 @@ export function HomePage({ client, onPractice }: { client: GameHallClient; onPra
       else if (event.key === soloProgressKey('reversi')) refresh('reversi');
     };
     const onVisible = () => { if (document.visibilityState === 'visible') refresh(); };
+    const onLocalSave = (event: Event) => {
+      const gameId = (event as CustomEvent<SoloGameId>).detail;
+      if (gameId === 'connect-four' || gameId === 'reversi') refresh(gameId);
+    };
     window.addEventListener('storage', onStorage);
+    window.addEventListener('gamehall:solo-progress', onLocalSave);
     window.addEventListener('focus', onVisible);
     document.addEventListener('visibilitychange', onVisible);
     return () => {
       window.removeEventListener('storage', onStorage);
+      window.removeEventListener('gamehall:solo-progress', onLocalSave);
       window.removeEventListener('focus', onVisible);
       document.removeEventListener('visibilitychange', onVisible);
     };

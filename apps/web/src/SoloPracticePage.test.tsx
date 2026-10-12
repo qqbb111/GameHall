@@ -1,8 +1,9 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SoloWorkerRequest, SoloWorkerResponse } from './solo-ai.worker';
-import { applyConnectFourAction, createConnectFourState, legalReversiMoves } from '@gamehall/game-core';
-import { readSoloProgress, saveSoloProgress, soloProgressKey } from './solo-progress';
+import { applyConnectFourAction, applyReversiAction, createConnectFourState, createReversiState, legalReversiMoves } from '@gamehall/game-core';
+import { readSoloDraft, readSoloProgress, readSoloSnapshot, saveSoloProgress, soloProgressKey, writeSoloDraft, type SoloProgress } from './solo-progress';
 import { SoloPracticePage } from './SoloPracticePage';
 
 class FakeWorker {
@@ -26,12 +27,26 @@ function start(gameId: 'connect-four' | 'reversi' = 'connect-four', onExit = vi.
   return { ...view, onExit };
 }
 
+function reversiProgress(moveCount: number, difficulty: 'easy' | 'thoughtful' = 'easy'): SoloProgress {
+  let state = createReversiState(0);
+  for (let index = 0; index < moveCount; index++) {
+    const move = legalReversiMoves(state.board, state.turn)[0];
+    if (!move) throw new Error('bad reversi fixture');
+    const result = applyReversiAction(state, state.turn, { type: 'placeDisc', ...move });
+    if (!result.ok) throw new Error('bad reversi fixture');
+    state = result.state;
+  }
+  return { gameId: 'reversi', state, history: [], difficulty, starter: 'human' };
+}
+
 describe('local computer practice', () => {
   beforeEach(() => {
     window.localStorage.clear();
+    window.sessionStorage.clear();
     FakeWorker.instances = [];
     vi.stubGlobal('Worker', FakeWorker);
     vi.stubGlobal('matchMedia', () => ({ matches: true }));
+    Object.defineProperty(navigator, 'locks', { configurable: true, value: { request: async (_name: string, _options: unknown, callback: () => unknown) => callback() } });
   });
 
   afterEach(() => {
@@ -39,6 +54,8 @@ describe('local computer practice', () => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     window.localStorage.clear();
+    window.sessionStorage.clear();
+    Reflect.deleteProperty(navigator, 'locks');
   });
 
   it('四子连线的人机两步可悔棋，重开只按明确设置生效', async () => {
@@ -97,16 +114,16 @@ describe('local computer practice', () => {
     expect(readSoloProgress('connect-four')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 1 } } });
   });
 
-  it('黑白棋提示标出合法格，不能自动落子；手动改落点会清提示', () => {
+  it('黑白棋提示标出合法格，不能自动落子；手动改落点会清提示', async () => {
     start('reversi');
     fireEvent.click(screen.getByRole('button', { name: '提示一步' }));
     const hint = { action: { type: 'placeDisc', row: 2, col: 3 } as const, reason: '这步可以翻转 1 枚棋子。' };
     act(() => FakeWorker.instances[0]!.reply({ hint }));
     expect(screen.getByRole('gridcell', { name: /第 3 行第 4 列.*建议落点/ })).toHaveClass('is-hint');
-    expect(readSoloProgress('reversi')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 0 } } });
+    await waitFor(() => expect(readSoloProgress('reversi')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 0 } } }));
     fireEvent.click(screen.getByRole('gridcell', { name: '第 4 行第 3 列，空位，可落子' }));
     expect(screen.queryByText(/这步可以翻转/)).not.toBeInTheDocument();
-    expect(readSoloProgress('reversi')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 1 } } });
+    await waitFor(() => expect(readSoloProgress('reversi')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 1 } } }));
   });
 
   it('黑白棋可采用建议，异步建议不会抢走用户移到棋盘的焦点', async () => {
@@ -118,13 +135,14 @@ describe('local computer practice', () => {
     act(() => FakeWorker.instances[0]!.reply({ hint: { action: { type: 'placeDisc', row: 2, col: 3 }, reason: '这步可以翻转 1 枚棋子。' } }));
     expect(cell).toHaveFocus();
     fireEvent.click(screen.getByRole('button', { name: '采用这步' }));
-    expect(readSoloProgress('reversi')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 1, turn: 1 } } });
+    await waitFor(() => expect(readSoloProgress('reversi')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 1, turn: 1 } } }));
     await waitFor(() => expect(FakeWorker.instances).toHaveLength(2));
     expect(FakeWorker.instances[1]!.request?.purpose).toBe('move');
   });
 
-  it('提示拒绝错请求、认输与非法位置；超时可重试且棋盘始终可正常落子', () => {
+  it('提示拒绝错请求、认输与非法位置；超时可重试且棋盘始终可正常落子', async () => {
     start();
+    await waitFor(() => expect(readSoloProgress('connect-four')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 0 } } }));
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     fireEvent.click(screen.getByRole('button', { name: '提示一步' }));
     const first = FakeWorker.instances[0]!;
@@ -314,7 +332,7 @@ describe('local computer practice', () => {
     expect(screen.getByRole('grid', { name: /已投放 2 枚棋子/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '悔棋' }));
     expect(screen.getByRole('grid', { name: /已投放 0 枚棋子/ })).toBeInTheDocument();
-    expect(readSoloProgress('connect-four')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 0 }, history: [] } });
+    await waitFor(() => expect(readSoloProgress('connect-four')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 0 }, history: [] } }));
   });
 
   it('黑白棋刷新后合法应手和悔棋继续可用，不重新显示设置页', async () => {
@@ -331,17 +349,18 @@ describe('local computer practice', () => {
     act(() => FakeWorker.instances[1]!.reply({ action: { type: 'placeDisc', ...move } }));
     expect(screen.getByText('轮到你')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '悔棋' }));
-    expect(readSoloProgress('reversi')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 0 }, history: [] } });
+    await waitFor(() => expect(readSoloProgress('reversi')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 0 }, history: [] } }));
   });
 
-  it('pagehide 用最新棋盘和实际先手/难度同步刷新；坏记录退回设置并给简短提示', () => {
+  it('pagehide 不重写共享存档，本标签草稿保留实际先手/难度；坏记录退回设置', () => {
     render(<SoloPracticePage gameId="connect-four" recoveredRoom={false} onExit={vi.fn()} />);
     fireEvent.click(screen.getByRole('radio', { name: '电脑先手' }));
     fireEvent.click(screen.getByRole('radio', { name: '认真' }));
     fireEvent.click(screen.getByRole('button', { name: '开始练习' }));
+    expect(readSoloDraft('connect-four')).toMatchObject({ progress: { starter: 'computer', difficulty: 'thoughtful', state: { turn: 1 } } });
     window.localStorage.removeItem(soloProgressKey('connect-four'));
     act(() => window.dispatchEvent(new Event('pagehide')));
-    expect(readSoloProgress('connect-four')).toMatchObject({ kind: 'valid', progress: { starter: 'computer', difficulty: 'thoughtful', state: { turn: 1 } } });
+    expect(readSoloProgress('connect-four')).toEqual({ kind: 'empty' });
     window.localStorage.setItem(soloProgressKey('reversi'), '{broken');
     render(<SoloPracticePage gameId="reversi" recoveredRoom={false} onExit={vi.fn()} />);
     expect(screen.getByText('上次练习没能恢复，可以开始新一局。')).toBeInTheDocument();
@@ -371,5 +390,195 @@ describe('local computer practice', () => {
     fireEvent.click(screen.getByText('新一局设置'));
     fireEvent.click(screen.getByRole('radio', { name: '电脑先手' }));
     expect(readSoloProgress('connect-four')).toMatchObject({ kind: 'valid', progress: { starter: 'human' } });
+  });
+
+  it('同游戏另一窗口保存后，旧棋盘与自动应手可继续，但离开和pagehide不覆盖新存档；刷新保留分叉选择', async () => {
+    const old = reversiProgress(7);
+    const newer = reversiProgress(9, 'thoughtful');
+    expect(saveSoloProgress(old)).toBe(true);
+    const first = render(<SoloPracticePage gameId="reversi" recoveredRoom={false} onExit={vi.fn()} />);
+    expect(screen.getByRole('grid', { name: '8乘8黑白棋棋盘' })).toBeInTheDocument();
+    expect(screen.getByText('你先手 · 轻松')).toBeInTheDocument();
+    expect(saveSoloProgress(newer)).toBe(true);
+    act(() => window.dispatchEvent(new StorageEvent('storage', { key: soloProgressKey('reversi') })));
+    expect(screen.getByText('另一窗口更新了这款练习')).toBeInTheDocument();
+    expect(screen.getByText(/当前棋盘：7 步/)).toBeInTheDocument();
+    expect(screen.getByText(/已保存：9 步/)).toBeInTheDocument();
+    expect(screen.getByText(/当前棋盘：7 步.*黑 \d+：白 \d+/)).toBeInTheDocument();
+    expect(screen.getByText(/已保存：9 步.*黑 \d+：白 \d+/)).toBeInTheDocument();
+
+    if (old.state.turn === 1) {
+      const worker = FakeWorker.instances.find((item) => !item.terminated)!;
+      const move = legalReversiMoves(old.state.board, 1)[0]!;
+      act(() => worker.reply({ action: { type: 'placeDisc', ...move } }));
+    } else {
+      const move = legalReversiMoves(old.state.board, 0)[0]!;
+      fireEvent.click(screen.getByRole('gridcell', { name: new RegExp(`第 ${move.row + 1} 行第 ${move.col + 1} 列，空位，可落子`) }));
+    }
+    expect(readSoloDraft('reversi')?.progress.state.moveCount).toBe(8);
+    expect(readSoloProgress('reversi')).toEqual({ kind: 'valid', progress: newer });
+    act(() => window.dispatchEvent(new Event('pagehide')));
+    fireEvent.click(screen.getAllByRole('button', { name: '返回大厅' })[0]!);
+    first.unmount();
+    expect(readSoloProgress('reversi')).toEqual({ kind: 'valid', progress: newer });
+
+    render(<SoloPracticePage gameId="reversi" recoveredRoom={false} onExit={vi.fn()} />);
+    expect(screen.getByText(/当前棋盘：8 步/)).toBeInTheDocument();
+    expect(screen.getByText(/已保存：9 步/)).toBeInTheDocument();
+    const staleWorker = FakeWorker.instances.findLast((item) => !item.terminated);
+    fireEvent.click(screen.getByRole('button', { name: '接着已保存的练习' }));
+    expect(screen.queryByText('另一窗口更新了这款练习')).not.toBeInTheDocument();
+    expect(screen.getByText('你先手 · 认真')).toBeInTheDocument();
+    expect(screen.getByText('已接着另一窗口保存的练习')).toBeInTheDocument();
+    if (staleWorker) {
+      expect(staleWorker.terminated).toBe(true);
+      act(() => staleWorker.reply({ action: { type: 'placeDisc', row: 0, col: 0 } }));
+    }
+    expect(readSoloProgress('reversi')).toEqual({ kind: 'valid', progress: newer });
+    expect(readSoloDraft('reversi')).toBeNull();
+  });
+
+  it('显式保存当前棋局前重读修订；看到的共享局已再次变化时先更新摘要，第二次点击才覆盖', async () => {
+    const initial = createConnectFourState(0);
+    const first = applyConnectFourAction(initial, 0, { type: 'drop', col: 0 });
+    if (!first.ok) throw new Error('bad fixture');
+    const second = applyConnectFourAction(first.state, 1, { type: 'drop', col: 1 });
+    if (!second.ok) throw new Error('bad fixture');
+    const wrap = (state: typeof initial): SoloProgress => ({ gameId: 'connect-four', state, history: [], difficulty: 'easy', starter: 'human' });
+    expect(saveSoloProgress(wrap(initial))).toBe(true);
+    render(<SoloPracticePage gameId="connect-four" recoveredRoom={false} onExit={vi.fn()} />);
+    expect(saveSoloProgress(wrap(first.state))).toBe(true);
+    act(() => window.dispatchEvent(new StorageEvent('storage', { key: soloProgressKey('connect-four') })));
+    expect(screen.getByText(/已保存：1 步/)).toBeInTheDocument();
+    expect(saveSoloProgress(wrap(second.state))).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: '保存当前棋局' }));
+    expect(screen.getByText(/已保存：2 步/)).toBeInTheDocument();
+    expect(readSoloProgress('connect-four')).toEqual({ kind: 'valid', progress: wrap(second.state) });
+    fireEvent.click(screen.getByRole('button', { name: '保存当前棋局' }));
+    await waitFor(() => expect(readSoloProgress('connect-four')).toEqual({ kind: 'valid', progress: wrap(initial) }));
+    expect(screen.queryByText('另一窗口更新了这款练习')).not.toBeInTheDocument();
+  });
+
+  it('显式覆盖写入已发生但锁结果迟到时，新的本地落子草稿仍保留并继续保存', async () => {
+    const initial = createConnectFourState(0);
+    const newer = applyConnectFourAction(initial, 0, { type: 'drop', col: 3 });
+    if (!newer.ok) throw new Error('bad fixture');
+    expect(saveSoloProgress({ gameId: 'connect-four', state: initial, history: [], difficulty: 'easy', starter: 'human' })).toBe(true);
+    render(<SoloPracticePage gameId="connect-four" recoveredRoom={false} onExit={vi.fn()} />);
+    expect(saveSoloProgress({ gameId: 'connect-four', state: newer.state, history: [initial], difficulty: 'easy', starter: 'human' })).toBe(true);
+    act(() => window.dispatchEvent(new StorageEvent('storage', { key: soloProgressKey('connect-four') })));
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    let holdFirst = true;
+    Object.defineProperty(navigator, 'locks', { configurable: true, value: { request: async (_name: string, _options: unknown, callback: () => unknown) => {
+      const result = callback();
+      if (holdFirst) { holdFirst = false; await held; }
+      return result;
+    } } });
+    fireEvent.click(screen.getByRole('button', { name: '保存当前棋局' }));
+    await waitFor(() => expect(readSoloProgress('connect-four')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 0 } } }));
+    fireEvent.click(screen.getByRole('button', { name: '投放第 2 列' }));
+    expect(readSoloDraft('connect-four')?.progress.state.moveCount).toBe(1);
+    await act(async () => release());
+    await waitFor(() => expect(readSoloProgress('connect-four')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 1 } } }));
+    expect(screen.queryByText('另一窗口更新了这款练习')).not.toBeInTheDocument();
+  });
+
+  it('显式覆盖迟到后若新一步草稿写失败，不谎称当前棋局已保存', async () => {
+    const initial = createConnectFourState(0);
+    const newer = applyConnectFourAction(initial, 0, { type: 'drop', col: 3 });
+    if (!newer.ok) throw new Error('bad fixture');
+    expect(saveSoloProgress({ gameId: 'connect-four', state: initial, history: [], difficulty: 'easy', starter: 'human' })).toBe(true);
+    render(<SoloPracticePage gameId="connect-four" recoveredRoom={false} onExit={vi.fn()} />);
+    expect(saveSoloProgress({ gameId: 'connect-four', state: newer.state, history: [initial], difficulty: 'easy', starter: 'human' })).toBe(true);
+    act(() => window.dispatchEvent(new StorageEvent('storage', { key: soloProgressKey('connect-four') })));
+    let releaseFirst!: () => void, releaseSecond!: () => void;
+    const firstHold = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const secondHold = new Promise<void>((resolve) => { releaseSecond = resolve; });
+    let requests = 0;
+    Object.defineProperty(navigator, 'locks', { configurable: true, value: { request: async (_name: string, _options: unknown, callback: () => unknown) => {
+      requests++;
+      if (requests === 1) { const result = callback(); await firstHold; return result; }
+      await secondHold;
+      return callback();
+    } } });
+    fireEvent.click(screen.getByRole('button', { name: '保存当前棋局' }));
+    await waitFor(() => expect(readSoloProgress('connect-four')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 0 } } }));
+    const setItem = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+      if (this === window.sessionStorage) throw new Error('session blocked');
+      return setItem.call(this, key, value);
+    });
+    fireEvent.click(screen.getByRole('button', { name: '投放第 2 列' }));
+    expect(screen.getByText('当前浏览器无法保存，刷新后会重新开始。')).toBeInTheDocument();
+    await act(async () => releaseFirst());
+    await waitFor(() => expect(requests).toBe(2));
+    expect(readSoloProgress('connect-four')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 0 } } });
+    expect(screen.queryByText('当前棋局已保存')).not.toBeInTheDocument();
+    expect(screen.getByText('当前浏览器无法保存，刷新后会重新开始。')).toBeInTheDocument();
+    await act(async () => releaseSecond());
+    await waitFor(() => expect(readSoloProgress('connect-four')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 1 } } }));
+  });
+
+  it('普通排队保存的旧确认不能掩盖更新一步的草稿失败', async () => {
+    const initial = createConnectFourState(0);
+    expect(saveSoloProgress({ gameId: 'connect-four', state: initial, history: [], difficulty: 'easy', starter: 'human' })).toBe(true);
+    let releaseFirst!: () => void, releaseSecond!: () => void;
+    const firstHold = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const secondHold = new Promise<void>((resolve) => { releaseSecond = resolve; });
+    let requests = 0;
+    Object.defineProperty(navigator, 'locks', { configurable: true, value: { request: async (_name: string, _options: unknown, callback: () => unknown) => {
+      requests++;
+      if (requests === 1) { const result = callback(); await firstHold; return result; }
+      await secondHold;
+      return callback();
+    } } });
+    render(<SoloPracticePage gameId="connect-four" recoveredRoom={false} onExit={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: '投放第 1 列' }));
+    await waitFor(() => expect(readSoloProgress('connect-four')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 1 } } }));
+    const setItem = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+      if (this === window.sessionStorage) throw new Error('session blocked');
+      return setItem.call(this, key, value);
+    });
+    act(() => FakeWorker.instances[0]!.reply({ action: { type: 'drop', col: 1 } }));
+    expect(screen.getByText('当前浏览器无法保存，刷新后会重新开始。')).toBeInTheDocument();
+    await act(async () => releaseFirst());
+    await waitFor(() => expect(requests).toBe(2));
+    expect(screen.getByText('当前浏览器无法保存，刷新后会重新开始。')).toBeInTheDocument();
+    expect(readSoloProgress('connect-four')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 1 } } });
+    await act(async () => releaseSecond());
+    await waitFor(() => expect(readSoloProgress('connect-four')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 2 } } }));
+  });
+
+  it('无Web Locks时仅在本标签同步草稿，刷新可恢复，绝不改共享键', () => {
+    Reflect.deleteProperty(navigator, 'locks');
+    const first = start();
+    expect(screen.getByText(/只保存在当前标签/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '投放第 1 列' }));
+    expect(readSoloDraft('connect-four')?.progress.state.moveCount).toBe(1);
+    expect(readSoloProgress('connect-four')).toEqual({ kind: 'empty' });
+    first.unmount();
+    render(<SoloPracticePage gameId="connect-four" recoveredRoom={false} onExit={vi.fn()} />);
+    expect(screen.getByRole('grid', { name: /已投放 1 枚棋子/ })).toBeInTheDocument();
+    expect(readSoloProgress('connect-four')).toEqual({ kind: 'empty' });
+  });
+
+  it('StrictMode重放挂载时草稿仍恢复且只有当前Worker能应手', async () => {
+    const initial = createConnectFourState(0);
+    const human = applyConnectFourAction(initial, 0, { type: 'drop', col: 1 });
+    if (!human.ok) throw new Error('bad fixture');
+    expect(saveSoloProgress({ gameId: 'connect-four', state: initial, history: [], difficulty: 'easy', starter: 'human' })).toBe(true);
+    const baseToken = readSoloSnapshot('connect-four').token;
+    expect(writeSoloDraft({ progress: { gameId: 'connect-four', state: human.state, history: [initial], difficulty: 'easy', starter: 'human' }, baseToken })).toBe(true);
+    render(<StrictMode><SoloPracticePage gameId="connect-four" recoveredRoom={false} onExit={vi.fn()} /></StrictMode>);
+    expect(screen.getByRole('grid', { name: /已投放 1 枚棋子/ })).toBeInTheDocument();
+    await waitFor(() => expect(FakeWorker.instances.filter((item) => !item.terminated)).toHaveLength(1));
+    const old = FakeWorker.instances.find((item) => item.terminated)!;
+    act(() => old.reply({ action: { type: 'drop', col: 2 } }));
+    expect(screen.getByRole('grid', { name: /已投放 1 枚棋子/ })).toBeInTheDocument();
+    const current = FakeWorker.instances.find((item) => !item.terminated)!;
+    act(() => current.reply({ action: { type: 'drop', col: 2 } }));
+    expect(screen.getByRole('grid', { name: /已投放 2 枚棋子/ })).toBeInTheDocument();
   });
 });

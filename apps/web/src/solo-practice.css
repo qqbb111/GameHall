@@ -38,4 +38,12 @@
 .solo-error { margin-top: 10px; }
 .solo-save-note { width: min(100%, 950px); margin: -7px auto 16px; color: #d7e4c9; font-size: 13px; }
 .solo-save-note.is-warning { color: #f4c3a1; }
+.solo-save-note button { min-height: 40px; margin-left: 10px; padding: 6px 12px; border: 1px solid #e0bf80; border-radius: 8px; background: #254939; color: #fff0cd; cursor: pointer; }
+.solo-conflict { width: min(100%, 950px); margin: 0 auto 16px; padding: 14px 18px; border: 1px solid #d8b574; border-radius: 14px; background: #3a3024; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.solo-conflict strong { color: #ffe1a1; }
+.solo-conflict p { margin: 5px 0; }
+.solo-conflict small { color: #e1d9c6; }
+.solo-conflict-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.solo-conflict-actions button { min-height: 44px; padding: 9px 14px; border: 1px solid #e0bf80; border-radius: 9px; background: #254939; color: #fff0cd; font-weight: 700; cursor: pointer; }
+.solo-conflict-actions button:disabled { opacity: .55; cursor: not-allowed; }
 @media (max-width: 620px) { .solo-shell { padding-inline: 8px; } .solo-header { flex-direction: column; } .solo-header button { align-self: flex-start; } .solo-toolbar { align-items: flex-start; } .solo-toolbar > div { flex-direction: column; gap: 3px; } .solo-play > .reversi-surface { padding-inline: 4px; } .solo-play .reversi-board { padding: 4px; border-width: 5px; } .solo-play .reversi-surface > :not(.reversi-board) { margin-inline: 8px; } .solo-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } .solo-actions button:last-child { grid-column: 1 / -1; } }

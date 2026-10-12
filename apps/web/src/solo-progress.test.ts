@@ -1,6 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { applyConnectFourAction, applyReversiAction, createConnectFourState, createReversiState } from '@gamehall/game-core';
-import { decodeSoloProgress, encodeSoloProgress, readSoloProgress, saveSoloProgress, SOLO_HISTORY_MAX, SOLO_PROGRESS_MAX_BYTES, soloProgressKey, type SoloProgress } from './solo-progress';
+import { clearSoloDraft, decodeSoloProgress, encodeSoloProgress, readSoloDraft, readSoloProgress, readSoloSnapshot, saveSoloProgress,
+  SOLO_HISTORY_MAX, SOLO_PROGRESS_MAX_BYTES, soloDraftKey, soloProgressKey, writeSoloDraft, writeSoloProgress, type SoloProgress } from './solo-progress';
+
+function useSerialLocks() {
+  let tail = Promise.resolve();
+  Object.defineProperty(navigator, 'locks', { configurable: true, value: { request: (_name: string, _options: unknown, callback: () => unknown) => {
+    const run = tail.then(callback);
+    tail = run.then(() => undefined, () => undefined);
+    return run;
+  } } });
+}
 
 function fourProgress(): SoloProgress {
   const before = createConnectFourState(0);
@@ -19,7 +29,7 @@ function reversiProgress(): SoloProgress {
 }
 
 describe('local solo progress', () => {
-  afterEach(() => { window.localStorage.clear(); vi.restoreAllMocks(); });
+  afterEach(() => { window.localStorage.clear(); window.sessionStorage.clear(); Reflect.deleteProperty(navigator, 'locks'); vi.restoreAllMocks(); });
 
   it('两款棋独立 roundtrip，悔棋前状态与电脑回合原样恢复', () => {
     const four = fourProgress(), reversi = reversiProgress();
@@ -106,5 +116,59 @@ describe('local solo progress', () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota'); });
     expect(saveSoloProgress(fourProgress())).toBe(false);
     expect(fourProgress().state.moveCount).toBe(2);
+  });
+
+  it('v1 记录原样可读，锁内修订比较防两窗口并发与同局面 ABA 覆盖', async () => {
+    useSerialLocks();
+    const progress = fourProgress();
+    expect(saveSoloProgress(progress)).toBe(true);
+    const legacy = readSoloSnapshot('connect-four');
+    expect(legacy.read).toEqual({ kind: 'valid', progress });
+    const [first, stale] = await Promise.all([
+      writeSoloProgress(progress, legacy.token), writeSoloProgress(progress, legacy.token),
+    ]);
+    expect(first.kind).toBe('saved');
+    expect(stale).toMatchObject({ kind: 'conflict' });
+    const current = readSoloSnapshot('connect-four');
+    expect(current.read).toEqual({ kind: 'valid', progress });
+    expect(current.token).not.toBe(legacy.token);
+    const again = await writeSoloProgress(progress, current.token);
+    expect(again.kind).toBe('saved');
+    expect(readSoloSnapshot('connect-four').token).not.toBe(current.token);
+    expect(await writeSoloProgress(progress, current.token)).toMatchObject({ kind: 'conflict' });
+  });
+
+  it('显式覆盖前若共享记录又变化会冲突；超大损坏记录只保留有界标识并可被明确替换', async () => {
+    useSerialLocks();
+    const progress = reversiProgress();
+    window.localStorage.setItem(soloProgressKey('reversi'), 'x'.repeat(SOLO_PROGRESS_MAX_BYTES + 1));
+    const invalid = readSoloSnapshot('reversi');
+    expect(invalid.read).toEqual({ kind: 'invalid' });
+    expect(invalid.token?.length).toBeLessThan(64);
+    window.localStorage.setItem(soloProgressKey('reversi'), 'y' + 'x'.repeat(SOLO_PROGRESS_MAX_BYTES));
+    expect(readSoloSnapshot('reversi').token).not.toBe(invalid.token);
+    expect(await writeSoloProgress(progress, invalid.token)).toMatchObject({ kind: 'conflict' });
+    const currentInvalid = readSoloSnapshot('reversi');
+    expect(currentInvalid.read).toEqual({ kind: 'invalid' });
+    expect(await writeSoloProgress(progress, currentInvalid.token)).toMatchObject({ kind: 'saved' });
+    expect(readSoloProgress('reversi')).toEqual({ kind: 'valid', progress });
+    const seen = readSoloSnapshot('reversi');
+    expect(await writeSoloProgress(progress, seen.token)).toMatchObject({ kind: 'saved' });
+    expect(await writeSoloProgress(progress, seen.token)).toMatchObject({ kind: 'conflict' });
+  });
+
+  it('本标签草稿独立于两种游戏且有界校验；无锁时不碰共享存档', async () => {
+    const progress = fourProgress();
+    expect(writeSoloDraft({ progress, baseToken: null })).toBe(true);
+    expect(readSoloDraft('connect-four')).toEqual({ progress, baseToken: null });
+    expect(readSoloDraft('reversi')).toBeNull();
+    expect(await writeSoloProgress(progress, null)).toEqual({ kind: 'unsupported' });
+    expect(readSoloProgress('connect-four')).toEqual({ kind: 'empty' });
+    window.sessionStorage.setItem(soloDraftKey('connect-four'), 'x'.repeat(SOLO_PROGRESS_MAX_BYTES * 2 + 300));
+    expect(readSoloDraft('connect-four')).toBeNull();
+    window.sessionStorage.setItem(soloDraftKey('connect-four'), '{bad');
+    expect(readSoloDraft('connect-four')).toBeNull();
+    clearSoloDraft('connect-four');
+    expect(window.sessionStorage.getItem(soloDraftKey('connect-four'))).toBeNull();
   });
 });

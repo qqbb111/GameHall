@@ -4,7 +4,7 @@ import type { GameHallClient } from './gamehall-client';
 import { HomePage } from './HomePage';
 import { NICKNAME_STORAGE_KEY } from './client-preferences';
 import { applyReversiAction, createConnectFourState, createReversiState } from '@gamehall/game-core';
-import { saveSoloProgress, soloProgressKey } from './solo-progress';
+import { saveSoloProgress, soloDraftKey, soloProgressKey } from './solo-progress';
 import { leavePracticeAddress } from './solo-navigation';
 
 function clientStub(overrides: Partial<GameHallClient> = {}): GameHallClient {
@@ -246,7 +246,7 @@ describe('HomePage', () => {
 
     expect(saveSoloProgress({ gameId: 'connect-four', state: createConnectFourState(0), history: [], difficulty: 'easy', starter: 'human' })).toBe(true);
     fireEvent(window, new StorageEvent('storage', { key: soloProgressKey('connect-four') }));
-    expect(reads.mock.calls.map(([key]) => key)).toEqual([soloProgressKey('connect-four')]);
+    expect(reads.mock.calls.map(([key]) => key)).toEqual([soloDraftKey('connect-four'), soloProgressKey('connect-four')]);
     expect(screen.getByRole('button', { name: '继续练习四子连线' })).toBeInTheDocument();
     reads.mockClear();
     window.localStorage.setItem(soloProgressKey('connect-four'), '{broken');

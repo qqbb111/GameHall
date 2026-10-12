@@ -8,11 +8,31 @@ import { ConnectFourGame } from './ConnectFourGame';
 import { ReversiGame } from './ReversiGame';
 import type { SoloAction, SoloDifficulty, SoloGameId, SoloHint, SoloState } from './solo-ai';
 import type { SoloWorkerRequest, SoloWorkerResponse } from './solo-ai.worker';
-import { readSoloProgress, saveSoloProgress, type SoloStarter } from './solo-progress';
+import { canShareSoloProgress, clearSoloDraft, readSoloDraft, readSoloSnapshot, writeSoloDraft, writeSoloProgress,
+  soloProgressKey, type SoloProgress, type SoloSnapshot, type SoloStarter } from './solo-progress';
 import './solo-practice.css';
 
 const names: Record<SoloGameId, string> = { 'connect-four': '四子连线', reversi: '黑白棋' };
 type HintState = { kind: 'idle' | 'pending' } | { kind: 'ready'; hint: SoloHint } | { kind: 'error'; message: string };
+
+function bootProgress(gameId: SoloGameId) {
+  const shared = readSoloSnapshot(gameId);
+  const draft = readSoloDraft(gameId);
+  if (draft && shared.token === draft.baseToken && shared.read.kind === 'valid'
+    && JSON.stringify(draft.progress) === JSON.stringify(shared.read.progress)) {
+    clearSoloDraft(gameId);
+    return { shared, draft: null, progress: shared.read.progress, conflict: null };
+  }
+  return { shared, draft, progress: draft?.progress ?? (shared.read.kind === 'valid' ? shared.read.progress : null),
+    conflict: draft && (shared.token !== draft.baseToken || shared.read.kind === 'invalid') ? shared : null };
+}
+
+function progressSummary(state: SoloState, starter: SoloStarter, difficulty: SoloDifficulty): string {
+  const position = state.kind === 'connect-four'
+    ? state.lastMove ? ` · 最近第 ${state.lastMove.col + 1} 列` : ''
+    : ` · 黑 ${state.counts[state.blackPlayer]}：白 ${state.counts[state.blackPlayer === 0 ? 1 : 0]}`;
+  return `${state.moveCount} 步 · ${state.phase === 'finished' ? '已结束' : '进行中'}${position} · ${starter === 'human' ? '你先手' : '电脑先手'} · ${difficulty === 'easy' ? '轻松' : '认真'}`;
+}
 
 function initialState(gameId: SoloGameId, starter: SoloStarter): SoloState {
   return gameId === 'connect-four' ? createConnectFourState(starter === 'human' ? 0 : 1)
@@ -52,8 +72,8 @@ function resultText(state: SoloState): string {
 export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
   gameId: SoloGameId; recoveredRoom: boolean; onExit: () => void;
 }) {
-  const [saved] = useState(() => readSoloProgress(gameId));
-  const restored = saved.kind === 'valid' ? saved.progress : null;
+  const [boot] = useState(() => bootProgress(gameId));
+  const restored = boot.progress;
   const [difficulty, setDifficulty] = useState<SoloDifficulty>(restored?.difficulty ?? 'easy');
   const [starter, setStarter] = useState<SoloStarter>(restored?.starter ?? 'human');
   const [activeDifficulty, setActiveDifficulty] = useState<SoloDifficulty>(restored?.difficulty ?? 'easy');
@@ -64,8 +84,18 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
   const stateRef = useRef<SoloState | null>(restored?.state ?? null);
   const history = useRef<SoloState[]>(restored?.history ?? []);
   const [historyLength, setHistoryLength] = useState(restored?.history.length ?? 0);
-  const [saveNotice, setSaveNotice] = useState(saved.kind === 'valid' ? '已恢复上次练习' : saved.kind === 'invalid' ? '上次练习没能恢复，可以开始新一局。' : null);
-  const [unsaved, setUnsaved] = useState(saved.kind === 'unavailable');
+  const [saveNotice, setSaveNotice] = useState(boot.draft ? '已恢复本标签上次练习' : boot.shared.read.kind === 'valid' ? '已恢复上次练习' : boot.shared.read.kind === 'invalid' ? '上次练习没能恢复，可以开始新一局。' : null);
+  const [unsaved, setUnsaved] = useState(boot.shared.read.kind === 'unavailable' && !boot.draft);
+  const [shareLimited, setShareLimited] = useState(!canShareSoloProgress());
+  const [localOnly, setLocalOnly] = useState(boot.shared.read.kind === 'unavailable' && !!boot.draft);
+  const [resolvingConflict, setResolvingConflict] = useState(false);
+  const [conflict, setConflict] = useState<SoloSnapshot | null>(boot.conflict);
+  const conflictRef = useRef<SoloSnapshot | null>(boot.conflict);
+  const knownTokenRef = useRef<string | null>(boot.draft?.baseToken ?? boot.shared.token);
+  const latestProgressRef = useRef<SoloProgress | null>(boot.draft?.progress ?? null);
+  const saveSequence = useRef(0);
+  const saveEpoch = useRef(0);
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const [thinking, setThinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
@@ -83,20 +113,66 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
   const humanMoveAt = useRef(0);
   const playStatus = useRef<HTMLElement | null>(null);
 
+  const showConflict = useCallback((snapshot: SoloSnapshot) => {
+    conflictRef.current = snapshot;
+    setConflict(snapshot);
+  }, []);
+
   const persist = useCallback((current: SoloState) => {
-    setUnsaved(!saveSoloProgress({ gameId, state: current, history: history.current,
-      difficulty: activeDifficultyRef.current, starter: activeStarterRef.current }));
-  }, [gameId]);
+    const progress: SoloProgress = { gameId, state: current, history: [...history.current],
+      difficulty: activeDifficultyRef.current, starter: activeStarterRef.current };
+    latestProgressRef.current = progress;
+    const sequence = ++saveSequence.current;
+    const epoch = saveEpoch.current;
+    const draftSaved = writeSoloDraft({ progress, baseToken: knownTokenRef.current });
+    setUnsaved(!draftSaved);
+    if (!canShareSoloProgress()) { setShareLimited(true); return; }
+    if (conflictRef.current) return;
+    saveQueue.current = saveQueue.current.then(async () => {
+      if (epoch !== saveEpoch.current || conflictRef.current) return;
+      const result = await writeSoloProgress(progress, knownTokenRef.current, () => epoch === saveEpoch.current && !conflictRef.current);
+      if (epoch !== saveEpoch.current) return;
+      if (result.kind === 'conflict') { showConflict(result.snapshot); return; }
+      if (result.kind === 'unsupported') { setShareLimited(true); return; }
+      if (result.kind !== 'saved') {
+        const latestDraftSaved = sequence === saveSequence.current ? draftSaved : !!readSoloDraft(gameId);
+        setUnsaved(!latestDraftSaved);
+        setLocalOnly(latestDraftSaved);
+        return;
+      }
+      knownTokenRef.current = result.token;
+      if (sequence === saveSequence.current) {
+        clearSoloDraft(gameId);
+        setUnsaved(false);
+      } else if (latestProgressRef.current) {
+        setUnsaved(!writeSoloDraft({ progress: latestProgressRef.current, baseToken: result.token }));
+      }
+      setLocalOnly(false);
+      const latest = readSoloSnapshot(gameId);
+      if (latest.token !== result.token || latest.read.kind === 'invalid') showConflict(latest);
+      window.dispatchEvent(new CustomEvent('gamehall:solo-progress', { detail: gameId }));
+    });
+  }, [gameId, showConflict]);
 
   useEffect(() => {
-    const flush = () => {
-      const current = stateRef.current;
-      if (current) saveSoloProgress({ gameId, state: current, history: history.current,
-        difficulty: activeDifficultyRef.current, starter: activeStarterRef.current });
+    const saveEpochForCleanup = saveEpoch;
+    const checkShared = (event?: StorageEvent) => {
+      if (event && event.key !== null && event.key !== soloProgressKey(gameId)) return;
+      const latest = readSoloSnapshot(gameId);
+      if (latest.token !== knownTokenRef.current || latest.read.kind === 'invalid') showConflict(latest);
     };
-    window.addEventListener('pagehide', flush);
-    return () => window.removeEventListener('pagehide', flush);
-  }, [gameId]);
+    const onVisible = () => { if (document.visibilityState === 'visible') checkShared(); };
+    window.addEventListener('storage', checkShared);
+    window.addEventListener('focus', onVisible);
+    document.addEventListener('visibilitychange', onVisible);
+    if (boot.draft && !boot.conflict && stateRef.current) persist(stateRef.current);
+    return () => {
+      saveEpochForCleanup.current++;
+      window.removeEventListener('storage', checkShared);
+      window.removeEventListener('focus', onVisible);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [gameId, boot.draft, boot.conflict, persist, showConflict]);
 
   function cancelComputer() {
     requestGeneration.current++;
@@ -309,9 +385,81 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     void humanAction(hintState.hint.action).then((applied) => { if (applied) playStatus.current?.focus({ preventScroll: true }); });
   }
 
+  function resumeShared() {
+    const latest = readSoloSnapshot(gameId);
+    if (latest.read.kind !== 'valid') { showConflict(latest); return; }
+    saveEpoch.current++;
+    cancelComputer();
+    cancelHint();
+    const progress = latest.read.progress;
+    stateRef.current = progress.state;
+    history.current = [...progress.history];
+    setHistoryLength(progress.history.length);
+    activeDifficultyRef.current = progress.difficulty;
+    activeStarterRef.current = progress.starter;
+    setDifficulty(progress.difficulty);
+    setStarter(progress.starter);
+    setActiveDifficulty(progress.difficulty);
+    setActiveStarter(progress.starter);
+    knownTokenRef.current = latest.token;
+    latestProgressRef.current = null;
+    clearSoloDraft(gameId);
+    conflictRef.current = null;
+    setConflict(null);
+    setResolvingConflict(false);
+    setUnsaved(false);
+    setLocalOnly(false);
+    setSaveNotice('已接着另一窗口保存的练习');
+    setError(null);
+    setState(progress.state);
+    setRound((current) => current + 1);
+  }
+
+  async function saveCurrentOverShared() {
+    if (!conflict || resolvingConflict) return;
+    const latest = readSoloSnapshot(gameId);
+    if (latest.read.kind === 'unavailable') {
+      setUnsaved(true); return;
+    }
+    if (latest.token !== conflict.token || latest.read.kind !== conflict.read.kind) {
+      showConflict(latest);
+      return;
+    }
+    const current = stateRef.current;
+    if (!current) return;
+    const progress: SoloProgress = { gameId, state: current, history: [...history.current],
+      difficulty: activeDifficultyRef.current, starter: activeStarterRef.current };
+    const sequence = saveSequence.current;
+    const epoch = ++saveEpoch.current;
+    setResolvingConflict(true);
+    const result = await writeSoloProgress(progress, latest.token,
+      () => epoch === saveEpoch.current && sequence === saveSequence.current);
+    if (epoch !== saveEpoch.current) return;
+    setResolvingConflict(false);
+    if (result.kind === 'conflict') { showConflict(result.snapshot); return; }
+    if (result.kind === 'superseded') return;
+    if (result.kind !== 'saved') { setLocalOnly(true); return; }
+    knownTokenRef.current = result.token;
+    const afterWrite = readSoloSnapshot(gameId);
+    if (afterWrite.token !== result.token || afterWrite.read.kind === 'invalid') {
+      showConflict(afterWrite);
+      return;
+    }
+    conflictRef.current = null;
+    setConflict(null);
+    if (sequence === saveSequence.current) {
+      latestProgressRef.current = null;
+      clearSoloDraft(gameId);
+      setUnsaved(false);
+      setLocalOnly(false);
+      setSaveNotice('当前棋局已保存');
+    } else if (latestProgressRef.current) {
+      if (stateRef.current) persist(stateRef.current);
+    }
+    window.dispatchEvent(new CustomEvent('gamehall:solo-progress', { detail: gameId }));
+  }
+
   function exit() {
-    if (stateRef.current) saveSoloProgress({ gameId, state: stateRef.current, history: history.current,
-      difficulty: activeDifficultyRef.current, starter: activeStarterRef.current });
     cancelComputer();
     cancelHint();
     onExit();
@@ -333,6 +481,9 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     {recoveredRoom && <div className="solo-recovered" role="status">已恢复你的好友房。<button type="button" onClick={exit}>返回对局</button></div>}
     {saveNotice && <p className="solo-save-note" role="status">{saveNotice}</p>}
     {unsaved && <p className="solo-save-note is-warning" role="status">当前浏览器无法保存，刷新后会重新开始。</p>}
+    {shareLimited && !unsaved && <p className="solo-save-note is-warning" role="status">此浏览器暂不能安全同步多窗口；这盘只保存在当前标签，刷新仍可继续。</p>}
+    {localOnly && !shareLimited && !unsaved && !conflict && <p className="solo-save-note is-warning" role="status">暂时未能同步到其他窗口，这盘仍保存在当前标签。<button type="button" onClick={() => { if (stateRef.current) persist(stateRef.current); }}>重试保存</button></p>}
+    {conflict && state && <div className="solo-conflict" role="status"><div><strong>另一窗口更新了这款练习</strong><p>当前棋盘：{progressSummary(state, activeStarter, activeDifficulty)}</p><p>已保存：{conflict.read.kind === 'valid' ? progressSummary(conflict.read.progress.state, conflict.read.progress.starter, conflict.read.progress.difficulty) : conflict.read.kind === 'empty' ? '记录已清除' : '记录暂不可读取'}</p><small>你可以继续在当前棋盘落子；选择前不会覆盖另一窗口的进度。</small></div><div className="solo-conflict-actions">{conflict.read.kind === 'valid' && <button type="button" onClick={resumeShared}>接着已保存的练习</button>}<button type="button" disabled={resolvingConflict || shareLimited} onClick={() => void saveCurrentOverShared()}>{resolvingConflict ? '正在保存…' : '保存当前棋局'}</button></div></div>}
     {!state ? <section className="solo-setup" aria-label="练习设置">
       <h2>开始前选一下</h2>
       <fieldset><legend>难度</legend><label><input type="radio" name="solo-difficulty" checked={difficulty === 'easy'} onChange={() => setDifficulty('easy')} />轻松</label><label><input type="radio" name="solo-difficulty" checked={difficulty === 'thoughtful'} onChange={() => setDifficulty('thoughtful')} />认真</label></fieldset>
