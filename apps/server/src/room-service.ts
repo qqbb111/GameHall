@@ -52,6 +52,7 @@ import type {
   RoomSnapshot,
   ServerToClientEvents,
   StartRoomCommand,
+  SyncRoomCommand,
 } from '@gamehall/protocol';
 import type { GameHallDatabase } from './database';
 import { normalizeNickname, normalizeRoomMessage, requestHash } from './security';
@@ -320,8 +321,9 @@ export class RoomService {
     const row = this.database.raw.prepare(`
       SELECT r.code
       FROM rooms r JOIN room_members m ON m.room_id=r.id
-      WHERE m.session_id=? AND (r.status IN ('active', 'paused') OR r.cleanup_at_ms>?)
-      ORDER BY r.last_activity_ms DESC LIMIT 1
+      WHERE m.session_id=? AND (r.status IN ('waiting', 'active', 'paused') OR r.cleanup_at_ms>?)
+      ORDER BY CASE WHEN r.status IN ('waiting', 'active', 'paused') THEN 0 ELSE 1 END,
+        r.last_activity_ms DESC, r.id DESC LIMIT 1
     `).get(sessionId, nowMs) as { code: string } | undefined;
     return row?.code ?? null;
   }
@@ -333,7 +335,7 @@ export class RoomService {
     const nowMs = Date.now();
     const memberships = this.database.raw.prepare(`
       SELECT r.id FROM rooms r JOIN room_members m ON m.room_id=r.id
-      WHERE m.session_id=? AND (r.status IN ('active', 'paused') OR r.cleanup_at_ms>?)
+      WHERE m.session_id=? AND (r.status IN ('waiting', 'active', 'paused') OR r.cleanup_at_ms>?)
     `).all(sessionId, nowMs) as Array<{ id: string }>;
     // Resolve an expired grace period while the session is still considered
     // offline. Adding this socket first would let a late reconnect bypass the
@@ -347,15 +349,29 @@ export class RoomService {
     sockets.add(socket.id);
     this.connections.set(sessionId, sockets);
 
-    for (const membership of memberships) void socket.join(membership.id);
+    const selected = this.database.raw.prepare(`
+      SELECT r.id FROM rooms r JOIN room_members m ON m.room_id=r.id
+      WHERE m.session_id=? AND (r.status IN ('waiting', 'active', 'paused') OR r.cleanup_at_ms>?)
+      ORDER BY CASE WHEN r.status IN ('waiting', 'active', 'paused') THEN 0 ELSE 1 END,
+        r.last_activity_ms DESC, r.id DESC LIMIT 1
+    `).get(sessionId, nowMs) as { id: string } | undefined;
+    if (!selected) return;
+    void socket.join(selected.id);
     if (wasOffline) {
-      for (const membership of memberships) this.handleReconnect(sessionId, membership.id, nowMs);
+      this.handleReconnect(sessionId, selected.id, nowMs);
     }
-    for (const membership of memberships) {
-      if (this.transferMultiplayerHost(membership.id)) this.database.raw.prepare('UPDATE rooms SET version=version+1 WHERE id=?').run(membership.id);
-      this.emitSnapshots(membership.id);
-      this.emitMessageHistoryToSession(membership.id, sessionId);
-    }
+    if (this.transferMultiplayerHost(selected.id)) this.database.raw.prepare('UPDATE rooms SET version=version+1 WHERE id=?').run(selected.id);
+    this.emitSnapshots(selected.id);
+    this.emitMessageHistoryToSession(selected.id, sessionId);
+  }
+
+  syncRoom(sessionId: string, command: SyncRoomCommand): CommandAck {
+    const room = this.getRoom(command.roomId);
+    if (!room) return errorAck('room:sync', command.commandId, 'ROOM_NOT_FOUND', '房间不存在');
+    if (!this.getMember(command.roomId, sessionId)) return errorAck('room:sync', command.commandId, 'NOT_A_MEMBER', '你不在这个房间');
+    this.emitSnapshotsToSession(command.roomId, sessionId);
+    this.emitMessageHistoryToSession(command.roomId, sessionId);
+    return { ok: true, roomId: command.roomId, version: room.version };
   }
 
   disconnect(socket: GameHallSocket, nowMs = Date.now()): void {
@@ -1035,6 +1051,7 @@ export class RoomService {
       code,
       message: code === 'room_expired' ? '房间因长时间无操作已关闭' : '房间已经关闭',
       retryable: false,
+      roomId,
     });
     const members = this.getMembers(roomId);
     this.database.raw.prepare('DELETE FROM rooms WHERE id=?').run(roomId);

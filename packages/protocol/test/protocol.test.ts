@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createRoomSchema, gameActionSchema, roomMessageSchema, startRoomSchema, reopenRoomSchema } from '../src';
+import { createRoomSchema, gameActionSchema, roomMessageSchema, startRoomSchema, reopenRoomSchema, syncRoomSchema } from '../src';
 
 describe('shared realtime protocol', () => {
   it('璀璨宝石命令必须有版本与 UUID，支付和牌来源严格有界', () => {
@@ -59,5 +59,12 @@ describe('shared realtime protocol', () => {
     expect(roomMessageSchema.safeParse({ ...base, content: '今晚再来一局' }).success).toBe(true);
     expect(roomMessageSchema.safeParse({ ...base, content: '' }).success).toBe(false);
     expect(roomMessageSchema.safeParse({ ...base, content: '棋'.repeat(2001) }).success).toBe(false);
+  });
+
+  it('房间同步只接受 UUID 与明确房间，不接受额外字段', () => {
+    const payload = { commandId: '00000000-0000-4000-8000-000000000001', roomId: '00000000-0000-4000-8000-000000000002' };
+    expect(syncRoomSchema.safeParse(payload).success).toBe(true);
+    expect(syncRoomSchema.safeParse({ ...payload, roomId: 'anything' }).success).toBe(false);
+    expect(syncRoomSchema.safeParse({ ...payload, action: { type: 'drop', col: 0 } }).success).toBe(false);
   });
 });

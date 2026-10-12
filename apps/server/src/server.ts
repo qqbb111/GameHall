@@ -11,6 +11,7 @@ import {
   gameActionSchema,
   joinRoomSchema,
   leaveRoomSchema,
+  syncRoomSchema,
   roomMessageSchema,
   readyRoomSchema,
   startRoomSchema,
@@ -289,6 +290,17 @@ export function createGameHallServer(configOverrides: Partial<ServerConfig> = {}
         return parsed.success
           ? roomService.leaveRoom(socket.data.sessionId, parsed.data)
           : { ok: false, error: commandError('room:leave', null, 'INVALID_PAYLOAD', '离开房间参数不合法') };
+      });
+    });
+
+    socket.on('room:sync', (payload, callback) => {
+      dispatchSocketCommand(socket, 'room:sync', callback, () => {
+        const limited = rateLimitAck(socket, 'room:sync', 30, 60_000, '房间同步太频繁');
+        if (limited) return limited;
+        const parsed = syncRoomSchema.safeParse(payload);
+        return parsed.success
+          ? roomService.syncRoom(socket.data.sessionId, parsed.data)
+          : { ok: false, error: commandError('room:sync', null, 'INVALID_PAYLOAD', '同步参数不合法') };
       });
     });
 

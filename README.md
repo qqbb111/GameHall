@@ -19,8 +19,9 @@ GameHall 是一个面向好友局的实时多人棋盘游戏平台。玩家使�
 
 - 私人房间：通过邀请码或 `?room=XXXXXX` 分享链接加入。
 - 服务端权威状态：回合、规则、胜负、版本和权限均在服务端校验。
-- 可靠动作处理：使用 `actionId` 防止重复提交，使用 `expectedVersion` 拒绝过期状态上的操作。
+- 可靠动作处理：使用 `actionId` 防止重复提交，使用 `expectedVersion` 拒绝过期状态上的操作；确认超时会以原 `actionId` 有界重试并同步权威棋盘。
 - 持久化与恢复：SQLite WAL、外键、事务和版本化迁移；断线和服务重启具备有限恢复窗口。
+- 连接恢复：WebSocket 不可用时尝试轮询，过期会话自动重建；网络恢复或页面唤醒时使用 `room:sync` 重新取得当前房间快照与消息，旧房间迟到事件会被忽略。
 - 多人房间：支持 2–4 人入座、准备、开局、结算和房主重开；多人玩法共享房间生命周期，具体回合由各自规则引擎推进。
 - 房内消息：支持快捷表情和短文本消息，并持久化最近消息。
 - 响应式界面：覆盖桌面、平板和手机布局；首页玩法缩影支持鼠标与键盘重复触发的阶段动效，对局区域的关键资源与服务端权威状态保持一致。
@@ -50,6 +51,8 @@ render.yaml              Render 单实例部署配置
 ```
 
 `packages/game-core` 提供八款游戏的纯规则引擎，服务端统一负责房间状态、动作校验、版本推进、实时广播与恢复；前端根据共享快照渲染对应的棋盘、牌桌和结算界面。
+
+`room:sync` 只接受成员的房间 ID，并在限流范围内重发权威房间、游戏和消息快照。访客会话超过有效期后会建立新身份，无法凭旧会话恢复原座位。
 
 运行环境要求 Node.js `24.15+`、pnpm `11.19+`。
 
@@ -113,6 +116,14 @@ pnpm --filter @gamehall/game-core test -- dots-and-boxes
 pnpm --filter @gamehall/server test:integration -- dots-and-boxes
 pnpm --filter @gamehall/server test:integration -- board-games-lifecycle
 pnpm --filter @gamehall/web test -- DotsAndBoxesGame
+```
+
+连接恢复的定向检查：
+
+```bash
+pnpm --filter @gamehall/protocol test
+pnpm --filter @gamehall/server test:integration -- connection-recovery
+pnpm --filter @gamehall/web test -- gamehall-client HomePage
 ```
 
 验证矩阵和失败处理流程见 [`docs/verification-workflow.md`](docs/verification-workflow.md)。

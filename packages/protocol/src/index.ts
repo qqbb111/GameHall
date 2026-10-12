@@ -24,6 +24,7 @@ export const readyRoomSchema = z.object({ commandId, roomId, ready: z.boolean() 
 export const startRoomSchema = z.object({ commandId, roomId, expectedVersion: z.number().int().nonnegative() }).strict();
 export const reopenRoomSchema = z.object({ commandId, roomId, expectedVersion: z.number().int().nonnegative() }).strict();
 export const leaveRoomSchema = z.object({ commandId, roomId }).strict();
+export const syncRoomSchema = z.object({ commandId, roomId }).strict();
 export const rematchSchema = z.object({ commandId, roomId, requested: z.boolean() }).strict();
 export const roomMessageSchema = z.object({
   messageId: z.string().uuid(),
@@ -75,6 +76,7 @@ export type ReadyRoomCommand = z.infer<typeof readyRoomSchema>;
 export type StartRoomCommand = z.infer<typeof startRoomSchema>;
 export type ReopenRoomCommand = z.infer<typeof reopenRoomSchema>;
 export type LeaveRoomCommand = z.infer<typeof leaveRoomSchema>;
+export type SyncRoomCommand = z.infer<typeof syncRoomSchema>;
 export type RematchCommand = z.infer<typeof rematchSchema>;
 export type RoomMessageCommand = z.infer<typeof roomMessageSchema>;
 export type GameActionCommand = z.infer<typeof gameActionSchema>;
@@ -130,6 +132,7 @@ export type CommandError = {
   message: string;
   retryable: boolean;
   currentVersion?: number;
+  roomId?: string;
 };
 
 export type CommandAck =
@@ -152,6 +155,7 @@ export type ClientToServerEvents = {
   'room:start': (command: StartRoomCommand, ack: (result: CommandAck) => void) => void;
   'room:reopen': (command: ReopenRoomCommand, ack: (result: CommandAck) => void) => void;
   'room:leave': (command: LeaveRoomCommand, ack: (result: CommandAck) => void) => void;
+  'room:sync': (command: SyncRoomCommand, ack: (result: CommandAck) => void) => void;
   'game:action': (command: GameActionCommand, ack: (result: CommandAck) => void) => void;
   'game:rematch': (command: RematchCommand, ack: (result: CommandAck) => void) => void;
   'room:message:send': (command: RoomMessageCommand, ack: (result: CommandAck) => void) => void;

@@ -293,6 +293,12 @@ export function HomePage({ client }: { client: GameHallClient }) {
               <button type="button" onClick={client.reconnect}>重新连接</button>
             </div>
           )}
+          {client.connection === 'online' && client.error?.event === 'room:closed' && (
+            <div className="connection-notice" role="status">
+              <span>{client.error.message}</span>
+              <button type="button" onClick={client.clearError}>知道了</button>
+            </div>
+          )}
 
           <Reveal className="invite-strip-reveal" delayMs={50} distance={20} respectReducedMotion={false}>
             <form className="invite-strip" aria-label="加入好友房" onSubmit={(event) => { event.preventDefault(); void joinRoom(); }}>

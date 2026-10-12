@@ -35,6 +35,14 @@ describe('HomePage', () => {
     window.history.replaceState(null, '', '/');
   });
 
+  it('房间关闭后即使连接在线，也显示可关闭的原因', () => {
+    const client = clientStub({ error: { event: 'room:closed', commandId: null, code: 'room_closed', message: '房间已经关闭', retryable: false, roomId: 'old' } });
+    render(<HomePage client={client} />);
+    expect(screen.getByRole('status')).toHaveTextContent('房间已经关闭');
+    fireEvent.click(screen.getByRole('button', { name: '知道了' }));
+    expect(client.clearError).toHaveBeenCalledTimes(1);
+  });
+
   it('五款已确认游戏均可进入，开发中卡片不可点击', () => {
     const { container } = render(<HomePage client={clientStub()} />);
     expect(screen.getByRole('button', { name: '围棋尚未开放' })).toBeDisabled();
