@@ -37,6 +37,8 @@
 
 一个 commit 只运行受影响范围的验证。一个交付批次全部完成后，再运行一次：
 
+Web Vitest 以 `min(4, availableParallelism())` 限制并行 worker 数。若全量 Web 测试出现超时，先单跑失败文件，再用 `pnpm verify:web` 复核；不要降低断言或延长测试超时来掩盖资源竞争。
+
 ```powershell
 pnpm verify:full
 ```
