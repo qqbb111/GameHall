@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { StrictMode } from 'react';
 import { TwentyFourPracticePage } from './TwentyFourPracticePage';
 import { fixturePack } from './twenty-four-fixture';
@@ -73,6 +73,97 @@ describe('24 点单人流程', () => {
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: '提示一步' })); });
     expect(screen.getByText('时间到，本组结束')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '提交答案' })).not.toBeInTheDocument();
+  });
+  it('两个只读恢复页中关闭已暂停的一个，不改共享 token，也不挡另一页继续', async () => {
+    const initial = newTwentyFourProgress('challenge', pack);
+    const saved = await writeTwentyFourProgress({ ...initial, remainingMs: 16_500 }, null, () => true);
+    if (saved.kind !== 'saved') throw new Error('seed failed');
+    const write = vi.spyOn(store, 'writeTwentyFourProgress');
+    const first = render(<TwentyFourPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    const second = render(<TwentyFourPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    await waitFor(() => expect(within(second.container).getByText('已暂停，点击继续后作答')).toBeInTheDocument());
+    const visible = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    fireEvent(document, new Event('visibilitychange'));
+    fireEvent(window, new Event('pagehide'));
+    first.unmount();
+    expect(write).not.toHaveBeenCalled();
+    expect(store.readTwentyFourDraft()).toBeNull();
+    expect((await readTwentyFourSnapshot()).token).toBe(saved.token);
+    visible.mockReturnValue('visible');
+    fireEvent.focus(window);
+    expect(within(second.container).getByRole('button', { name: '继续' })).toBeEnabled();
+    expect(within(second.container).queryByText('另一窗口的 24 点进度已改变')).not.toBeInTheDocument();
+  });
+  it('未开始和已结算页面隐藏、离开、卸载不生成新存档', async () => {
+    const write = vi.spyOn(store, 'writeTwentyFourProgress');
+    const empty = render(<TwentyFourPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    await within(empty.container).findByRole('button', { name: '开始练习' });
+    const visible = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    fireEvent(document, new Event('visibilitychange'));
+    fireEvent(window, new Event('pagehide'));
+    empty.unmount();
+    expect(write).not.toHaveBeenCalled();
+    expect(store.readTwentyFourDraft()).toBeNull();
+    visible.mockReturnValue('visible');
+    const initial = newTwentyFourProgress('practice', pack);
+    const done = { ...initial, answers: pack.map((hand) => ({ kind: 'independent' as const, expression: hand.solution, hints: 0 })),
+      index: 10, phase: 'finished' as const, finishReason: 'complete' as const };
+    const saved = await writeTwentyFourProgress(done, null, () => true);
+    if (saved.kind !== 'saved') throw new Error('seed failed');
+    write.mockClear();
+    const finished = render(<TwentyFourPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    await within(finished.container).findByText('10 题完成');
+    visible.mockReturnValue('hidden');
+    fireEvent(document, new Event('visibilitychange'));
+    fireEvent(window, new Event('pagehide'));
+    finished.unmount();
+    expect(write).not.toHaveBeenCalled();
+    expect(store.readTwentyFourDraft()).toBeNull();
+    expect((await readTwentyFourSnapshot()).token).toBe(saved.token);
+  });
+  it('运行中的挑战隐藏时只做一次准确 checkpoint，随后的 pagehide 不重写终局', async () => {
+    let clock = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => clock);
+    await start('challenge');
+    await waitFor(async () => expect((await readTwentyFourSnapshot()).kind).toBe('valid'));
+    fireEvent.change(screen.getByLabelText('输入算式'), { target: { value: '8+' } });
+    clock = 12_000;
+    const visible = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    fireEvent(document, new Event('visibilitychange'));
+    await waitFor(async () => {
+      const latest = await readTwentyFourSnapshot();
+      expect(latest.kind === 'valid' && latest.progress.remainingMs).toBe(48_000);
+      expect(latest.kind === 'valid' && latest.progress.draft).toBe('8+');
+    });
+    const saved = await readTwentyFourSnapshot();
+    fireEvent(window, new Event('pagehide'));
+    expect((await readTwentyFourSnapshot()).token).toBe(saved.token);
+    visible.mockReturnValue('visible');
+  });
+  it('挑战在隐藏瞬间到期只写一次终局，pagehide 与卸载不再续写', async () => {
+    let clock = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => clock);
+    const view = render(<TwentyFourPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    await screen.findByRole('button', { name: '开始练习' });
+    fireEvent.click(screen.getByLabelText('60 秒挑战'));
+    fireEvent.click(screen.getByRole('button', { name: '开始练习' }));
+    await screen.findByLabelText('24 点单人题面');
+    await waitFor(async () => expect((await readTwentyFourSnapshot()).kind).toBe('valid'));
+    clock = 61_000;
+    const visible = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    fireEvent(document, new Event('visibilitychange'));
+    await screen.findByText('时间到，本组结束');
+    await waitFor(async () => {
+      const current = await readTwentyFourSnapshot();
+      expect(current.kind === 'valid' && current.progress.phase).toBe('finished');
+    });
+    const terminal = await readTwentyFourSnapshot();
+    expect(terminal.kind === 'valid' && terminal.progress.phase).toBe('finished');
+    fireEvent(window, new Event('pagehide'));
+    view.unmount();
+    expect((await readTwentyFourSnapshot()).token).toBe(terminal.token);
+    expect(store.readTwentyFourDraft()).toBeNull();
+    visible.mockReturnValue('visible');
   });
   it('有草稿重开需确认；Esc 与背景取消，继续原题', async () => {
     await start();

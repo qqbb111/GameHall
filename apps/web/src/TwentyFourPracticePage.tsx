@@ -148,11 +148,17 @@ export function TwentyFourPracticePage({ recoveredRoom, onExit }: { recoveredRoo
     if (next.phase === 'finished') { runningRef.current = false; setRunning(false); setError(null); }
   }, [persist]);
   const pause = useCallback(() => {
-    advanceClock();
+    if (!runningRef.current) return;
+    const current = progressRef.current;
     runningRef.current = false;
     setRunning(false);
-    if (progressRef.current) persist(progressRef.current, true);
-  }, [advanceClock, persist]);
+    if (!current || current.phase === 'finished') return;
+    const next = current.mode === 'challenge'
+      ? tickChallenge(current, Math.max(0, current.remainingMs - (deadlineMono.current - performance.now())))
+      : current;
+    persist(next, true);
+    if (next.phase === 'finished') setError(null);
+  }, [persist]);
   function resume() {
     if (!progressRef.current || progressRef.current.phase === 'finished' || conflictRef.current || document.visibilityState === 'hidden') return;
     if (progressRef.current.mode === 'challenge') deadlineMono.current = performance.now() + progressRef.current.remainingMs;
