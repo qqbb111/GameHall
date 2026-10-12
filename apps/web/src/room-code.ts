@@ -10,7 +10,8 @@ export function parseRoomCodeInput(value: string): string {
 
   const containsRoomQuery = /(?:[?&]|^)room=/i.test(trimmed);
   const looksLikeUrl = /^https?:\/\//i.test(trimmed);
-  if (containsRoomQuery || looksLikeUrl) {
+  const looksLikeQuery = trimmed.startsWith('?') || trimmed.startsWith('&');
+  if (containsRoomQuery || looksLikeUrl || looksLikeQuery) {
     const roomMatch = trimmed.match(/(?:[?&]|^)room=([^&#\s)\]]+)/i);
     if (roomMatch) {
       try {

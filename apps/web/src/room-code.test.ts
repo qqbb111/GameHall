@@ -18,6 +18,9 @@ describe('room code input', () => {
   it('URL 不含 room 参数时不会从 HTTP 域名生成伪邀请码', () => {
     expect(parseRoomCodeInput('https://example.com/welcome')).toBe('');
     expect(parseRoomCodeInput('https://example.com/?room=%E0%A4%A')).toBe('');
+    expect(parseRoomCodeInput('?source=round4')).toBe('');
+    expect(parseRoomCodeInput('?practice=reversi&source=round4')).toBe('');
+    expect(parseRoomCodeInput('&source=summary-watch')).toBe('');
   });
 
   it('只移除地址栏中的 room 参数', () => {

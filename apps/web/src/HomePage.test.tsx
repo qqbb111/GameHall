@@ -5,6 +5,7 @@ import { HomePage } from './HomePage';
 import { NICKNAME_STORAGE_KEY } from './client-preferences';
 import { applyReversiAction, createConnectFourState, createReversiState } from '@gamehall/game-core';
 import { saveSoloProgress, soloProgressKey } from './solo-progress';
+import { leavePracticeAddress } from './solo-navigation';
 
 function clientStub(overrides: Partial<GameHallClient> = {}): GameHallClient {
   return {
@@ -353,6 +354,18 @@ describe('HomePage', () => {
     const input = screen.getByLabelText('六位房间邀请码');
     fireEvent.change(input, { target: { value: 'http://127.0.0.1:5173/?room=35c3ty' } });
     expect(input).toHaveValue('35C3TY');
+  });
+
+  it('无 room 的普通查询和直接练习链接退出后不生成伪邀请码，仍可回退到会话房间码', () => {
+    window.history.replaceState(null, '', '/?source=round4');
+    const first = render(<HomePage client={clientStub()} />);
+    expect(screen.getByLabelText('六位房间邀请码')).toHaveValue('');
+    first.unmount();
+    window.history.replaceState(null, '', '/?practice=reversi&source=summary-watch#board');
+    expect(leavePracticeAddress()).toBe('replace');
+    expect(window.location.search).toBe('?source=summary-watch');
+    render(<HomePage client={clientStub({ session: { sessionId: 'session', reconnectableRoomCode: 'ABC234' } })} />);
+    expect(screen.getByLabelText('六位房间邀请码')).toHaveValue('ABC234');
   });
 
   it('会预填上一次成功使用的昵称', () => {
