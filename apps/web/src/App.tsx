@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { HomePage } from './HomePage';
 import { RoomPage } from './RoomPage';
 import { SoloPracticePage } from './SoloPracticePage';
+import { TwentyFourPracticePage } from './TwentyFourPracticePage';
 import { rememberNickname } from './client-preferences';
 import { useGameHallClient } from './gamehall-client';
-import type { SoloGameId } from './solo-ai';
-import { leavePracticeAddress, practiceFromSearch, pushPracticeAddress } from './solo-navigation';
+import { leavePracticeAddress, practiceFromSearch, pushPracticeAddress, type PracticeGameId } from './solo-navigation';
 
 export function App() {
   const client = useGameHallClient();
@@ -43,7 +43,7 @@ export function App() {
     } else if (view.startsWith('practice:')) document.querySelector<HTMLElement>('main h1')?.focus({ preventScroll: true });
   }, [view, practiceRoute]);
 
-  function enterPractice(gameId: SoloGameId) {
+  function enterPractice(gameId: PracticeGameId) {
     pushPracticeAddress(gameId);
     setPracticeRoute((current) => ({ gameId, source: 'push', revision: current.revision + 1 }));
   }
@@ -52,6 +52,7 @@ export function App() {
     if (leavePracticeAddress() === 'replace') setPracticeRoute((current) => ({ gameId: null, source: 'replace', revision: current.revision + 1 }));
   }
 
+  if (practiceGame === 'twenty-four') return <TwentyFourPracticePage recoveredRoom={!!client.room} onExit={exitPractice} />;
   if (practiceGame) return <SoloPracticePage key={practiceGame} gameId={practiceGame} recoveredRoom={!!client.room} onExit={exitPractice} />;
   return client.room ? <RoomPage client={client} /> : <HomePage client={client} onPractice={enterPractice} />;
 }

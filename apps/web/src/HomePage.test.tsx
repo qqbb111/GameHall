@@ -149,6 +149,16 @@ describe('HomePage', () => {
     expect(screen.getAllByText(/2–4 人 ·/)).toHaveLength(2);
   });
 
+  it('24 点卡片离线仍可进入单人练习，无需昵称或房间连接', () => {
+    const client = clientStub();
+    const onPractice = vi.fn();
+    render(<HomePage client={{ ...client, connection: 'offline' }} onPractice={onPractice} />);
+    expect(screen.getByRole('button', { name: '创建24 点速度对决房间' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '单人练习24点' }));
+    expect(onPractice).toHaveBeenCalledWith('twenty-four');
+    expect(client.createRoom).not.toHaveBeenCalled();
+  });
+
   it('搜索、筛选与收藏只改变候选，不会创建房间', () => {
     const client = clientStub();
     render(<HomePage client={client} />);

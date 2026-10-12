@@ -1,0 +1,150 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { StrictMode } from 'react';
+import { TwentyFourPracticePage } from './TwentyFourPracticePage';
+import { fixturePack } from './twenty-four-fixture';
+import { readTwentyFourSnapshot, writeTwentyFourDraft, writeTwentyFourProgress } from './twenty-four-store';
+import { newTwentyFourProgress } from './twenty-four-practice';
+
+const pack = fixturePack();
+class PackWorkerMock {
+  onmessage: ((event: MessageEvent) => void) | null = null;
+  onerror: (() => void) | null = null;
+  terminated = false;
+  postMessage({ requestId }: { requestId: number }) { queueMicrotask(() => { if (!this.terminated) this.onmessage?.({ data: { requestId, pack } } as MessageEvent); }); }
+  terminate() { this.terminated = true; }
+}
+beforeEach(() => { vi.stubGlobal('Worker', PackWorkerMock); window.sessionStorage.clear(); });
+afterEach(() => { cleanup(); window.sessionStorage.clear(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+async function start(mode: 'practice' | 'challenge' = 'practice') {
+  render(<TwentyFourPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+  await screen.findByRole('button', { name: '开始练习' });
+  if (mode === 'challenge') fireEvent.click(screen.getByLabelText('60 秒挑战'));
+  fireEvent.click(screen.getByRole('button', { name: '开始练习' }));
+  await screen.findByLabelText('24 点单人题面');
+}
+
+describe('24 点单人流程', () => {
+  it('错答即时说明且保留草稿；提示后正确计参考，答案揭晓后由玩家手动进入下一题', async () => {
+    await start();
+    const input = screen.getByLabelText('输入算式');
+    fireEvent.change(input, { target: { value: '1+1+1+1' } });
+    fireEvent.click(screen.getByRole('button', { name: '提交答案' }));
+    expect(screen.getByRole('alert')).toHaveTextContent(/必须恰好使用题面上的四张牌各一次|结果不是 24/);
+    expect(input).toHaveValue('1+1+1+1');
+    fireEvent.click(screen.getByRole('button', { name: '提示一步' }));
+    expect(screen.getByText('一种可行解法的步骤')).toBeInTheDocument();
+    fireEvent.change(input, { target: { value: pack[0]!.solution } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(screen.getByText('参考解出')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '下一题' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '下一题' }));
+    expect(screen.getByText('第 2 / 10 题')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '查看完整答案' }));
+    expect(screen.getByText('已查看答案')).toBeInTheDocument();
+    expect(screen.getByText('独立解出 0')).toBeInTheDocument();
+  });
+  it('十题逐题揭晓后结算，可再生成一组', async () => {
+    await start();
+    for (let index = 0; index < 10; index++) {
+      await waitFor(() => expect(screen.getByRole('button', { name: '查看完整答案' })).toBeEnabled());
+      fireEvent.click(screen.getByRole('button', { name: '查看完整答案' }));
+      fireEvent.click(await screen.findByRole('button', { name: index === 9 ? '查看本组结果' : '下一题' }));
+    }
+    expect(screen.getByText('10 题完成')).toBeInTheDocument();
+    expect(screen.getByText(/查看答案 10 题/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '再来一组' }));
+    await screen.findByText('第 1 / 10 题');
+  });
+  it('暂停与隐藏停止挑战计时，恢复后按单调时钟到期并禁用提交', async () => {
+    await start('challenge');
+    const now = vi.spyOn(performance, 'now').mockReturnValue(1000);
+    const visible = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    expect(document.visibilityState).toBe('hidden');
+    fireEvent(document, new Event('visibilitychange'));
+    expect(screen.getByText('已暂停，点击继续后作答')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '提交答案' })).toBeDisabled();
+    visible.mockReturnValue('visible');
+    fireEvent.click(screen.getByRole('button', { name: '继续' }));
+    now.mockReturnValue(61_001);
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '提示一步' })); });
+    expect(screen.getByText('时间到，本组结束')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '提交答案' })).not.toBeInTheDocument();
+  });
+  it('有草稿重开需确认；Esc 与背景取消，继续原题', async () => {
+    await start();
+    fireEvent.change(screen.getByLabelText('输入算式'), { target: { value: '8+' } });
+    fireEvent.click(screen.getByRole('button', { name: '重新开始' }));
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('输入算式')).toHaveValue('8+');
+    fireEvent.click(screen.getByRole('button', { name: '重新开始' }));
+    fireEvent.mouseDown(screen.getByRole('alertdialog').parentElement!);
+    fireEvent.click(screen.getByRole('alertdialog').parentElement!);
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  });
+  it('刷新恢复完整题组与草稿，挑战默认暂停', async () => {
+    const first = render(<TwentyFourPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    await screen.findByRole('button', { name: '开始练习' });
+    fireEvent.click(screen.getByLabelText('60 秒挑战'));
+    fireEvent.click(screen.getByRole('button', { name: '开始练习' }));
+    await screen.findByLabelText('24 点单人题面');
+    fireEvent.change(screen.getByLabelText('输入算式'), { target: { value: '8+' } });
+    first.unmount();
+    render(<TwentyFourPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText('已暂停，点击继续后作答')).toBeInTheDocument());
+    expect(screen.getByLabelText('输入算式')).toHaveValue('8+');
+    expect(screen.getByRole('button', { name: '提交答案' })).toBeDisabled();
+  });
+  it('另一窗口写入后暂停当前题组，玩家明确选择共享进度', async () => {
+    await start();
+    await waitFor(async () => expect((await readTwentyFourSnapshot()).kind).toBe('valid'));
+    const prior = await readTwentyFourSnapshot();
+    if (prior.kind !== 'valid') throw new Error('missing saved progress');
+    const elsewhere = { ...prior.progress, draft: '8+' };
+    expect((await writeTwentyFourProgress(elsewhere, prior.token, () => true)).kind).toBe('saved');
+    fireEvent(window, new Event('focus'));
+    await screen.findByText('另一窗口的 24 点进度已改变');
+    expect(screen.getByRole('button', { name: '提交答案' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '接着共享进度' }));
+    await waitFor(() => expect(screen.getByLabelText('输入算式')).toHaveValue('8+'));
+    expect(screen.getByText('已暂停，点击继续后作答')).toBeInTheDocument();
+  });
+  it('同内容草稿即使带旧 token 也使用共享最新 token，继续编辑正常保存', async () => {
+    const same = newTwentyFourProgress('practice', pack);
+    const first = await writeTwentyFourProgress(same, null, () => true);
+    if (first.kind !== 'saved') throw new Error('first save failed');
+    const latest = await writeTwentyFourProgress(same, first.token, () => true);
+    if (latest.kind !== 'saved') throw new Error('second save failed');
+    writeTwentyFourDraft({ progress: same, baseToken: first.token });
+    render(<TwentyFourPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    await screen.findByText('已暂停，点击继续后作答');
+    expect(screen.queryByText('另一窗口的 24 点进度已改变')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '继续' }));
+    fireEvent.change(screen.getByLabelText('输入算式'), { target: { value: '1+' } });
+    await waitFor(async () => {
+      const saved = await readTwentyFourSnapshot();
+      expect(saved.kind === 'valid' && saved.progress.draft).toBe('1+');
+    });
+    expect(screen.queryByText('另一窗口的 24 点进度已改变')).not.toBeInTheDocument();
+  });
+  it('StrictMode effect 重放后仍可连续保存两次草稿', async () => {
+    const initial = newTwentyFourProgress('practice', pack);
+    const saved = await writeTwentyFourProgress(initial, null, () => true);
+    expect(saved.kind).toBe('saved');
+    render(<StrictMode><TwentyFourPracticePage recoveredRoom={false} onExit={vi.fn()} /></StrictMode>);
+    await screen.findByText('已暂停，点击继续后作答');
+    fireEvent.click(screen.getByRole('button', { name: '继续' }));
+    const input = screen.getByLabelText('输入算式');
+    for (const draft of ['1+', '1+2']) {
+      fireEvent.change(input, { target: { value: draft } });
+      await waitFor(async () => {
+        const latest = await readTwentyFourSnapshot();
+        expect(latest.kind === 'valid' && latest.progress.draft).toBe(draft);
+      });
+    }
+    expect(screen.queryByText('另一窗口的 24 点进度已改变')).not.toBeInTheDocument();
+  });
+});

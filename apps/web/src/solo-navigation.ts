@@ -1,20 +1,21 @@
 import type { SoloGameId } from './solo-ai';
+export type PracticeGameId = SoloGameId | 'twenty-four';
 
 const practiceEntryKey = '__gamehallPracticeEntryV1';
 
-export function practiceFromSearch(search: string): SoloGameId | null {
+export function practiceFromSearch(search: string): PracticeGameId | null {
   const value = new URLSearchParams(search).get('practice');
-  return value === 'connect-four' || value === 'reversi' || value === 'dots-and-boxes' ? value : null;
+  return value === 'connect-four' || value === 'reversi' || value === 'dots-and-boxes' || value === 'twenty-four' ? value : null;
 }
 
-function addressWithPractice(gameId: SoloGameId | null): string {
+function addressWithPractice(gameId: PracticeGameId | null): string {
   const url = new URL(window.location.href);
   if (gameId) url.searchParams.set('practice', gameId);
   else url.searchParams.delete('practice');
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
-export function pushPracticeAddress(gameId: SoloGameId): void {
+export function pushPracticeAddress(gameId: PracticeGameId): void {
   const prior = window.history.state as unknown;
   const state = prior !== null && typeof prior === 'object' && !Array.isArray(prior)
     ? { ...prior, [practiceEntryKey]: { gameId } }

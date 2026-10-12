@@ -5,7 +5,7 @@ import type { SoloWorkerRequest, SoloWorkerResponse } from './solo-ai.worker';
 
 const mocks = vi.hoisted(() => ({ useClient: vi.fn() }));
 vi.mock('./gamehall-client', () => ({ useGameHallClient: mocks.useClient }));
-vi.mock('./HomePage', () => ({ HomePage: ({ onPractice }: { onPractice: (game: 'connect-four') => void }) => <main><h1 tabIndex={-1}>home</h1><button onClick={() => onPractice('connect-four')}>practice</button></main> }));
+vi.mock('./HomePage', () => ({ HomePage: ({ onPractice }: { onPractice: (game: 'connect-four' | 'twenty-four') => void }) => <main><h1 tabIndex={-1}>home</h1><button onClick={() => onPractice('connect-four')}>practice</button><button data-practice-game="twenty-four" onClick={() => onPractice('twenty-four')}>practice 24</button></main> }));
 vi.mock('./RoomPage', () => ({ RoomPage: () => <main><h1>room</h1></main> }));
 
 import { App } from './App';
@@ -73,5 +73,19 @@ describe('practice browser navigation with real board', () => {
     act(() => { window.history.replaceState(null, '', '/?room=ABC234&practice=dots-and-boxes#board'); window.dispatchEvent(new PopStateEvent('popstate')); });
     expect(await screen.findByRole('group', { name: '4乘4点、3乘3格子的点格棋棋盘' })).toBeInTheDocument();
     expect(window.location.search).toBe('?room=ABC234&practice=dots-and-boxes');
+  });
+
+  it('24 点可离线直达、前进后退返回原 URL，已恢复房间时提示返回对局', async () => {
+    vi.stubGlobal('scrollTo', vi.fn());
+    window.history.replaceState(null, '', '/?room=ABC234&practice=twenty-four#board');
+    mocks.useClient.mockReturnValue({ loading: true, room: { roomId: 'room', members: [], mySeat: 0 } } as unknown as GameHallClient);
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: '24 点 · 单人练习' })).toBeInTheDocument();
+    expect(screen.getByText(/已恢复你的好友房/)).toBeInTheDocument();
+    act(() => { window.history.replaceState(null, '', '/?room=ABC234#board'); window.dispatchEvent(new PopStateEvent('popstate')); });
+    expect(screen.getByRole('heading', { name: 'room' })).toBeInTheDocument();
+    act(() => { window.history.replaceState(null, '', '/?room=ABC234&practice=twenty-four#board'); window.dispatchEvent(new PopStateEvent('popstate')); });
+    expect(await screen.findByRole('heading', { name: '24 点 · 单人练习' })).toBeInTheDocument();
+    expect(window.location.search).toBe('?room=ABC234&practice=twenty-four');
   });
 });

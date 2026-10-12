@@ -1,0 +1,41 @@
+.twenty-four-practice .solo-play { max-width: 920px; }
+.twenty-four-practice-top { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 18px 22px; border: 1px solid #8caa8a70; border-radius: 17px; background: #173a30; }
+.twenty-four-practice-top h2 { margin: 4px 0 0; color: #fff3d6; font: 700 clamp(22px, 4vw, 32px) 'Noto Serif SC', serif; }
+.twenty-four-practice-timer { display: grid; text-align: right; color: #f3d993; }
+.twenty-four-practice-timer strong { font-size: clamp(26px, 6vw, 42px); font-variant-numeric: tabular-nums; line-height: 1; }
+.twenty-four-practice-stats { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.twenty-four-practice-stats span { padding: 8px 12px; border: 1px solid #b3996066; border-radius: 999px; background: #213e33; color: #f5e8c4; }
+.twenty-four-practice-overview { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 6px; list-style: none; padding: 0; margin: 14px 0; }
+.twenty-four-practice-overview li { min-width: 0; padding: 8px 3px; border: 1px solid #6d8d72; border-radius: 10px; background: #18382e; text-align: center; color: #d9e2ce; }
+.twenty-four-practice-overview li.current { border-color: #f0ca77; background: #3b4935; color: #fff0c9; }
+.twenty-four-practice-overview li span, .twenty-four-practice-overview li small { display: block; white-space: nowrap; }
+.twenty-four-practice-overview li span { font-weight: 800; }
+.twenty-four-practice-overview li small { font-size: 11px; }
+.twenty-four-practice-controls { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px; padding: 10px 16px; border: 1px solid #8caa8a70; border-radius: 12px; background: #173a30; color: #f3d993; }
+.twenty-four-practice-controls button, .twenty-four-practice-hints button, .twenty-four-practice-result button, .twenty-four-practice .solution-card button { min-height: 44px; padding: 9px 17px; border: 1px solid #e4c078; border-radius: 10px; background: #315441; color: #fff0ca; font-weight: 700; cursor: pointer; }
+.twenty-four-practice-controls button:disabled, .twenty-four-practice-hints button:disabled, .twenty-four-practice-result button:disabled, .twenty-four-practice .solution-card button:disabled { opacity: .5; cursor: not-allowed; }
+.twenty-four-practice .twenty-four-surface { max-width: 920px; overflow: hidden; }
+.twenty-four-practice .playing-cards { max-width: 100%; }
+.twenty-four-practice .expression-row { min-width: 0; }
+.twenty-four-practice .expression-row input { min-width: 0; }
+.twenty-four-practice .cooldown-note.visible { color: #cbd8cb; }
+.twenty-four-practice-hints { display: grid; gap: 10px; margin: 12px 0 0; padding: 14px; border: 1px solid #9cbb9670; border-radius: 12px; background: #193b31; }
+.twenty-four-practice-hints > div:first-child { display: flex; flex-wrap: wrap; gap: 10px; }
+.twenty-four-practice-hints ol { margin: 8px 0; padding-left: 22px; }
+.twenty-four-practice-hints li { padding: 3px 0; color: #fff0c9; }
+.twenty-four-practice-hints small { color: #d7e5d6; }
+.twenty-four-practice-error { max-width: 920px; margin: 12px auto; padding: 10px 14px; border: 1px solid #f1ad8e; border-radius: 10px; background: #5c302c; color: #ffe1d4; }
+.twenty-four-practice-result { padding: 28px; border: 1px solid #c9a662; border-radius: 18px; background: #173a30; text-align: center; }
+.twenty-four-practice-result h3 { margin: 0; color: #f2d18b; font-size: 28px; }
+.twenty-four-practice-result p { line-height: 1.7; }
+.twenty-four-practice .solution-card { display: grid; justify-items: center; gap: 10px; }
+.twenty-four-practice .solution-card strong { max-width: 100%; overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+  .twenty-four-practice-overview { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .twenty-four-practice .playing-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
+  .twenty-four-practice .playing-card { min-width: 0; }
+  .twenty-four-practice .expression-row { grid-template-columns: minmax(0, 1fr); }
+  .twenty-four-practice .expression-row input, .twenty-four-practice .expression-row button { width: 100%; }
+  .twenty-four-practice .math-pad { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (prefers-reduced-motion: reduce) { .twenty-four-practice *, .twenty-four-practice *::before, .twenty-four-practice *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
