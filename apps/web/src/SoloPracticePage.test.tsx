@@ -557,6 +557,61 @@ describe('local computer practice', () => {
     expect(readSoloDraft('reversi')).toBeNull();
   });
 
+  it('四子连线相同四步和最近列仍显示两盘真实差异，预览不可操作', async () => {
+    const play = (columns: number[]): SoloProgress => {
+      let state = createConnectFourState(0);
+      for (const col of columns) {
+        const result = applyConnectFourAction(state, state.turn, { type: 'drop', col });
+        if (!result.ok) throw new Error('bad fixture');
+        state = result.state;
+      }
+      return { gameId: 'connect-four', state, history: [], difficulty: 'easy', starter: 'human' };
+    };
+    const current = play([2, 3, 2, 3]);
+    const saved = play([6, 3, 6, 3]);
+    expect(writeSoloDraft({ progress: current, baseToken: null })).toBe(true);
+    await saveShared(saved);
+    const { container } = render(<SoloPracticePage gameId="connect-four" recoveredRoom={false} onExit={vi.fn()} />);
+    await screen.findByText('另一窗口更新了这款练习');
+    expect(screen.getByText(/当前棋盘：4 步.*最近第 4 列/)).toBeInTheDocument();
+    expect(screen.getByText(/已保存：4 步.*最近第 4 列/)).toBeInTheDocument();
+    expect(screen.getByText(/两盘有 4 格棋子不同/)).toBeInTheDocument();
+    const previews = container.querySelectorAll('.solo-conflict-preview');
+    expect(previews).toHaveLength(2);
+    expect(previews[0]!.querySelectorAll('.solo-preview-board > span')).toHaveLength(42);
+    expect(previews[1]!.querySelectorAll('.solo-preview-board > span')).toHaveLength(42);
+    expect(previews[0]!.querySelector('[data-cell="5-3"]')).toHaveAttribute('data-owner', 'human');
+    expect(previews[1]!.querySelector('[data-cell="5-7"]')).toHaveAttribute('data-owner', 'human');
+    expect(previews[0]!.querySelectorAll('.is-different')).toHaveLength(4);
+    expect(previews[0]!.querySelector('button')).toBeNull();
+    expect(screen.getAllByRole('grid')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: '接着已保存的练习' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '保存当前棋局' })).toBeInTheDocument();
+    expect(await shared('connect-four')).toEqual({ kind: 'valid', progress: saved });
+  });
+
+  it('黑白棋预览标出颜色翻转，且损坏记录不伪造棋盘', async () => {
+    const current: SoloProgress = { gameId: 'reversi', state: createReversiState(0), history: [], difficulty: 'easy', starter: 'human' };
+    const saved: SoloProgress = { gameId: 'reversi', state: createReversiState(1), history: [], difficulty: 'thoughtful', starter: 'computer' };
+    expect(writeSoloDraft({ progress: current, baseToken: null })).toBe(true);
+    await saveShared(saved);
+    const { container, unmount } = render(<SoloPracticePage gameId="reversi" recoveredRoom={false} onExit={vi.fn()} />);
+    await screen.findByText('另一窗口更新了这款练习');
+    const colorChanged = current.state.board.findIndex((cell, index) => cell !== null && saved.state.board[index] !== null && cell !== saved.state.board[index]);
+    expect(colorChanged).toBeGreaterThanOrEqual(0);
+    const marked = container.querySelectorAll('.solo-conflict-preview')[0]!.querySelectorAll('.solo-preview-board > span')[colorChanged]!;
+    expect(marked).toHaveClass('is-different');
+    expect(container.querySelectorAll('.solo-preview-board.reversi > span')).toHaveLength(128);
+    unmount();
+
+    vi.spyOn(sharedStore, 'readSharedSoloSnapshot').mockResolvedValue({ read: { kind: 'invalid' }, token: 'idb:00000000-0000-0000-0000-000000000000' });
+    const second = render(<SoloPracticePage gameId="reversi" recoveredRoom={false} onExit={vi.fn()} />);
+    await screen.findByText('另一窗口更新了这款练习');
+    expect(screen.getByText('共享记录损坏，不能显示棋盘；请确认当前局面后再保存。')).toBeInTheDocument();
+    expect(second.container.querySelector('.solo-conflict-preview')).toBeNull();
+    expect(screen.queryByRole('button', { name: '接着已保存的练习' })).not.toBeInTheDocument();
+  });
+
   it('显式保存当前棋局前重读修订；看到的共享局已再次变化时先更新摘要，第二次点击才覆盖', async () => {
     const initial = createConnectFourState(0);
     const first = applyConnectFourAction(initial, 0, { type: 'drop', col: 0 });
