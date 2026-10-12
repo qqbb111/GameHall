@@ -7,6 +7,7 @@ import { readTwentyFourSnapshot, writeTwentyFourDraft, writeTwentyFourProgress }
 import * as store from './twenty-four-store';
 import { captureStorageTimers, holdFirstWriteCompletion } from './idb-late-ack.test-helper';
 import { newTwentyFourProgress } from './twenty-four-practice';
+import { PackGenerator } from './twenty-four-pack';
 
 const pack = fixturePack();
 class PackWorkerMock {
@@ -28,6 +29,69 @@ async function start(mode: 'practice' | 'challenge' = 'practice') {
 }
 
 describe('24 点单人流程', () => {
+  it('明确开始、继续与下一题后聚焦可操作目标，恢复通知不抢焦点', async () => {
+    render(<TwentyFourPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    const startButton = await screen.findByRole('button', { name: '开始练习' });
+    startButton.focus();
+    fireEvent.click(startButton);
+    const input = await screen.findByLabelText('输入算式');
+    await waitFor(() => expect(input).toHaveFocus());
+    fireEvent.change(input, { target: { value: '7+' } });
+    (input as HTMLInputElement).setSelectionRange(1, 1);
+    fireEvent.click(screen.getByRole('button', { name: '暂停' }));
+    const resumeButton = screen.getByRole('button', { name: '继续' });
+    resumeButton.focus();
+    fireEvent.click(resumeButton);
+    expect(input).toHaveFocus();
+    expect((input as HTMLInputElement).selectionStart).toBe(1);
+    fireEvent.click(screen.getByRole('button', { name: '查看完整答案' }));
+    fireEvent.click(screen.getByRole('button', { name: '暂停' }));
+    screen.getByRole('button', { name: '继续' }).focus();
+    fireEvent.click(screen.getByRole('button', { name: '继续' }));
+    expect(screen.getByRole('button', { name: '下一题' })).toHaveFocus();
+    fireEvent.click(screen.getByRole('button', { name: '下一题' }));
+    expect(screen.getByLabelText('输入算式')).toHaveFocus();
+    screen.getAllByRole('button', { name: '返回大厅' })[0]!.focus();
+    fireEvent(window, new Event('focus'));
+    expect(screen.getAllByRole('button', { name: '返回大厅' })[0]).toHaveFocus();
+  });
+  it('题组异步生成期间用户移焦或页面隐藏后不抢焦点', async () => {
+    let finish: ((value: typeof pack) => void) | undefined;
+    vi.spyOn(PackGenerator.prototype, 'generate').mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    render(<TwentyFourPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    const startButton = await screen.findByRole('button', { name: '开始练习' });
+    startButton.focus();
+    fireEvent.click(startButton);
+    const exitButton = screen.getByRole('button', { name: '返回大厅' });
+    exitButton.focus();
+    await act(async () => { finish?.(pack); });
+    expect(exitButton).toHaveFocus();
+    expect(screen.getByLabelText('输入算式')).not.toHaveFocus();
+  });
+  it('生成期间点击不可聚焦空白也取消自动聚焦', async () => {
+    let finish: ((value: typeof pack) => void) | undefined;
+    vi.spyOn(PackGenerator.prototype, 'generate').mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    render(<TwentyFourPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    const startButton = await screen.findByRole('button', { name: '开始练习' });
+    startButton.focus();
+    fireEvent.click(startButton);
+    fireEvent.pointerDown(screen.getByRole('heading', { name: '24 点 · 单人练习' }));
+    await act(async () => { finish?.(pack); });
+    expect(screen.getByLabelText('输入算式')).not.toHaveFocus();
+  });
+  it('题组生成完成时若页面已隐藏，不聚焦输入', async () => {
+    let finish: ((value: typeof pack) => void) | undefined;
+    vi.spyOn(PackGenerator.prototype, 'generate').mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    render(<TwentyFourPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    const startButton = await screen.findByRole('button', { name: '开始练习' });
+    startButton.focus();
+    fireEvent.click(startButton);
+    const visible = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    fireEvent(document, new Event('visibilitychange'));
+    visible.mockReturnValue('visible');
+    await act(async () => { finish?.(pack); });
+    expect(screen.getByLabelText('输入算式')).not.toHaveFocus();
+  });
   it('错答即时说明且保留草稿；提示后正确计参考，答案揭晓后由玩家手动进入下一题', async () => {
     await start();
     const input = screen.getByLabelText('输入算式');
@@ -55,6 +119,7 @@ describe('24 点单人流程', () => {
       fireEvent.click(await screen.findByRole('button', { name: index === 9 ? '查看本组结果' : '下一题' }));
     }
     expect(screen.getByText('10 题完成')).toBeInTheDocument();
+    expect(document.activeElement).not.toBe(screen.queryByLabelText('输入算式'));
     expect(screen.getByText(/查看答案 10 题/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '再来一组' }));
     await screen.findByText('第 1 / 10 题');

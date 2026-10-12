@@ -161,6 +161,8 @@ export function TwentyFourPracticePage({ recoveredRoom, onExit }: { recoveredRoo
   }, [persist]);
   function resume() {
     if (!progressRef.current || progressRef.current.phase === 'finished' || conflictRef.current || document.visibilityState === 'hidden') return;
+    if (progressRef.current.phase === 'answered') moveFocusToNext.current = true;
+    else moveFocusToInput.current = true;
     if (progressRef.current.mode === 'challenge') deadlineMono.current = performance.now() + progressRef.current.remainingMs;
     runningRef.current = true;
     setRunning(true);
@@ -212,8 +214,17 @@ export function TwentyFourPracticePage({ recoveredRoom, onExit }: { recoveredRoo
     return () => { active = false; unsubscribe(); window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onFocus); };
   }, [booted, markConflict, persist]);
 
-  async function start(nextMode = mode) {
+  async function start(nextMode = mode, trigger?: HTMLElement) {
     if (generating) return;
+    let focusMoved = false;
+    const onFocusMoved = (event: FocusEvent) => { if (event.target !== trigger) focusMoved = true; };
+    const onPointerMoved = (event: PointerEvent) => { if (event.target !== trigger) focusMoved = true; };
+    const onVisibilityChanged = () => { if (document.visibilityState === 'hidden') focusMoved = true; };
+    if (trigger) {
+      document.addEventListener('focusin', onFocusMoved);
+      document.addEventListener('pointerdown', onPointerMoved);
+      document.addEventListener('visibilitychange', onVisibilityChanged);
+    }
     pause();
     const request = ++generation.current;
     generator.current.cancel();
@@ -228,12 +239,19 @@ export function TwentyFourPracticePage({ recoveredRoom, onExit }: { recoveredRoo
       conflictRef.current = null; setConflict(null);
       setMode(nextMode);
       setEditorRevision((revision) => revision + 1);
+      const visible = document.visibilityState !== 'hidden';
+      if (trigger && !focusMoved && visible) moveFocusToInput.current = true;
       persist(next, true);
       if (nextMode === 'challenge') deadlineMono.current = performance.now() + 60_000;
-      runningRef.current = true; setRunning(true);
+      runningRef.current = visible; setRunning(visible);
     } catch (cause) {
       if (request === generation.current) setError(cause instanceof Error && cause.message !== '已取消生成' ? cause.message : '题组生成失败，请重试');
-    } finally { if (request === generation.current) setGenerating(false); }
+    } finally {
+      document.removeEventListener('focusin', onFocusMoved);
+      document.removeEventListener('pointerdown', onPointerMoved);
+      document.removeEventListener('visibilitychange', onVisibilityChanged);
+      if (request === generation.current) setGenerating(false);
+    }
   }
   function submit(expression: string) {
     advanceClock();
@@ -264,7 +282,7 @@ export function TwentyFourPracticePage({ recoveredRoom, onExit }: { recoveredRoo
     advanceClock();
     const current = progressRef.current;
     if (!runningRef.current || !current || current.phase !== 'answered' || conflictRef.current) return;
-    moveFocusToInput.current = document.activeElement === nextButton.current;
+    moveFocusToInput.current = current.index < 9;
     const index = current.index + 1;
     const nextProgress: TwentyFourProgress = index === 10
       ? { ...current, index, phase: 'finished', finishReason: 'complete', draft: '', hints: 0 }
@@ -275,10 +293,10 @@ export function TwentyFourPracticePage({ recoveredRoom, onExit }: { recoveredRoo
   useEffect(() => {
     if (moveFocusToNext.current && progress?.phase === 'answered') { moveFocusToNext.current = false; nextButton.current?.focus({ preventScroll: true }); }
     if (moveFocusToInput.current && progress?.phase === 'playing') { moveFocusToInput.current = false; document.getElementById('twenty-four-expression')?.focus({ preventScroll: true }); }
-  }, [progress?.phase, progress?.index]);
+  }, [progress?.phase, progress?.index, running]);
 
-  function requestRestart() {
-    if (!progress || progress.phase === 'finished' || progress.index === 0 && progress.draft === '' && progress.hints === 0 && progress.answers.length === 0) { void start(); return; }
+  function requestRestart(trigger: HTMLElement) {
+    if (!progress || progress.phase === 'finished' || progress.index === 0 && progress.draft === '' && progress.hints === 0 && progress.answers.length === 0) { void start(mode, trigger); return; }
     pause(); setRestartOpen(true);
   }
   useEffect(() => {
@@ -368,7 +386,7 @@ export function TwentyFourPracticePage({ recoveredRoom, onExit }: { recoveredRoo
       {!progress ? <section className="solo-setup" aria-label="24 点练习设置"><h2>选择玩法</h2>
         <fieldset><legend>题组模式</legend><label><input type="radio" checked={mode === 'practice'} onChange={() => setMode('practice')} />不限时练 10 题</label><label><input type="radio" checked={mode === 'challenge'} onChange={() => setMode('challenge')} />60 秒挑战</label></fieldset>
         <p>每组 10 道可解且不重复的题。答对或看答案后由你手动进入下一题；挑战计时在题间继续。</p>
-        <button type="button" className="solo-primary" disabled={generating} onClick={() => void start()}>{generating ? '正在生成 10 道题…' : error ? '重试生成题组' : '开始练习'}</button>
+        <button type="button" className="solo-primary" disabled={generating} onClick={(event) => void start(mode, event.currentTarget)}>{generating ? '正在生成 10 道题…' : error ? '重试生成题组' : '开始练习'}</button>
       </section> : <div className="solo-play"><div className="twenty-four-practice-top"><div><span className="solo-eyebrow">{progress.mode === 'practice' ? '不限时练 10 题' : '60 秒挑战'}</span><h2>{progress.phase === 'finished' ? '本组结算' : `第 ${progress.index + 1} / 10 题`}</h2></div>
         {progress.mode === 'challenge' && <div className="twenty-four-practice-timer" role="timer" aria-label={`剩余 ${(progress.remainingMs / 1000).toFixed(1)} 秒`}><span>剩余时间</span><strong>{(progress.remainingMs / 1000).toFixed(1)}s</strong></div>}
       </div>
@@ -376,7 +394,7 @@ export function TwentyFourPracticePage({ recoveredRoom, onExit }: { recoveredRoo
       <ol className="twenty-four-practice-overview" aria-label="十题概况">{progress.pack.map((_, index) => <li key={index} className={index === progress.index && progress.phase !== 'finished' ? 'current' : ''} aria-current={index === progress.index && progress.phase !== 'finished' ? 'step' : undefined}>
         <span>{index + 1}</span><small>{progress.answers[index]?.kind === 'independent' ? '独立' : progress.answers[index]?.kind === 'assisted' ? '参考' : progress.answers[index]?.kind === 'revealed' ? '看答案' : index === progress.index && progress.phase !== 'finished' ? '当前' : '待答'}</small>
       </li>)}</ol>
-      {progress.phase === 'finished' ? <section className="twenty-four-practice-result" aria-label="本组结果"><h3>{progress.finishReason === 'time' ? '时间到，本组结束' : '10 题完成'}</h3><p>答对 {stats?.solved} 题，其中独立解出 {stats?.independent} 题、参考解出 {stats?.assisted} 题；查看答案 {stats?.revealed} 题。</p><button type="button" onClick={() => void start()}>再来一组</button></section> : <>
+      {progress.phase === 'finished' ? <section className="twenty-four-practice-result" aria-label="本组结果"><h3>{progress.finishReason === 'time' ? '时间到，本组结束' : '10 题完成'}</h3><p>答对 {stats?.solved} 题，其中独立解出 {stats?.independent} 题、参考解出 {stats?.assisted} 题；查看答案 {stats?.revealed} 题。</p><button type="button" onClick={(event) => void start(mode, event.currentTarget)}>再来一组</button></section> : <>
         <div className="twenty-four-practice-controls"><strong>{running ? progress.phase === 'answered' && progress.mode === 'challenge' ? '题间仍在计时' : '练习进行中' : '已暂停，点击继续后作答'}</strong>
           {running ? <button type="button" onClick={pause}>暂停</button> : <button type="button" disabled={!!conflict} onClick={resume}>继续</button>}
         </div>
@@ -392,11 +410,11 @@ export function TwentyFourPracticePage({ recoveredRoom, onExit }: { recoveredRoo
           {progress.phase === 'answered' && <div className="solution-card" role="status"><span>{progress.answers[progress.index]?.kind === 'independent' ? '独立解出' : progress.answers[progress.index]?.kind === 'assisted' ? '参考解出' : '已查看答案'}</span><strong>{current!.solution}</strong><p>这是一种可行算式。{progress.mode === 'challenge' ? '进入下一题前，计时仍在继续。' : '准备好后进入下一题。'}</p><button ref={nextButton} type="button" disabled={!canOperate} onClick={next}>{progress.index === 9 ? '查看本组结果' : '下一题'}</button></div>}
         </section>
       </>}
-      <div className="solo-actions"><button ref={restartButton} type="button" disabled={generating} onClick={requestRestart}>重新开始</button><button type="button" onClick={exit}>{recoveredRoom ? '返回对局' : '返回大厅'}</button></div>
+      <div className="solo-actions"><button ref={restartButton} type="button" disabled={generating} onClick={(event) => requestRestart(event.currentTarget)}>重新开始</button><button type="button" onClick={exit}>{recoveredRoom ? '返回对局' : '返回大厅'}</button></div>
       <details className="solo-settings"><summary>下组设置</summary><p>切换模式后，重新开始或完成本组再生效。</p><fieldset><legend>题组模式</legend><label><input type="radio" checked={mode === 'practice'} onChange={() => setMode('practice')} />不限时练 10 题</label><label><input type="radio" checked={mode === 'challenge'} onChange={() => setMode('challenge')} />60 秒挑战</label></fieldset></details>
       </div>}
       {error && !progress && <p className="twenty-four-practice-error" role="alert">{error}</p>}
     </>}
-    {restartOpen && <div className="solo-confirm-backdrop" onClick={(event) => { if (event.target === event.currentTarget) { setRestartOpen(false); restartButton.current?.focus(); } }}><div ref={restartDialog} className="solo-confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="twenty-four-restart-title" aria-describedby="twenty-four-restart-description"><h2 id="twenty-four-restart-title">重新开始这组？</h2><p id="twenty-four-restart-description">当前作答与草稿会清空，并按“{mode === 'practice' ? '不限时练习' : '60 秒挑战'}”生成新题组。</p><div><button ref={cancelRestart} type="button" onClick={() => { setRestartOpen(false); restartButton.current?.focus(); }}>继续这组</button><button type="button" className="is-danger" onClick={() => void start()}>清空并重新开始</button></div></div></div>}
+    {restartOpen && <div className="solo-confirm-backdrop" onClick={(event) => { if (event.target === event.currentTarget) { setRestartOpen(false); restartButton.current?.focus(); } }}><div ref={restartDialog} className="solo-confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="twenty-four-restart-title" aria-describedby="twenty-four-restart-description"><h2 id="twenty-four-restart-title">重新开始这组？</h2><p id="twenty-four-restart-description">当前作答与草稿会清空，并按“{mode === 'practice' ? '不限时练习' : '60 秒挑战'}”生成新题组。</p><div><button ref={cancelRestart} type="button" onClick={() => { setRestartOpen(false); restartButton.current?.focus(); }}>继续这组</button><button type="button" className="is-danger" onClick={(event) => void start(mode, event.currentTarget)}>清空并重新开始</button></div></div></div>}
   </main>;
 }
