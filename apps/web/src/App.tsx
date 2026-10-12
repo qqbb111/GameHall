@@ -1,11 +1,16 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { HomePage } from './HomePage';
 import { RoomPage } from './RoomPage';
+import { SoloPracticePage } from './SoloPracticePage';
 import { rememberNickname } from './client-preferences';
 import { useGameHallClient } from './gamehall-client';
+import type { SoloGameId } from './solo-ai';
 
 export function App() {
   const client = useGameHallClient();
+  const [practiceGame, setPracticeGame] = useState<SoloGameId | null>(null);
+  const view = practiceGame ? `practice:${practiceGame}` : client.room ? `room:${client.room.roomId}` : 'home';
+  const previousView = useRef(view);
 
   useEffect(() => {
     const room = client.room;
@@ -14,15 +19,13 @@ export function App() {
     if (me) rememberNickname(me.nickname);
   }, [client.room]);
 
-  if (client.loading) {
-    return (
-      <main className="loading-screen" aria-live="polite">
-        <span className="brand-mark"><span /></span>
-        <strong>GameHall</strong>
-        <p>正在准备好友桌游馆…</p>
-      </main>
-    );
-  }
+  useEffect(() => {
+    if (previousView.current === view) return;
+    previousView.current = view;
+    window.scrollTo({ top: 0, behavior: 'instant' });
+    if (view === 'home' || view.startsWith('practice:')) document.querySelector<HTMLElement>('main h1')?.focus({ preventScroll: true });
+  }, [view]);
 
-  return client.room ? <RoomPage client={client} /> : <HomePage client={client} />;
+  if (practiceGame) return <SoloPracticePage key={practiceGame} gameId={practiceGame} recoveredRoom={!!client.room} onExit={() => setPracticeGame(null)} />;
+  return client.room ? <RoomPage client={client} /> : <HomePage client={client} onPractice={setPracticeGame} />;
 }

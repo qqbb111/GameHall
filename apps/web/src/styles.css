@@ -1521,6 +1521,12 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
 .card-utilities { margin: auto 18px 66px; display: flex; align-items: center; justify-content: space-between; }
 .card-utilities button { min-width: 44px; min-height: 44px; padding: 5px 10px; border: 1px solid rgba(240,206,139,.2); border-radius: 8px; color: #dfc58f; background: rgba(3,24,20,.7); cursor: pointer; }
 .featured-card > button { min-width: 148px; min-height: 44px; right: 18px; bottom: 15px; padding: 0 17px; border-color: #e8c276; color: #183127; background: linear-gradient(135deg,#f4d48e,#d4a654); box-shadow: 0 9px 22px rgba(217,173,97,.2); font-size: 13px; font-weight: 800; }
+.featured-card .card-actions { position: absolute; z-index: 3; left: 18px; right: 18px; bottom: 15px; display: flex; gap: 8px; }
+.featured-card .card-actions button { min-height: 44px; flex: 1 1 0; min-width: 0; display: inline-flex; justify-content: center; align-items: center; gap: 5px; padding: 7px 6px; border-radius: 10px; font-size: 12px; font-weight: 800; line-height: 1.2; cursor: pointer; }
+.featured-card .card-actions .card-create { border: 1px solid #e8c276; color: #183127; background: linear-gradient(135deg,#f4d48e,#d4a654); }
+.featured-card .card-actions .card-create:disabled { opacity: .5; cursor: not-allowed; }
+.featured-card .card-actions .card-practice { border: 1px solid #d6bf83; color: #f5deaa; background: #17392f; }
+.featured-card .card-actions .card-practice:hover { background: #245341; }
 .card-utilities button[aria-pressed='true'] { color: #ffdb91; }
 .featured-card.is-suggested { border-color: #e7c47d; box-shadow: 0 0 0 2px rgba(231,196,125,.38), 0 24px 55px #0005; }
 .coming-reveal { margin-top: 32px; }

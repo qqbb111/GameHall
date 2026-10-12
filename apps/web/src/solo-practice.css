@@ -1,0 +1,30 @@
+.solo-shell { min-height: 100dvh; padding: clamp(20px, 4vw, 48px); color: #f7eed7; background: radial-gradient(circle at 75% 0%, #244c3f 0, transparent 38%), #0b211c; }
+.solo-header, .solo-play, .solo-setup { width: min(100%, 950px); margin-inline: auto; }
+.solo-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; margin-bottom: 24px; }
+.solo-eyebrow { color: #e7c47d; font-size: 12px; letter-spacing: .18em; }
+.solo-header h1 { margin: 8px 0; font: 700 clamp(27px, 4vw, 42px) 'Noto Serif SC', serif; }
+.solo-header p { margin: 0; color: #bdcec3; }
+.solo-header button, .solo-actions button, .solo-error button, .solo-recovered button { min-height: 44px; border: 1px solid #b99257; border-radius: 10px; padding: 9px 16px; color: #f1d49e; background: #17382e; cursor: pointer; }
+.solo-header button:hover, .solo-actions button:not(:disabled):hover, .solo-error button:hover, .solo-recovered button:hover { background: #245341; }
+.solo-actions button:disabled { opacity: .48; cursor: not-allowed; }
+.solo-recovered, .solo-error { width: min(100%, 950px); margin: 0 auto 18px; padding: 12px 16px; border: 1px solid #a77d47; border-radius: 12px; background: #3b3426; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.solo-setup { max-width: 640px; padding: clamp(20px, 4vw, 36px); border: 1px solid #7e966b77; border-radius: 20px; background: #14372e; box-shadow: 0 20px 60px #0003; }
+.solo-setup h2 { margin: 0 0 18px; font-size: 24px; }
+.solo-setup fieldset, .solo-settings fieldset { border: 0; margin: 15px 0; padding: 0; display: flex; flex-wrap: wrap; gap: 10px; }
+.solo-setup legend, .solo-settings legend { width: 100%; margin-bottom: 7px; font-weight: 700; }
+.solo-setup label, .solo-settings label { min-height: 44px; display: inline-flex; align-items: center; gap: 8px; padding: 8px 13px; border: 1px solid #7a9a81; border-radius: 10px; white-space: nowrap; cursor: pointer; }
+.solo-setup label:has(input:checked), .solo-settings label:has(input:checked) { border-color: #e7c47d; background: #38533c; }
+.solo-setup input[type='radio'], .solo-settings input[type='radio'] { appearance: auto; width: 18px; height: 18px; min-width: 18px; min-height: 18px; max-height: 18px; flex: 0 0 18px; margin: 0; padding: 0; border: 0; border-radius: 50%; box-shadow: none; background: transparent; accent-color: #e7c47d; }
+.solo-setup input[type='radio']:hover, .solo-setup input[type='radio']:focus, .solo-settings input[type='radio']:hover, .solo-settings input[type='radio']:focus { background: transparent; }
+.solo-setup p, .solo-settings p { color: #cbd8cb; line-height: 1.6; }
+.solo-primary { min-height: 48px; margin-top: 10px; padding: 10px 24px; border: 0; border-radius: 10px; background: #e9c67d; color: #1b3025; font-weight: 800; cursor: pointer; }
+.solo-toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 14px; padding: 14px 18px; border: 1px solid #78998577; border-radius: 14px; background: #17392f; }
+.solo-toolbar > div { display: flex; flex-wrap: wrap; gap: 8px 18px; color: #e1e8d9; }
+.solo-toolbar strong { color: #f2d289; font-size: 18px; }
+.solo-play > .game-surface { margin: 0 auto; }
+.solo-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 20px 0; }
+.solo-settings { margin: 18px auto 50px; max-width: 670px; padding: 14px 18px; border: 1px solid #64806a77; border-radius: 12px; background: #14362d; }
+.solo-settings summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-weight: 700; }
+.solo-settings p { margin-bottom: 8px; font-size: 13px; }
+.solo-error { margin-top: 10px; }
+@media (max-width: 620px) { .solo-shell { padding-inline: 8px; } .solo-header { flex-direction: column; } .solo-header button { align-self: flex-start; } .solo-toolbar { align-items: flex-start; } .solo-toolbar > div { flex-direction: column; gap: 3px; } .solo-play > .reversi-surface { padding-inline: 4px; } .solo-play .reversi-board { padding: 4px; border-width: 5px; } .solo-play .reversi-surface > :not(.reversi-board) { margin-inline: 8px; } .solo-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } .solo-actions button:last-child { grid-column: 1 / -1; } }

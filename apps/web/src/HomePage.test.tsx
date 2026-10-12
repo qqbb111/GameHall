@@ -204,6 +204,18 @@ describe('HomePage', () => {
     expect(reconnect).toHaveBeenCalledTimes(1);
   });
 
+  it.each(['connecting', 'offline'] as const)('%s 时仍能免昵称进入两种电脑练习，联网开房不可操作', (connection) => {
+    const onPractice = vi.fn();
+    const client = clientStub({ loading: true, connection });
+    render(<HomePage client={client} onPractice={onPractice} />);
+    expect(screen.getByRole('button', { name: '创建四子连线房间' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '创建黑白棋房间' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '和电脑练习四子连线' }));
+    fireEvent.click(screen.getByRole('button', { name: '和电脑练习黑白棋' }));
+    expect(onPractice.mock.calls).toEqual([['connect-four'], ['reversi']]);
+    expect(client.createRoom).not.toHaveBeenCalled();
+  });
+
   it('昵称区域只负责取名，不再包含创建、加入或在线徽标', () => {
     render(<HomePage client={clientStub()} />);
     const panel = screen.getByLabelText('你的昵称').closest('.identity-panel');

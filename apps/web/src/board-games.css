@@ -2,7 +2,7 @@
 .four-turn-badge { padding: 8px 13px; border: 1px solid #b39a67; border-radius: 99px; color: #f7d596; font-weight: 700; }
 .four-columns,.four-board { width: min(100%, 560px); margin-inline: auto; display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); gap: clamp(3px,1vw,8px); }
 .four-columns { margin-top: 20px; margin-bottom: 8px; }
-.four-columns button { min-width: 0; padding: 9px 0; border: 1px solid #c4ad80; border-radius: 10px; background: #e8d6a9; color: #253d37; font-weight: 800; cursor: pointer; transition: transform .16s ease,background .16s ease; }
+.four-columns button { min-width: 0; min-height: 44px; padding: 9px 0; border: 1px solid #c4ad80; border-radius: 10px; background: #e8d6a9; color: #253d37; font-weight: 800; cursor: pointer; transition: transform .16s ease,background .16s ease; }
 .four-columns button:not(:disabled):is(:hover,:focus-visible) { transform: translateY(-3px); background: #fff0c6; outline: 2px solid #f8cd77; outline-offset: 2px; }
 .four-columns button:disabled { opacity: .48; cursor: default; }
 .four-columns button span { display: inline-block; margin-left: 3px; }

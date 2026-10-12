@@ -22,6 +22,7 @@ GameHall 是一个面向好友局的实时多人棋盘游戏平台。玩家使�
 - 可靠动作处理：使用 `actionId` 防止重复提交，使用 `expectedVersion` 拒绝过期状态上的操作；确认超时会以原 `actionId` 有界重试并同步权威棋盘。
 - 持久化与恢复：SQLite WAL、外键、事务和版本化迁移；断线和服务重启具备有限恢复窗口。
 - 连接恢复：WebSocket 不可用时尝试轮询，过期会话自动重建；网络恢复或页面唤醒时使用 `room:sync` 重新取得当前房间快照与消息，旧房间迟到事件及操作回执会被忽略。
+- 单人电脑练习：四子连线与黑白棋可从首页直接进入，无须昵称或实时连接；可选轻松/认真、自己或电脑先手，支持悔棋、重新开始和返回大厅。设置只在明确重新开始后生效；电脑计算超时可重试。练习局保存在当前页面内，不创建房间或写入 SQLite。
 - 多人房间：支持 2–4 人入座、准备、开局、结算和房主重开；多人玩法共享房间生命周期，具体回合由各自规则引擎推进。
 - 房内消息：支持快捷表情和短文本消息，并持久化最近消息。
 - 响应式界面：桌面、窄屏桌面、平板和手机都可从首页输入昵称、加入好友房或创建房间；八款游戏可搜索、按短局/策略/多人/收藏筛选，卡片可查看规则与大致时长，规则弹窗支持键盘操作。收藏保存在当前浏览器，无法存储时仍可临时使用；动画遵从系统减少动态效果设置。入房后回到房间标题，终局结果与棋盘同时可见，房间侧栏展示当前玩法规则；多人玩法由房主在成员准备后开局。
@@ -53,6 +54,7 @@ render.yaml              Render 单实例部署配置
 `packages/game-core` 提供八款游戏的纯规则引擎，服务端统一负责房间状态、动作校验、版本推进、实时广播与恢复；前端根据共享快照渲染对应的棋盘、牌桌和结算界面。
 
 Web 的四子连线、黑白棋电脑搜索模块复用相同纯规则，在独立 Worker 中以有界深度和节点数选择合法动作；战术判断覆盖四连胜负与黑白棋角位。
+首页在会话连接中也可进入电脑练习；若已进入练习后好友房才恢复，页面提示并由玩家自行返回好友对局。
 
 `room:sync` 只接受成员的房间 ID，并在限流范围内重发权威房间、游戏和消息快照。访客会话超过有效期后会建立新身份，无法凭旧会话恢复原座位。
 
@@ -111,6 +113,7 @@ pnpm --filter @gamehall/game-core test -- connect-four
 pnpm --filter @gamehall/server test -- board-games-migration
 pnpm --filter @gamehall/server test:integration -- connect-four
 pnpm --filter @gamehall/web test -- ConnectFourGame
+pnpm --filter @gamehall/web test -- solo-ai SoloPracticePage App HomePage
 pnpm --filter @gamehall/game-core test -- reversi
 pnpm --filter @gamehall/server test:integration -- reversi
 pnpm --filter @gamehall/web test -- ReversiGame

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  applyConnectFourAction, createConnectFourState, createReversiState, legalReversiMoves,
+  applyConnectFourAction, applyReversiAction, createConnectFourState, createReversiState, legalReversiMoves,
   type ConnectFourState, type Player,
 } from '@gamehall/game-core';
 import { chooseConnectFourMove, chooseReversiMove } from './solo-ai';
@@ -46,5 +46,16 @@ describe('solo computer move search', () => {
     const cornerState = { ...initial, board, counts: [3, 3] as [number, number] };
     expect(legalReversiMoves(cornerState.board, 0)).toContainEqual({ row: 0, col: 0 });
     expect(chooseReversiMove(cornerState, difficulty)).toEqual({ type: 'placeDisc', row: 0, col: 0 });
+  });
+
+  it('黑白棋对方自动无步时，电脑可连续从纯规则选择下一手直至结算', () => {
+    const board = Array<Player | null>(64).fill(1);
+    board[0] = null; board[1] = 0; board[63] = null; board[62] = 0;
+    const state = { ...createReversiState(0), board, turn: 1 as Player, counts: [2, 60] as [number, number], moveCount: 58 };
+    const first = applyReversiAction(state, 1, chooseReversiMove(state, 'easy'));
+    expect(first).toMatchObject({ ok: true, state: { phase: 'playing', turn: 1, lastPass: 0 } });
+    if (!first.ok) return;
+    const second = applyReversiAction(first.state, 1, chooseReversiMove(first.state, 'easy'));
+    expect(second).toMatchObject({ ok: true, state: { phase: 'finished', counts: [0, 64], result: { type: 'win', winner: 1 } } });
   });
 });

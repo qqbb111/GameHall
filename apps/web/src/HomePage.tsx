@@ -13,6 +13,7 @@ import {
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import type { GameId } from '@gamehall/protocol';
+import type { SoloGameId } from './solo-ai';
 import { readFavoriteGames, readRememberedNickname, rememberFavoriteGames } from './client-preferences';
 import type { GameHallClient } from './gamehall-client';
 import { games, type GameCardInfo } from './games';
@@ -108,7 +109,7 @@ function CinematicHeroTitle() {
   const center = (HERO_TITLE.length - 1) / 2;
 
   return (
-    <h1 className="cinematic-title" aria-label={HERO_TITLE}>
+    <h1 className="cinematic-title" aria-label={HERO_TITLE} tabIndex={-1}>
       {HERO_TITLE_LINES.map((line, lineIndex) => (
         <span className={`hero-title-line${lineIndex === 1 ? ' is-gold' : ''}`} aria-hidden="true" key={line}>
           {Array.from(line, (character) => {
@@ -147,7 +148,7 @@ function validNickname(value: string): boolean {
   return count >= 1 && count <= 16;
 }
 
-export function HomePage({ client }: { client: GameHallClient }) {
+export function HomePage({ client, onPractice }: { client: GameHallClient; onPractice?: (gameId: SoloGameId) => void }) {
   const [nickname, setNickname] = useState(readRememberedNickname);
   const [roomCode, setRoomCode] = useState(() => {
     const queryCode = parseRoomCodeInput(window.location.search);
@@ -362,9 +363,12 @@ export function HomePage({ client }: { client: GameHallClient }) {
                       <button type="button" onClick={(event) => { ruleTrigger.current = event.currentTarget; setSelectedRules(game); }} aria-label={`查看${game.name}玩法规则`}>玩法规则</button>
                       <button type="button" aria-label={`${favorites.includes(game.id) ? '取消收藏' : '收藏'}${game.name}`} aria-pressed={favorites.includes(game.id)} onClick={() => toggleFavorite(game.id)}><Heart size={16} fill={favorites.includes(game.id) ? 'currentColor' : 'none'} /></button>
                     </div>
-                    <button type="button" aria-label={`创建${game.name}房间`} disabled={pendingGameId !== null || joinPending || client.connection !== 'online'} onClick={() => void createRoom(game.id as GameId)}>
+                    {game.id === 'connect-four' || game.id === 'reversi' ? <div className="card-actions">
+                      <button type="button" className="card-create" aria-label={`创建${game.name}房间`} disabled={pendingGameId !== null || joinPending || client.connection !== 'online'} onClick={() => void createRoom(game.id as GameId)}>创建房间 <ArrowRight size={16} /></button>
+                      <button type="button" className="card-practice" aria-label={`和电脑练习${game.name}`} onClick={() => onPractice?.(game.id as SoloGameId)}>和电脑练习</button>
+                    </div> : <button type="button" aria-label={`创建${game.name}房间`} disabled={pendingGameId !== null || joinPending || client.connection !== 'online'} onClick={() => void createRoom(game.id as GameId)}>
                       <span>{pendingGameId === game.id ? '正在创建' : '创建房间'}</span><ArrowRight size={18} />
-                    </button>
+                    </button>}
                   </article>
                   </SpotlightSurface>
                 </ClickSpark>

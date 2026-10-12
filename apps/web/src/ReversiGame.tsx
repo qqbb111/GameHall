@@ -3,8 +3,8 @@ import { legalReversiMoves, type Player, type ReversiState } from '@gamehall/gam
 import type { GameActionCommand } from '@gamehall/protocol';
 import './board-games.css';
 
-export function ReversiGame({ state, mySeat, active, onAction }: {
-  state: ReversiState; mySeat: Player; active: boolean;
+export function ReversiGame({ state, mySeat, active, onAction, opponentLabel = '好友' }: {
+  state: ReversiState; mySeat: Player; active: boolean; opponentLabel?: string;
   onAction: (action: GameActionCommand['action']) => Promise<unknown>;
 }) {
   const [focusIndex, setFocusIndex] = useState(19);
@@ -30,8 +30,8 @@ export function ReversiGame({ state, mySeat, active, onAction }: {
   }
   const myColor = state.blackPlayer === mySeat ? '黑' : '白';
   return <section className="game-surface reversi-surface" aria-label="黑白棋对局">
-    <div className="surface-title"><div><span>你执{myColor} · 夹住对方棋子后翻转</span><h2 aria-live="polite">{state.phase === 'finished' ? '本局结束' : mine ? '轮到你落子' : '等待好友落子'}</h2></div><div className="reversi-scores"><span>黑 <b>{state.counts[state.blackPlayer]}</b></span><span>白 <b>{state.counts[state.blackPlayer === 0 ? 1 : 0]}</b></span></div></div>
-    {state.lastPass !== null && state.phase === 'playing' && <p className="reversi-pass" role="status">{state.lastPass === mySeat ? '你暂无合法步，已自动跳过；好友继续落子。' : '好友暂无合法步，轮到你继续落子。'}</p>}
+    <div className="surface-title"><div><span>你执{myColor} · 夹住对方棋子后翻转</span><h2 aria-live="polite">{state.phase === 'finished' ? '本局结束' : mine ? '轮到你落子' : `等待${opponentLabel}落子`}</h2></div><div className="reversi-scores"><span>黑 <b>{state.counts[state.blackPlayer]}</b></span><span>白 <b>{state.counts[state.blackPlayer === 0 ? 1 : 0]}</b></span></div></div>
+    {state.lastPass !== null && state.phase === 'playing' && <p className="reversi-pass" role="status">{state.lastPass === mySeat ? `你暂无合法步，已自动跳过；${opponentLabel}继续落子。` : `${opponentLabel}暂无合法步，轮到你继续落子。`}</p>}
     <div className="reversi-board" role="grid" aria-label="8乘8黑白棋棋盘" aria-describedby="reversi-help">{state.board.map((cell, index) => {
       const row = Math.floor(index / 8), col = index % 8;
       const last = state.lastMove?.row === row && state.lastMove.col === col;
