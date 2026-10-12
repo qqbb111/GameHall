@@ -109,7 +109,7 @@ export function RoomPage({ client }: { client: GameHallClient }) {
       if (event.key === 'Escape' && !pendingRef.current) setConfirmAction(null);
       if (event.key !== 'Tab') return;
       const controls = [...(confirmDialogRef.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])];
-      if (!controls.length) return;
+      if (!controls.length) { event.preventDefault(); confirmDialogRef.current?.focus(); return; }
       const first = controls[0]!, last = controls[controls.length - 1]!;
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
@@ -122,6 +122,10 @@ export function RoomPage({ client }: { client: GameHallClient }) {
       confirmTriggerRef.current?.focus();
     };
   }, [confirmAction]);
+
+  useEffect(() => {
+    if (confirmAction && pending) confirmDialogRef.current?.focus();
+  }, [confirmAction, pending]);
 
   useEffect(() => {
     if (!followMessagesRef.current) return;
@@ -157,17 +161,17 @@ export function RoomPage({ client }: { client: GameHallClient }) {
     };
   }, [canPlay, game?.serverTimeMs, game?.view, room?.gameId, room?.serverTimeMs, room?.status]);
   const rematchCount = room?.members.filter((member) => member.rematchReady).length ?? 0;
+  const multiplayer = room?.gameId === 'splendor' || room?.gameId === 'texas-holdem';
   const statusText = useMemo(() => {
     if (!room) return '';
-    if (room.status === 'waiting') return room.members.length < 2 ? '等待好友加入' : room.gameId === 'splendor' ? '等待准备与房主开局' : '等待双方准备';
+    if (room.status === 'waiting') return room.members.length < 2 ? '等待好友加入' : multiplayer ? '等待准备与房主开局' : '等待双方准备';
     if (room.status === 'paused') return '对局暂停';
     if (room.status === 'finished') return '本局结束';
     return '对局进行中';
-  }, [room]);
+  }, [multiplayer, room]);
 
   if (!room) return null;
   const currentRoom = room;
-  const multiplayer = room.gameId === 'splendor' || room.gameId === 'texas-holdem';
   const gameInfo = games.find((candidate) => candidate.id === room.gameId);
   const isHost = room.mySeat === room.hostSeat;
   const hostStartLabel = starting ? '正在开局…' : client.connection !== 'online' ? '等待连接恢复' : room.members.length < 2 ? '等待好友加入'
@@ -201,6 +205,7 @@ export function RoomPage({ client }: { client: GameHallClient }) {
   async function confirmOperation() {
     if (!confirmAction || pending) return;
     const action = confirmAction;
+    pendingRef.current = true;
     setPending(true);
     try {
       const result = action === 'leave'
@@ -208,6 +213,7 @@ export function RoomPage({ client }: { client: GameHallClient }) {
         : await client.submitGameAction({ type: 'resign' });
       if (result.ok) setConfirmAction(null);
     } finally {
+      pendingRef.current = false;
       setPending(false);
     }
   }
@@ -390,7 +396,7 @@ export function RoomPage({ client }: { client: GameHallClient }) {
 
       {confirmAction && (
         <div className="confirm-backdrop" role="presentation" onClick={(event) => { if (event.target === event.currentTarget && !pending) setConfirmAction(null); }}>
-          <section ref={confirmDialogRef} className={`confirm-dialog is-${confirmAction}`} role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-description">
+          <section ref={confirmDialogRef} tabIndex={-1} className={`confirm-dialog is-${confirmAction}`} role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-description">
             <button className="confirm-close" type="button" onClick={() => setConfirmAction(null)} disabled={pending} aria-label="关闭确认窗口"><X size={18} /></button>
             <div className="confirm-icon">{confirmAction === 'leave' ? <DoorOpen size={27} /> : <TriangleAlert size={27} />}</div>
             <span>{confirmAction === 'leave' ? 'LEAVE TABLE' : 'CONCEDE GAME'}</span>

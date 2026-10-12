@@ -170,6 +170,14 @@ describe('RoomPage result copy', () => {
     expect(screen.getByText(/先将五枚己方棋子/)).toBeInTheDocument();
   });
 
+  it('德州扑克多人等待区提示由房主开局', () => {
+    const client = finishedClient('gomoku');
+    client.room = { ...client.room!, gameId: 'texas-holdem', status: 'waiting' };
+    client.game = null;
+    render(<RoomPage client={client} />);
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('等待准备与房主开局');
+  });
+
   it('复赛按钮常驻显示双方同意人数，并支持本端同意与撤回', async () => {
     const requestRematch = vi.fn().mockResolvedValue({ ok: true });
     const rendered = render(<RoomPage client={finishedClient('gomoku', [false, false], requestRematch)} />);
@@ -280,6 +288,32 @@ describe('RoomPage result copy', () => {
     fireEvent.click(screen.getByRole('button', { name: '离开房间' }));
     fireEvent.click(screen.getByRole('button', { name: '确认离开' }));
     await waitFor(() => expect(leaveRoom).toHaveBeenCalledTimes(1));
+  });
+
+  it('确认提交等待期间 Tab 留在禁用按钮的对话框内，Escape 不提前关闭', async () => {
+    let resolveLeave!: (value: { ok: true }) => void;
+    const leaveRoom = vi.fn(() => new Promise<{ ok: true }>((resolve) => { resolveLeave = resolve; }));
+    const client = finishedClient('gomoku');
+    client.leaveRoom = leaveRoom;
+    const rendered = render(<RoomPage client={client} />);
+    const trigger = screen.getByRole('button', { name: '离开房间' });
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('button', { name: '确认离开' }));
+    const dialog = screen.getByRole('alertdialog');
+    expect(leaveRoom).toHaveBeenCalledTimes(1);
+    expect(dialog.querySelectorAll('button:not(:disabled)')).toHaveLength(0);
+    expect(dialog).toHaveFocus();
+    screen.getByRole('heading', { level: 1 }).focus();
+    expect(dialog).not.toHaveFocus();
+    fireEvent.keyDown(window, { key: 'Tab' });
+    expect(dialog).toHaveFocus();
+    fireEvent.keyDown(window, { key: 'Tab', shiftKey: true });
+    expect(dialog).toHaveFocus();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(dialog).toBeInTheDocument();
+    await act(async () => resolveLeave({ ok: true }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    rendered.unmount();
   });
 
   it('认输只提交 resign，并支持八个快捷表情和 100 字自定义消息', async () => {

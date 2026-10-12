@@ -11,6 +11,7 @@ import {
   Users,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import type { GameId } from '@gamehall/protocol';
 import { readFavoriteGames, readRememberedNickname, rememberFavoriteGames } from './client-preferences';
 import type { GameHallClient } from './gamehall-client';
@@ -389,7 +390,7 @@ export function HomePage({ client }: { client: GameHallClient }) {
           </Reveal>
         </section>
       </main>
-      {selectedRules && <div className="rules-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedRules(null); }}>
+      {selectedRules && createPortal(<div className="rules-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedRules(null); }}>
         <div ref={ruleDialog} className="rules-dialog" role="dialog" aria-modal="true" aria-labelledby="rules-title" aria-describedby="rules-description">
           <button type="button" className="rules-close" onClick={() => setSelectedRules(null)} aria-label="关闭玩法规则">×</button>
           <span>玩法规则</span><h2 id="rules-title">{selectedRules.name}</h2>
@@ -397,7 +398,7 @@ export function HomePage({ client }: { client: GameHallClient }) {
           <div className="rules-meta">{selectedRules.players} · {durationLabel(selectedRules)} · {selectedRules.difficulty}</div>
           <button type="button" className="rules-create" disabled={pendingGameId !== null || client.connection !== 'online'} onClick={() => { const gameId = selectedRules.id as GameId; restoreRuleFocus.current = false; setSelectedRules(null); void createRoom(gameId); }}>创建{selectedRules.name}房间</button>
         </div>
-      </div>}
+      </div>, document.body)}
       <footer><span>GameHall</span><p>好友相聚，胜负有度。本站仅提供纯娱乐对局。</p></footer>
     </div>
   );

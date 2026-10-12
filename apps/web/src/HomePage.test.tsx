@@ -165,12 +165,19 @@ describe('HomePage', () => {
     fireEvent.click(trigger);
     const dialog = screen.getByRole('dialog', { name: '璀璨宝石' });
     const close = screen.getByRole('button', { name: '关闭玩法规则' });
+    expect(dialog.closest('[inert]')).toBeNull();
+    expect(dialog.closest('.rules-backdrop')?.parentElement).toBe(document.body);
+    expect(document.querySelector('.site-shell')).toHaveAttribute('inert');
     expect(dialog).toHaveTextContent('15 分');
     expect(close).toHaveFocus();
     fireEvent.keyDown(window, { key: 'Tab', shiftKey: true });
     expect(within(dialog).getByRole('button', { name: '创建璀璨宝石房间' })).toHaveFocus();
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(document.querySelector('.site-shell')).not.toHaveAttribute('inert');
+    expect(trigger).toHaveFocus();
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('button', { name: '关闭玩法规则' }));
     expect(trigger).toHaveFocus();
   });
 
