@@ -26,6 +26,7 @@ import './board-games.css';
 
 function GameGlyph({ kind }: { kind: GameCardInfo['icon'] }) {
   if (kind === 'connect-four') return <div className="home-four" aria-hidden="true">{[0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0].map((value,index)=><i key={index} className={value ? 'coral' : 'gold'} />)}</div>;
+  if (kind === 'reversi') return <div className="home-reversi" aria-hidden="true">{Array.from({ length: 16 }, (_, index) => <i key={index} className={index === 5 || index === 10 ? 'white' : index === 6 || index === 9 ? 'black' : ''} />)}</div>;
   if (kind === 'splendor') return <div className="splendor-home-gems" data-motion="hover-replay" aria-hidden="true">
     <svg className="splendor-gem-aura" viewBox="0 0 240 160" focusable="false"><ellipse cx="120" cy="87" rx="100" ry="48" /><ellipse cx="120" cy="87" rx="82" ry="37" /><path d="M120 2V25M120 139V158M8 87H28M212 87H232M34 25L50 40M190 134L208 150M205 24L188 40M30 150L48 134" /></svg>
     <span className="splendor-gem-dust">{Array.from({ length: 6 }, (_, index) => <i key={index} style={{ '--spark-index': index } as CSSProperties} />)}</span>
@@ -280,7 +281,7 @@ export function HomePage({ client }: { client: GameHallClient }) {
           <Reveal distance={22} respectReducedMotion={false}>
             <div className="section-heading">
               <div><span>FEATURED TABLES</span><h2 id="catalog-title">今晚玩什么？</h2></div>
-              <p>六张桌已经亮灯。选一局，把邀请码发给好友。</p>
+              <p>七张桌已经亮灯。选一局，把邀请码发给好友。</p>
             </div>
           </Reveal>
 

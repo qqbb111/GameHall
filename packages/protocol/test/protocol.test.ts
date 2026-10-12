@@ -45,6 +45,8 @@ describe('shared realtime protocol', () => {
     expect(gameActionSchema.safeParse({ ...base, action: { type: 'drop', col: 6 } }).success).toBe(true);
     expect(gameActionSchema.safeParse({ ...base, action: { type: 'drop', col: 7 } }).success).toBe(false);
     expect(gameActionSchema.safeParse({ ...base, action: { type: 'drop', col: 0, extra: [] } }).success).toBe(false);
+    expect(gameActionSchema.safeParse({ ...base, action: { type: 'placeDisc', row: 7, col: 7 } }).success).toBe(true);
+    expect(gameActionSchema.safeParse({ ...base, action: { type: 'placeDisc', row: 8, col: 0 } }).success).toBe(false);
   });
 
   it('房间消息传输必须携带 UUID 且保持有界', () => {

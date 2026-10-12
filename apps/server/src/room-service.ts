@@ -4,6 +4,7 @@ import type { Server } from 'socket.io';
 import {
   drawSolvableCards,
   connectFourDefinition,
+  reversiDefinition,
   expireTwentyFourRound,
   gomokuDefinition,
   otherPlayer,
@@ -19,6 +20,7 @@ import {
   type ApplyResult,
   type GameResult,
   type ConnectFourState,
+  type ReversiState,
   type GomokuState,
   type Player,
   type QuoridorState,
@@ -92,7 +94,7 @@ type MemberRow = {
   restart_rejoined_at_ms: number | null;
 };
 
-type GameState = GomokuState | ConnectFourState | QuoridorState | TwentyFourState | SplendorState | TexasHoldemState;
+type GameState = GomokuState | ConnectFourState | ReversiState | QuoridorState | TwentyFourState | SplendorState | TexasHoldemState;
 
 const ROOM_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const WAITING_TTL_MS = 2 * 60 * 60_000;
@@ -123,6 +125,7 @@ function parseGameState(room: RoomRow): GameState | null {
   if (room.state_schema_version > currentSchemaVersion) throw new Error(`unsupported ${room.game_id} state schema`);
   if (room.game_id === 'gomoku') return gomokuDefinition.deserialize(room.state_json);
   if (room.game_id === 'connect-four') return connectFourDefinition.deserialize(room.state_json);
+  if (room.game_id === 'reversi') return reversiDefinition.deserialize(room.state_json);
   if (room.game_id === 'quoridor') return quoridorDefinition.deserialize(room.state_json);
   if (room.game_id === 'splendor') return splendorDefinition.deserialize(room.state_json);
   if (room.game_id === 'texas-holdem') return texasHoldemDefinition.deserialize(room.state_json);
@@ -138,6 +141,7 @@ function parseGameState(room: RoomRow): GameState | null {
 function gameStateSchemaVersion(gameId: GameId): number {
   if (gameId === 'gomoku') return gomokuDefinition.stateSchemaVersion;
   if (gameId === 'connect-four') return connectFourDefinition.stateSchemaVersion;
+  if (gameId === 'reversi') return reversiDefinition.stateSchemaVersion;
   if (gameId === 'quoridor') return quoridorDefinition.stateSchemaVersion;
   if (gameId === 'splendor') return splendorDefinition.stateSchemaVersion;
   if (gameId === 'texas-holdem') return texasHoldemDefinition.stateSchemaVersion;
@@ -147,6 +151,7 @@ function gameStateSchemaVersion(gameId: GameId): number {
 function serializeGameState(state: GameState): string {
   if (state.kind === 'gomoku') return gomokuDefinition.serialize(state);
   if (state.kind === 'connect-four') return connectFourDefinition.serialize(state);
+  if (state.kind === 'reversi') return reversiDefinition.serialize(state);
   if (state.kind === 'quoridor') return quoridorDefinition.serialize(state);
   if (state.kind === 'splendor') return splendorDefinition.serialize(state);
   if (state.kind === 'texas-holdem') return texasHoldemDefinition.serialize(state);
@@ -156,6 +161,7 @@ function serializeGameState(state: GameState): string {
 function createInitialGame(gameId: GameId, nowMs: number, role?: Player, seats?: PlayerSeat[]): GameState {
   if (gameId === 'gomoku') return gomokuDefinition.initialize(role ?? randomInt(2) as Player);
   if (gameId === 'connect-four') return connectFourDefinition.initialize(role ?? randomInt(2) as Player);
+  if (gameId === 'reversi') return reversiDefinition.initialize(role ?? randomInt(2) as Player);
   if (gameId === 'quoridor') return quoridorDefinition.initialize(role ?? randomInt(2) as Player);
   if (gameId === 'splendor') {
     const splendorSeats = (seats ?? [0, 1]) as SplendorSeat[];
@@ -171,6 +177,7 @@ function createInitialGame(gameId: GameId, nowMs: number, role?: Player, seats?:
 function gameResult(state: GameState): GameResult | SplendorResult | TexasHoldemResult | null {
   if (state.kind === 'gomoku') return gomokuDefinition.result(state);
   if (state.kind === 'connect-four') return connectFourDefinition.result(state);
+  if (state.kind === 'reversi') return reversiDefinition.result(state);
   if (state.kind === 'quoridor') return quoridorDefinition.result(state);
   if (state.kind === 'splendor') return splendorDefinition.result(state);
   if (state.kind === 'texas-holdem') return texasHoldemDefinition.result(state);
@@ -180,6 +187,7 @@ function gameResult(state: GameState): GameResult | SplendorResult | TexasHoldem
 function viewForPlayer(state: GameState, player: PlayerSeat, nowMs: number, pausedRemainingMs: number | null = null): unknown {
   if (state.kind === 'gomoku') return gomokuDefinition.viewFor(state, requireBinaryPlayer(player), nowMs);
   if (state.kind === 'connect-four') return connectFourDefinition.viewFor(state, requireBinaryPlayer(player), nowMs);
+  if (state.kind === 'reversi') return reversiDefinition.viewFor(state, requireBinaryPlayer(player), nowMs);
   if (state.kind === 'quoridor') return quoridorDefinition.viewFor(state, requireBinaryPlayer(player), nowMs);
   if (state.kind === 'splendor') return splendorDefinition.viewFor(state, player, nowMs);
   if (state.kind === 'texas-holdem') return texasHoldemDefinition.viewFor(state, player, nowMs);
@@ -207,6 +215,13 @@ function validateAndAdvance(state: GameState, actor: PlayerSeat, input: unknown,
     const validation = connectFourDefinition.validateAction(input);
     return validation.ok
       ? { ok: true, result: connectFourDefinition.advance(state, requireBinaryPlayer(actor), validation.action, nowMs) }
+      : validation;
+  }
+  if (state.kind === 'reversi') {
+    if (actor > 1) return { ok: false, message: '双人游戏不支持此座位' };
+    const validation = reversiDefinition.validateAction(input);
+    return validation.ok
+      ? { ok: true, result: reversiDefinition.advance(state, requireBinaryPlayer(actor), validation.action, nowMs) }
       : validation;
   }
   if (state.kind === 'quoridor') {
@@ -601,6 +616,7 @@ export class RoomService {
         let role: Player | undefined;
         if (previous?.kind === 'gomoku') role = otherPlayer(previous.blackPlayer);
         if (previous?.kind === 'connect-four') role = otherPlayer(previous.firstPlayer);
+        if (previous?.kind === 'reversi') role = otherPlayer(previous.blackPlayer);
         if (previous?.kind === 'quoridor') {
           const previousSouth = previous.goalRows[0] === 0 ? 0 : 1;
           role = otherPlayer(previousSouth);
