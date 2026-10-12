@@ -99,12 +99,13 @@ export function TwentyFourPracticePage({ recoveredRoom, onExit }: { recoveredRoo
   }, []);
 
   const markConflict = useCallback((snapshot: Snapshot) => {
+    if (conflictRef.current) return;
     const current = progressRef.current;
-    if (runningRef.current && current?.mode === 'challenge' && current.phase !== 'finished') {
-      const frozen = tickChallenge(current, Math.max(0, current.remainingMs - (deadlineMono.current - performance.now())));
-      progressRef.current = frozen;
-      setProgress(frozen);
-      writeTwentyFourDraft({ progress: frozen, baseToken: knownToken.current, pendingToken: pendingToken.current });
+    if (current) {
+      const local = runningRef.current && current.mode === 'challenge' && current.phase !== 'finished'
+        ? tickChallenge(current, Math.max(0, current.remainingMs - (deadlineMono.current - performance.now()))) : current;
+      if (local !== current) { progressRef.current = local; setProgress(local); }
+      setUnsaved(!writeTwentyFourDraft({ progress: local, baseToken: knownToken.current, pendingToken: pendingToken.current }));
     }
     runningRef.current = false;
     setRunning(false);

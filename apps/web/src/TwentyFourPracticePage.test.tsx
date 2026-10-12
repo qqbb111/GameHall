@@ -159,6 +159,55 @@ describe('24 点单人流程', () => {
     expect(within(second.container).getByRole('button', { name: '继续' })).toBeEnabled();
     expect(within(second.container).queryByText('另一窗口的 24 点进度已改变')).not.toBeInTheDocument();
   });
+  it('已暂停挑战遇到外窗更新会存本标签分支，刷新后仍可比较旧草稿与剩余时间', async () => {
+    const local = { ...newTwentyFourProgress('challenge', pack), draft: '(13-10)*', remainingMs: 49_500 };
+    const base = await writeTwentyFourProgress(local, null, () => true);
+    if (base.kind !== 'saved') throw new Error('seed failed');
+    const view = render(<TwentyFourPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    await screen.findByText('已暂停，点击继续后作答');
+    expect(store.readTwentyFourDraft()).toBeNull();
+    const foreign = { ...local, draft: '(13-10)*7', hints: 1, remainingMs: 48_800 };
+    const saved = await writeTwentyFourProgress(foreign, base.token, () => true);
+    if (saved.kind !== 'saved') throw new Error('foreign save failed');
+    const write = vi.spyOn(store, 'writeTwentyFourProgress');
+    fireEvent.focus(window);
+    await screen.findByText('另一窗口的 24 点进度已改变');
+    expect(store.readTwentyFourDraft()).toMatchObject({ progress: local, baseToken: base.token });
+    expect(write).not.toHaveBeenCalled();
+    view.unmount();
+    render(<TwentyFourPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    await screen.findByText('另一窗口的 24 点进度已改变');
+    expect(screen.getByRole('region', { name: '当前标签预览' })).toHaveTextContent('(13-10)*');
+    expect(screen.getByRole('region', { name: '当前标签预览' })).toHaveTextContent('49.5 秒');
+    expect(screen.getByRole('region', { name: '共享存档预览' })).toHaveTextContent('(13-10)*7');
+    expect(screen.getByRole('region', { name: '共享存档预览' })).toHaveTextContent('48.8 秒');
+    expect((await readTwentyFourSnapshot()).token).toBe(saved.token);
+    expect(write).not.toHaveBeenCalled();
+  });
+  it('已结算结果遇到外窗更新会保留本标签统计，刷新和离开均不写共享存档', async () => {
+    const initial = newTwentyFourProgress('challenge', pack);
+    const local = { ...initial, phase: 'finished' as const, finishReason: 'time' as const, remainingMs: 0,
+      index: 1, answers: [{ kind: 'revealed' as const, expression: null, hints: 0 }] };
+    const base = await writeTwentyFourProgress(local, null, () => true);
+    if (base.kind !== 'saved') throw new Error('seed failed');
+    const view = render(<TwentyFourPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    await screen.findByText('时间到，本组结束');
+    const foreign = { ...initial, phase: 'finished' as const, finishReason: 'time' as const, remainingMs: 0 };
+    const saved = await writeTwentyFourProgress(foreign, base.token, () => true);
+    if (saved.kind !== 'saved') throw new Error('foreign save failed');
+    const write = vi.spyOn(store, 'writeTwentyFourProgress');
+    fireEvent.focus(window);
+    await screen.findByText('另一窗口的 24 点进度已改变');
+    expect(store.readTwentyFourDraft()).toMatchObject({ progress: local, baseToken: base.token });
+    view.unmount();
+    render(<TwentyFourPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    await screen.findByText('另一窗口的 24 点进度已改变');
+    expect(screen.getByRole('region', { name: '当前标签预览' })).toHaveTextContent('1/10 题');
+    expect(screen.getByRole('region', { name: '共享存档预览' })).toHaveTextContent('0/10 题');
+    fireEvent(window, new Event('pagehide'));
+    expect((await readTwentyFourSnapshot()).token).toBe(saved.token);
+    expect(write).not.toHaveBeenCalled();
+  });
   it('未开始和已结算页面隐藏、离开、卸载不生成新存档', async () => {
     const write = vi.spyOn(store, 'writeTwentyFourProgress');
     const empty = render(<TwentyFourPracticePage recoveredRoom={false} onExit={vi.fn()} />);
