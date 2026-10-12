@@ -17,10 +17,10 @@ export type SoloProgressRead =
   | { kind: 'valid'; progress: SoloProgress }
   | { kind: 'empty' | 'invalid' | 'unavailable' };
 export type SoloSnapshot = { read: SoloProgressRead; token: string | null };
-export type SoloWriteResult = { kind: 'saved'; token: string }
+export type SoloWriteResult = { kind: 'saved' | 'uncertain'; token: string }
   | { kind: 'conflict'; snapshot: SoloSnapshot }
   | { kind: 'unavailable' | 'unsupported' | 'superseded' };
-export type SoloDraft = { progress: SoloProgress; baseToken: string | null };
+export type SoloDraft = { progress: SoloProgress; baseToken: string | null; pendingToken?: string | null };
 
 const VERSION = 1;
 export const SOLO_PROGRESS_MAX_BYTES = 65_536;
@@ -220,7 +220,8 @@ export async function writeSoloProgress(progress: SoloProgress, expectedToken: s
 
 export function writeSoloDraft(draft: SoloDraft): boolean {
   try {
-    const encoded = JSON.stringify({ version: VERSION, baseToken: draft.baseToken, progress: encodeSoloProgress(draft.progress) });
+    const encoded = JSON.stringify({ version: VERSION, baseToken: draft.baseToken,
+      ...(draft.pendingToken ? { pendingToken: draft.pendingToken } : {}), progress: encodeSoloProgress(draft.progress) });
     if (new TextEncoder().encode(encoded).byteLength > SOLO_PROGRESS_MAX_BYTES * 2 + 256) return false;
     window.sessionStorage.setItem(soloDraftKey(draft.progress.gameId), encoded);
     return true;
@@ -235,8 +236,10 @@ export function readSoloDraft(gameId: SoloGameId): SoloDraft | null {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
     const record = value as Record<string, unknown>;
     if (record.version !== VERSION || typeof record.progress !== 'string'
-      || record.baseToken !== null && (typeof record.baseToken !== 'string' || record.baseToken.length > SOLO_PROGRESS_MAX_BYTES)) return null;
-    return { progress: decodeSoloProgress(gameId, record.progress), baseToken: record.baseToken as string | null };
+      || record.baseToken !== null && (typeof record.baseToken !== 'string' || record.baseToken.length > SOLO_PROGRESS_MAX_BYTES)
+      || record.pendingToken !== undefined && (typeof record.pendingToken !== 'string' || !/^idb:[0-9a-f-]{36}$/.test(record.pendingToken))) return null;
+    return { progress: decodeSoloProgress(gameId, record.progress), baseToken: record.baseToken as string | null,
+      ...(record.pendingToken ? { pendingToken: record.pendingToken as string } : {}) };
   } catch { return null; }
 }
 

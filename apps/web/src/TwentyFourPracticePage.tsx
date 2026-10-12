@@ -32,10 +32,12 @@ export function TwentyFourPracticePage({ recoveredRoom, onExit }: { recoveredRoo
   const [conflict, setConflict] = useState<Snapshot | null>(null);
   const conflictRef = useRef<Snapshot | null>(null);
   const knownToken = useRef<string | null>(null);
+  const pendingToken = useRef<string | null>(null);
   const epoch = useRef(0);
   const sequence = useRef(0);
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
   const writing = useRef(false);
+  const queuedWrites = useRef(0);
   const [restartOpen, setRestartOpen] = useState(false);
   const restartButton = useRef<HTMLButtonElement>(null);
   const cancelRestart = useRef<HTMLButtonElement>(null);
@@ -52,11 +54,20 @@ export function TwentyFourPracticePage({ recoveredRoom, onExit }: { recoveredRoo
       if (!active) return;
       const draft = readTwentyFourDraft();
       knownToken.current = draft?.baseToken ?? (shared.kind === 'valid' || shared.kind === 'invalid' ? shared.token : null);
-      if (draft && shared.kind === 'valid' && JSON.stringify(draft.progress) === JSON.stringify(shared.progress)) {
+      pendingToken.current = draft?.pendingToken ?? null;
+      const sharedToken = shared.kind === 'valid' || shared.kind === 'invalid' ? shared.token : null;
+      if (draft && pendingToken.current && sharedToken === pendingToken.current) {
+        knownToken.current = sharedToken;
+        pendingToken.current = null;
+        if (shared.kind === 'valid' && JSON.stringify(draft.progress) === JSON.stringify(shared.progress)) clearTwentyFourDraft();
+        else writeTwentyFourDraft({ progress: draft.progress, baseToken: sharedToken });
+      }
+      else if (draft && shared.kind === 'valid' && JSON.stringify(draft.progress) === JSON.stringify(shared.progress)) {
         knownToken.current = shared.token;
+        pendingToken.current = null;
         clearTwentyFourDraft();
       }
-      else if (draft && shared.kind !== 'unavailable' && draft.baseToken !== (shared.kind === 'valid' || shared.kind === 'invalid' ? shared.token : null)) {
+      else if (draft && shared.kind !== 'unavailable' && draft.baseToken !== sharedToken) {
         conflictRef.current = shared; setConflict(shared);
       }
       const loaded = draft?.progress ?? (shared.kind === 'valid' ? shared.progress : null);
@@ -68,28 +79,64 @@ export function TwentyFourPracticePage({ recoveredRoom, onExit }: { recoveredRoo
     return () => { active = false; packGenerator.cancel(); };
   }, []);
 
+  const markConflict = useCallback((snapshot: Snapshot) => {
+    const current = progressRef.current;
+    if (runningRef.current && current?.mode === 'challenge' && current.phase !== 'finished') {
+      const frozen = tickChallenge(current, Math.max(0, current.remainingMs - (deadlineMono.current - performance.now())));
+      progressRef.current = frozen;
+      setProgress(frozen);
+      writeTwentyFourDraft({ progress: frozen, baseToken: knownToken.current, pendingToken: pendingToken.current });
+    }
+    runningRef.current = false;
+    setRunning(false);
+    conflictRef.current = snapshot;
+    setConflict(snapshot);
+  }, []);
+
   const persist = useCallback((next: TwentyFourProgress, forceShared = false) => {
     progressRef.current = next;
     setProgress(next);
-    const draftSaved = writeTwentyFourDraft({ progress: next, baseToken: knownToken.current });
+    const draftSaved = writeTwentyFourDraft({ progress: next, baseToken: knownToken.current, pendingToken: pendingToken.current });
     setUnsaved(!draftSaved);
     const seq = ++sequence.current;
     const thisEpoch = epoch.current;
-    if (conflictRef.current || !forceShared && next.mode === 'challenge' && runningRef.current && seq % 4 !== 0) return;
+    if (conflictRef.current || !forceShared && next.mode === 'challenge' && runningRef.current && (seq % 4 !== 0 || queuedWrites.current > 0)) return;
+    queuedWrites.current++;
     saveQueue.current = saveQueue.current.then(async () => {
-      if (thisEpoch !== epoch.current || conflictRef.current) return;
-      writing.current = true;
-      const result = await writeTwentyFourProgress(next, knownToken.current, () => thisEpoch === epoch.current && !conflictRef.current);
-      writing.current = false;
-      if (!mounted.current || thisEpoch !== epoch.current) return;
-      if (result.kind === 'conflict') { conflictRef.current = result.snapshot; setConflict(result.snapshot); return; }
-      if (result.kind === 'saved') {
-        knownToken.current = result.token;
-        if (seq === sequence.current) { clearTwentyFourDraft(); setUnsaved(false); setSaveNotice('进度已保存'); }
-        else if (progressRef.current) setUnsaved(!writeTwentyFourDraft({ progress: progressRef.current, baseToken: result.token }));
-      } else if (seq === sequence.current) setSaveNotice('共享保存暂不可用；仅当前标签的草稿可恢复。');
+      try {
+        if (thisEpoch !== epoch.current || conflictRef.current) return;
+        writing.current = true;
+        if (pendingToken.current) {
+          const shared = await readTwentyFourSnapshot();
+          if (shared.kind === 'unavailable') { setSaveNotice('共享保存结果尚待确认；当前标签草稿已保留。'); return; }
+          const sharedToken = shared.kind === 'valid' || shared.kind === 'invalid' ? shared.token : null;
+          if (sharedToken === pendingToken.current) { knownToken.current = sharedToken; pendingToken.current = null; }
+          else if (sharedToken === knownToken.current) { pendingToken.current = null; }
+          else { if (mounted.current && thisEpoch === epoch.current) markConflict(shared); return; }
+        }
+        const snapshot = forceShared ? next : progressRef.current ?? next;
+        const result = await writeTwentyFourProgress(snapshot, knownToken.current,
+          () => thisEpoch === epoch.current && !conflictRef.current,
+          (token) => {
+            if (!mounted.current || thisEpoch !== epoch.current || conflictRef.current) return;
+            pendingToken.current = token;
+            if (progressRef.current) setUnsaved(!writeTwentyFourDraft({ progress: progressRef.current, baseToken: knownToken.current, pendingToken: token }));
+          });
+        if (!mounted.current || thisEpoch !== epoch.current) return;
+        if (result.kind === 'conflict') { markConflict(result.snapshot); return; }
+        if (result.kind === 'saved') {
+          knownToken.current = result.token;
+          pendingToken.current = null;
+          if (seq === sequence.current) { clearTwentyFourDraft(); setUnsaved(false); setSaveNotice('进度已保存'); }
+          else if (progressRef.current) setUnsaved(!writeTwentyFourDraft({ progress: progressRef.current, baseToken: result.token }));
+        } else if (result.kind === 'uncertain') {
+          pendingToken.current = result.token;
+          if (progressRef.current) setUnsaved(!writeTwentyFourDraft({ progress: progressRef.current, baseToken: knownToken.current, pendingToken: result.token }));
+          setSaveNotice('共享保存结果尚待确认；当前标签草稿已保留。');
+        } else if (seq === sequence.current) setSaveNotice('共享保存暂不可用；仅当前标签的草稿可恢复。');
+      } finally { writing.current = false; queuedWrites.current--; }
     });
-  }, []);
+  }, [markConflict]);
 
   const advanceClock = useCallback(() => {
     if (!runningRef.current) return;
@@ -112,6 +159,7 @@ export function TwentyFourPracticePage({ recoveredRoom, onExit }: { recoveredRoo
     runningRef.current = true;
     setRunning(true);
     setSaveNotice(null);
+    persist(progressRef.current, true);
   }
   useEffect(() => {
     const interval = window.setInterval(advanceClock, 250);
@@ -131,7 +179,7 @@ export function TwentyFourPracticePage({ recoveredRoom, onExit }: { recoveredRoo
       if (runningRef.current && progressRef.current) {
         const current = progressRef.current;
         const next = current.mode === 'challenge' ? tickChallenge(current, Math.max(0, current.remainingMs - (deadlineMono.current - performance.now()))) : current;
-        writeTwentyFourDraft({ progress: next, baseToken: knownToken.current });
+        writeTwentyFourDraft({ progress: next, baseToken: knownToken.current, pendingToken: pendingToken.current });
       }
       packGenerator.cancel();
     };
@@ -140,19 +188,23 @@ export function TwentyFourPracticePage({ recoveredRoom, onExit }: { recoveredRoo
     if (!booted) return;
     let active = true;
     const check = async () => {
-      if (writing.current || conflictRef.current) return;
+      if (writing.current || queuedWrites.current || conflictRef.current) return;
       const seq = sequence.current, thisEpoch = epoch.current, token = knownToken.current;
       const shared = await readTwentyFourSnapshot();
       if (!active || seq !== sequence.current || thisEpoch !== epoch.current || token !== knownToken.current || shared.kind === 'unavailable') return;
       const latest = shared.kind === 'valid' || shared.kind === 'invalid' ? shared.token : null;
-      if (latest !== token) { conflictRef.current = shared; setConflict(shared); if (runningRef.current) pause(); }
+      if (pendingToken.current && latest === pendingToken.current) {
+        knownToken.current = latest;
+        pendingToken.current = null;
+        if (progressRef.current) persist(progressRef.current, true);
+      } else if (latest !== token) markConflict(shared);
     };
     const unsubscribe = subscribeTwentyFourStore(() => { void check(); });
     const onFocus = () => { if (document.visibilityState === 'visible') void check(); };
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onFocus);
     return () => { active = false; unsubscribe(); window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onFocus); };
-  }, [booted, pause]);
+  }, [booted, markConflict, persist]);
 
   async function start(nextMode = mode) {
     if (generating) return;
@@ -243,6 +295,7 @@ export function TwentyFourPracticePage({ recoveredRoom, onExit }: { recoveredRoo
     const snapshot = await readTwentyFourSnapshot();
     if (snapshot.kind !== 'valid') { setError('共享进度暂不可读取，请稍后重试。'); return; }
     knownToken.current = snapshot.token;
+    pendingToken.current = null;
     conflictRef.current = null; setConflict(null); clearTwentyFourDraft();
     progressRef.current = snapshot.progress; setProgress(snapshot.progress); setMode(snapshot.progress.mode);
     setEditorRevision((revision) => revision + 1);
@@ -257,13 +310,35 @@ export function TwentyFourPracticePage({ recoveredRoom, onExit }: { recoveredRoo
     const observed = conflictRef.current;
     const observedToken = observed?.kind === 'valid' || observed?.kind === 'invalid' ? observed.token : null;
     const latestToken = latest.kind === 'valid' || latest.kind === 'invalid' ? latest.token : null;
+    if (pendingToken.current && latestToken === pendingToken.current) {
+      knownToken.current = latestToken;
+      pendingToken.current = null;
+      conflictRef.current = null; setConflict(null);
+      persist(local, true);
+      setError(null); setSaveNotice('已确认当前题组的保存，计时仍暂停');
+      return;
+    }
     if (latestToken !== observedToken) { conflictRef.current = latest; setConflict(latest); setError('另一窗口又更新了，请重新比较后选择。'); return; }
     const currentEpoch = ++epoch.current;
-    const result = await writeTwentyFourProgress(local, latestToken, () => currentEpoch === epoch.current);
+    const result = await writeTwentyFourProgress(local, latestToken, () => currentEpoch === epoch.current,
+      (token) => {
+        if (!mounted.current || currentEpoch !== epoch.current) return;
+        knownToken.current = latestToken;
+        pendingToken.current = token;
+        setUnsaved(!writeTwentyFourDraft({ progress: local, baseToken: latestToken, pendingToken: token }));
+      });
     if (currentEpoch !== epoch.current) return;
     if (result.kind === 'conflict') { conflictRef.current = result.snapshot; setConflict(result.snapshot); return; }
+    if (result.kind === 'uncertain') {
+      knownToken.current = latestToken;
+      pendingToken.current = result.token;
+      setUnsaved(!writeTwentyFourDraft({ progress: local, baseToken: latestToken, pendingToken: result.token }));
+      setError('共享保存结果尚待确认，当前进度仍在此标签。');
+      return;
+    }
     if (result.kind !== 'saved') { setError('保存失败，当前进度仍在此标签。'); return; }
     knownToken.current = result.token;
+    pendingToken.current = null;
     conflictRef.current = null; setConflict(null); clearTwentyFourDraft(); setUnsaved(false);
     setError(null); setSaveNotice('当前题组已保存，计时仍暂停');
   }

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fixturePack } from './twenty-four-fixture';
 import { newTwentyFourProgress } from './twenty-four-practice';
 import { clearTwentyFourDraft, readTwentyFourDraft, readTwentyFourSnapshot, writeTwentyFourDraft, writeTwentyFourProgress } from './twenty-four-store';
+import { captureStorageTimers, holdFirstWriteCompletion } from './idb-late-ack.test-helper';
 
 describe('24 点独立存档', () => {
   afterEach(() => { clearTwentyFourDraft(); vi.restoreAllMocks(); });
@@ -30,5 +31,48 @@ describe('24 点独立存档', () => {
     const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage) { if (this === window.sessionStorage) throw new Error('quota'); });
     expect(writeTwentyFourDraft({ progress, baseToken: null })).toBe(false);
     setItem.mockRestore();
+  });
+  it('事务已提交但完成回调超过时限时，以本次 UUID 读回确认保存', async () => {
+    const held = holdFirstWriteCompletion();
+    const timers = captureStorageTimers();
+    const progress = newTwentyFourProgress('practice', fixturePack());
+    const pending = writeTwentyFourProgress(progress, null, () => true);
+    await vi.waitFor(() => expect(held()).toBe(true));
+    await vi.waitFor(async () => expect((await readTwentyFourSnapshot()).kind).toBe('valid'));
+    expect(timers.length).toBeGreaterThanOrEqual(2);
+    timers[1]!();
+    const result = await pending;
+    expect(result.kind).toBe('saved');
+    if (result.kind === 'saved') expect((await readTwentyFourSnapshot()).token).toBe(result.token);
+  });
+  it('未提交就 abort 不得报成功；真正的外窗 UUID 仍是冲突', async () => {
+    const progress = newTwentyFourProgress('practice', fixturePack());
+    const put = IDBObjectStore.prototype.put;
+    const aborting = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (this: IDBObjectStore, value, key) {
+      const request = put.call(this, value, key);
+      this.transaction.abort();
+      return request;
+    });
+    expect(await writeTwentyFourProgress(progress, null, () => true)).toEqual({ kind: 'unavailable' });
+    expect((await readTwentyFourSnapshot()).kind).toBe('empty');
+    aborting.mockRestore();
+    const foreign = await writeTwentyFourProgress(progress, null, () => true);
+    expect(foreign.kind).toBe('saved');
+    expect((await writeTwentyFourProgress(progress, null, () => true)).kind).toBe('conflict');
+  });
+  it('超时读回若已是另一窗口 UUID，应报告真实冲突', async () => {
+    const held = holdFirstWriteCompletion();
+    const timers = captureStorageTimers();
+    const progress = newTwentyFourProgress('practice', fixturePack());
+    const pending = writeTwentyFourProgress(progress, null, () => true);
+    await vi.waitFor(() => expect(held()).toBe(true));
+    let first = await readTwentyFourSnapshot();
+    await vi.waitFor(async () => { first = await readTwentyFourSnapshot(); expect(first.kind).toBe('valid'); });
+    if (first.kind !== 'valid') throw new Error('first write did not commit');
+    const foreign = await writeTwentyFourProgress({ ...progress, draft: '1+' }, first.token, () => true);
+    expect(foreign.kind).toBe('saved');
+    timers[1]!();
+    const result = await pending;
+    expect(result).toMatchObject({ kind: 'conflict', snapshot: { token: foreign.kind === 'saved' ? foreign.token : null } });
   });
 });

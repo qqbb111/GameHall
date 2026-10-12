@@ -4,6 +4,8 @@ import { StrictMode } from 'react';
 import { TwentyFourPracticePage } from './TwentyFourPracticePage';
 import { fixturePack } from './twenty-four-fixture';
 import { readTwentyFourSnapshot, writeTwentyFourDraft, writeTwentyFourProgress } from './twenty-four-store';
+import * as store from './twenty-four-store';
+import { captureStorageTimers, holdFirstWriteCompletion } from './idb-late-ack.test-helper';
 import { newTwentyFourProgress } from './twenty-four-practice';
 
 const pack = fixturePack();
@@ -146,5 +148,72 @@ describe('24 点单人流程', () => {
       });
     }
     expect(screen.queryByText('另一窗口的 24 点进度已改变')).not.toBeInTheDocument();
+  });
+  it('丢失写入回执且暂时读不到共享库时保留 pending 草稿，之后认出本页 UUID 并继续 CAS', async () => {
+    const initial = newTwentyFourProgress('practice', pack);
+    const base = await writeTwentyFourProgress(initial, null, () => true);
+    if (base.kind !== 'saved') throw new Error('seed failed');
+    render(<TwentyFourPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    await screen.findByText('已暂停，点击继续后作答');
+    fireEvent.click(screen.getByRole('button', { name: '继续' }));
+    await screen.findByText('进度已保存');
+    const own = 'idb:11111111-1111-4111-8111-111111111111';
+    const next = 'idb:22222222-2222-4222-8222-222222222222';
+    const write = vi.spyOn(store, 'writeTwentyFourProgress')
+      .mockImplementationOnce(async (_progress, _expected, _current, onAttempt) => { onAttempt?.(own); return { kind: 'uncertain', token: own }; })
+      .mockResolvedValueOnce({ kind: 'saved', token: next });
+    const read = vi.spyOn(store, 'readTwentyFourSnapshot')
+      .mockResolvedValueOnce({ kind: 'unavailable', token: null })
+      .mockResolvedValueOnce({ kind: 'valid', progress: initial, token: own });
+    const input = screen.getByLabelText('输入算式');
+    fireEvent.change(input, { target: { value: '1+' } });
+    await waitFor(() => expect(store.readTwentyFourDraft()?.pendingToken).toBe(own));
+    fireEvent.change(input, { target: { value: '1+2' } });
+    await waitFor(() => expect(read).toHaveBeenCalledTimes(1));
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(store.readTwentyFourDraft()?.progress.draft).toBe('1+2');
+    fireEvent.change(input, { target: { value: '1+2+' } });
+    await waitFor(() => expect(write).toHaveBeenCalledTimes(2));
+    expect(write.mock.calls[1]?.[1]).toBe(own);
+    expect(screen.queryByText('另一窗口的 24 点进度已改变')).not.toBeInTheDocument();
+  });
+  it('刷新后 pending 草稿遇到本页 UUID 可继续；遇到外窗 UUID 仍提示冲突', async () => {
+    const initial = newTwentyFourProgress('practice', pack);
+    const own = 'idb:33333333-3333-4333-8333-333333333333';
+    const foreign = 'idb:44444444-4444-4444-8444-444444444444';
+    writeTwentyFourDraft({ progress: { ...initial, draft: '8+' }, baseToken: null, pendingToken: own });
+    const read = vi.spyOn(store, 'readTwentyFourSnapshot').mockResolvedValueOnce({ kind: 'valid', progress: initial, token: own });
+    const first = render(<TwentyFourPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    await screen.findByText('已暂停，点击继续后作答');
+    expect(store.readTwentyFourDraft()).toMatchObject({ baseToken: own, progress: { draft: '8+' } });
+    expect(screen.queryByText('另一窗口的 24 点进度已改变')).not.toBeInTheDocument();
+    first.unmount();
+    writeTwentyFourDraft({ progress: { ...initial, draft: '8+' }, baseToken: null, pendingToken: own });
+    read.mockResolvedValueOnce({ kind: 'valid', progress: initial, token: foreign });
+    render(<TwentyFourPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    await screen.findByText('另一窗口的 24 点进度已改变');
+    expect(store.readTwentyFourDraft()?.pendingToken).toBe(own);
+    expect(screen.getByRole('button', { name: '继续' })).toBeDisabled();
+  });
+  it('写入已提交但 ACK 尚未返回时卸载，刷新仍凭写前记录的 UUID 恢复而不自冲突', async () => {
+    const initial = newTwentyFourProgress('practice', pack);
+    const base = await writeTwentyFourProgress(initial, null, () => true);
+    if (base.kind !== 'saved') throw new Error('seed failed');
+    const first = render(<TwentyFourPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    await screen.findByText('已暂停，点击继续后作答');
+    const held = holdFirstWriteCompletion();
+    const timers = captureStorageTimers();
+    fireEvent.click(screen.getByRole('button', { name: '继续' }));
+    fireEvent.change(screen.getByLabelText('输入算式'), { target: { value: '8+' } });
+    await vi.waitFor(() => expect(held()).toBe(true));
+    let committed = await readTwentyFourSnapshot();
+    await vi.waitFor(async () => { committed = await readTwentyFourSnapshot(); expect(committed.token).not.toBe(base.token); });
+    expect(store.readTwentyFourDraft()?.pendingToken).toBe(committed.token);
+    first.unmount();
+    render(<TwentyFourPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    await screen.findByText('已暂停，点击继续后作答');
+    expect(screen.getByLabelText('输入算式')).toHaveValue('8+');
+    expect(screen.queryByText('另一窗口的 24 点进度已改变')).not.toBeInTheDocument();
+    timers[1]!();
   });
 });

@@ -21,7 +21,11 @@ type HintState = { kind: 'idle' | 'pending' } | { kind: 'ready'; hint: SoloHint 
 
 async function bootProgress(gameId: SoloGameId) {
   const shared = await readSharedSoloSnapshot(gameId);
-  const draft = readSoloDraft(gameId);
+  let draft = readSoloDraft(gameId);
+  if (draft?.pendingToken && shared.read.kind !== 'unavailable' && shared.token === draft.pendingToken) {
+    draft = { progress: draft.progress, baseToken: shared.token };
+    writeSoloDraft(draft);
+  }
   const legacy = shared.read.kind === 'unavailable' && !draft ? readSoloSnapshot(gameId) : null;
   if (draft && shared.token === draft.baseToken && shared.read.kind === 'valid'
     && JSON.stringify(draft.progress) === JSON.stringify(shared.read.progress)) {
@@ -160,10 +164,12 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
   const [conflict, setConflict] = useState<SoloSnapshot | null>(null);
   const conflictRef = useRef<SoloSnapshot | null>(null);
   const knownTokenRef = useRef<string | null>(null);
+  const pendingTokenRef = useRef<string | null>(null);
   const latestProgressRef = useRef<SoloProgress | null>(null);
   const saveSequence = useRef(0);
   const saveEpoch = useRef(0);
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  const queuedWrites = useRef(0);
   const [thinking, setThinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
@@ -208,6 +214,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
         setHistoryLength(progress.history.length);
       }
       knownTokenRef.current = loaded.draft?.baseToken ?? loaded.legacy?.token ?? loaded.shared.token;
+      pendingTokenRef.current = loaded.draft?.pendingToken ?? null;
       latestProgressRef.current = loaded.draft?.progress ?? null;
       conflictRef.current = loaded.conflict;
       setConflict(loaded.conflict);
@@ -232,37 +239,60 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     latestProgressRef.current = progress;
     const sequence = ++saveSequence.current;
     const epoch = saveEpoch.current;
-    const draftSaved = writeSoloDraft({ progress, baseToken: knownTokenRef.current });
+    const draftSaved = writeSoloDraft({ progress, baseToken: knownTokenRef.current, pendingToken: pendingTokenRef.current });
     setUnsaved(!draftSaved);
     if (!canShareSoloProgress()) { setShareLimited(true); return; }
     setShareLimited(false);
     if (conflictRef.current) return;
+    queuedWrites.current++;
     saveQueue.current = saveQueue.current.then(async () => {
-      if (epoch !== saveEpoch.current || conflictRef.current) return;
-      const result = await writeSharedSoloProgress(progress, knownTokenRef.current, () => epoch === saveEpoch.current && !conflictRef.current);
-      if (epoch !== saveEpoch.current) return;
-      if (result.kind === 'conflict') { showConflict(result.snapshot); return; }
-      if (result.kind === 'unsupported') { setShareLimited(true); return; }
-      if (result.kind !== 'saved') {
-        if (sequence !== saveSequence.current) return;
-        const currentDraft = readSoloDraft(gameId);
-        const latestDraftSaved = !!currentDraft && !!latestProgressRef.current
-          && JSON.stringify(currentDraft.progress) === JSON.stringify(latestProgressRef.current);
-        setUnsaved(!latestDraftSaved);
-        setLocalOnly(latestDraftSaved);
-        return;
-      }
-      knownTokenRef.current = result.token;
-      if (sequence === saveSequence.current) {
-        clearSoloDraft(gameId);
-        setUnsaved(false);
-      } else if (latestProgressRef.current) {
-        setUnsaved(!writeSoloDraft({ progress: latestProgressRef.current, baseToken: result.token }));
-      }
-      setLocalOnly(false);
-      const latest = await readSharedSoloSnapshot(gameId);
-      if (epoch !== saveEpoch.current || knownTokenRef.current !== result.token) return;
-      if (latest.token !== result.token || latest.read.kind === 'invalid') showConflict(latest);
+      try {
+        if (epoch !== saveEpoch.current || conflictRef.current) return;
+        if (pendingTokenRef.current) {
+          const shared = await readSharedSoloSnapshot(gameId);
+          if (shared.read.kind === 'unavailable') { setLocalOnly(true); return; }
+          if (shared.token === pendingTokenRef.current) { knownTokenRef.current = shared.token; pendingTokenRef.current = null; }
+          else if (shared.token === knownTokenRef.current) { pendingTokenRef.current = null; }
+          else { showConflict(shared); return; }
+        }
+        const result = await writeSharedSoloProgress(progress, knownTokenRef.current,
+          () => epoch === saveEpoch.current && !conflictRef.current,
+          (token) => {
+            if (epoch !== saveEpoch.current || conflictRef.current) return;
+            pendingTokenRef.current = token;
+            if (latestProgressRef.current) setUnsaved(!writeSoloDraft({ progress: latestProgressRef.current, baseToken: knownTokenRef.current, pendingToken: token }));
+          });
+        if (epoch !== saveEpoch.current) return;
+        if (result.kind === 'conflict') { showConflict(result.snapshot); return; }
+        if (result.kind === 'unsupported') { setShareLimited(true); return; }
+        if (result.kind === 'uncertain') {
+          pendingTokenRef.current = result.token;
+          if (latestProgressRef.current) setUnsaved(!writeSoloDraft({ progress: latestProgressRef.current, baseToken: knownTokenRef.current, pendingToken: result.token }));
+          setLocalOnly(true);
+          return;
+        }
+        if (result.kind !== 'saved') {
+          if (sequence !== saveSequence.current) return;
+          const currentDraft = readSoloDraft(gameId);
+          const latestDraftSaved = !!currentDraft && !!latestProgressRef.current
+            && JSON.stringify(currentDraft.progress) === JSON.stringify(latestProgressRef.current);
+          setUnsaved(!latestDraftSaved);
+          setLocalOnly(latestDraftSaved);
+          return;
+        }
+        knownTokenRef.current = result.token;
+        pendingTokenRef.current = null;
+        if (sequence === saveSequence.current) {
+          clearSoloDraft(gameId);
+          setUnsaved(false);
+        } else if (latestProgressRef.current) {
+          setUnsaved(!writeSoloDraft({ progress: latestProgressRef.current, baseToken: result.token }));
+        }
+        setLocalOnly(false);
+        const latest = await readSharedSoloSnapshot(gameId);
+        if (epoch !== saveEpoch.current || knownTokenRef.current !== result.token) return;
+        if (latest.read.kind !== 'unavailable' && (latest.token !== result.token || latest.read.kind === 'invalid')) showConflict(latest);
+      } finally { queuedWrites.current--; }
     });
   }, [gameId, showConflict]);
 
@@ -272,13 +302,19 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     const saveEpochForCleanup = saveEpoch;
     const checkShared = async (event?: StorageEvent) => {
       if (event && event.key !== null && event.key !== soloProgressKey(gameId)) return;
+      if (queuedWrites.current || conflictRef.current) return;
       const tokenBeforeRead = knownTokenRef.current;
       const sequenceBeforeRead = saveSequence.current;
       const epochBeforeRead = saveEpoch.current;
       const latest = await readSharedSoloSnapshot(gameId);
       if (active && tokenBeforeRead === knownTokenRef.current && sequenceBeforeRead === saveSequence.current
-          && epochBeforeRead === saveEpoch.current && latest.read.kind !== 'unavailable'
-          && (latest.token !== knownTokenRef.current || latest.read.kind === 'invalid')) showConflict(latest);
+          && epochBeforeRead === saveEpoch.current && !queuedWrites.current && latest.read.kind !== 'unavailable') {
+        if (pendingTokenRef.current && latest.token === pendingTokenRef.current) {
+          knownTokenRef.current = latest.token;
+          pendingTokenRef.current = null;
+          if (stateRef.current) persist(stateRef.current);
+        } else if (latest.token !== knownTokenRef.current || latest.read.kind === 'invalid') showConflict(latest);
+      }
     };
     const onStorage = (event: StorageEvent) => { void checkShared(event); };
     const onVisible = () => { if (document.visibilityState === 'visible') void checkShared(); };
@@ -587,6 +623,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     setActiveDifficulty(progress.difficulty);
     setActiveStarter(progress.starter);
     knownTokenRef.current = latest.token;
+    pendingTokenRef.current = null;
     latestProgressRef.current = null;
     clearSoloDraft(gameId);
     conflictRef.current = null;
@@ -613,6 +650,15 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     if (latest.read.kind === 'unavailable') {
       setLocalOnly(true); setResolvingConflict(false); return;
     }
+    if (pendingTokenRef.current && latest.token === pendingTokenRef.current) {
+      knownTokenRef.current = latest.token;
+      pendingTokenRef.current = null;
+      conflictRef.current = null;
+      setConflict(null);
+      setResolvingConflict(false);
+      if (stateRef.current) persist(stateRef.current);
+      return;
+    }
     if (latest.token !== conflict.token || latest.read.kind !== conflict.read.kind) {
       showConflict(latest);
       setResolvingConflict(false);
@@ -626,13 +672,20 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     const sequence = saveSequence.current;
     const epoch = ++saveEpoch.current;
     const result = await writeSharedSoloProgress(progress, latest.token,
-      () => epoch === saveEpoch.current && sequence === saveSequence.current);
+      () => epoch === saveEpoch.current && sequence === saveSequence.current,
+      (token) => {
+        if (epoch !== saveEpoch.current || sequence !== saveSequence.current) return;
+        knownTokenRef.current = latest.token;
+        pendingTokenRef.current = token;
+        writeSoloDraft({ progress, baseToken: latest.token, pendingToken: token });
+      });
     if (epoch !== saveEpoch.current) return;
     setResolvingConflict(false);
     if (result.kind === 'conflict') { showConflict(result.snapshot); return; }
     if (result.kind === 'superseded') return;
     if (result.kind !== 'saved') { setLocalOnly(true); return; }
     knownTokenRef.current = result.token;
+    pendingTokenRef.current = null;
     const afterWrite = await readSharedSoloSnapshot(gameId);
     if (epoch !== saveEpoch.current) return;
     if (afterWrite.token !== result.token || afterWrite.read.kind === 'invalid') {

@@ -4,6 +4,7 @@ import { applyConnectFourAction, createConnectFourState, createDotsAndBoxesState
 import { dotsAfter, type DotsEdge } from './dots-solo';
 import { readSharedSoloSnapshot, writeSharedSoloProgress } from './solo-shared-store';
 import { readSoloSnapshot, saveSoloProgress, soloProgressKey, type SoloProgress } from './solo-progress';
+import { captureStorageTimers, holdFirstWriteCompletion } from './idb-late-ack.test-helper';
 
 function progress(col: number | null = null): SoloProgress {
   const initial = createConnectFourState(0);
@@ -83,6 +84,32 @@ describe('IndexedDB solo practice authority', () => {
     expect(await writeSharedSoloProgress(progress(2), before.token)).toEqual({ kind: 'unavailable' });
     expect((await readSharedSoloSnapshot('connect-four')).read).toEqual({ kind: 'empty' });
     expect(window.localStorage.getItem(soloProgressKey('connect-four'))).toBeNull();
+  });
+
+  it('confirms a committed write by its UUID when the completion callback arrives after timeout', async () => {
+    const held = holdFirstWriteCompletion();
+    const timers = captureStorageTimers();
+    const pending = writeSharedSoloProgress(progress(2), null);
+    await vi.waitFor(() => expect(held()).toBe(true));
+    await vi.waitFor(async () => expect((await readSharedSoloSnapshot('connect-four')).read.kind).toBe('valid'));
+    timers[1]!();
+    const result = await pending;
+    expect(result.kind).toBe('saved');
+    if (result.kind === 'saved') expect((await readSharedSoloSnapshot('connect-four')).token).toBe(result.token);
+  });
+
+  it('does not mistake a foreign UUID for its own delayed acknowledgement', async () => {
+    const held = holdFirstWriteCompletion();
+    const timers = captureStorageTimers();
+    const pending = writeSharedSoloProgress(progress(1), null);
+    await vi.waitFor(() => expect(held()).toBe(true));
+    let first = await readSharedSoloSnapshot('connect-four');
+    await vi.waitFor(async () => { first = await readSharedSoloSnapshot('connect-four'); expect(first.read.kind).toBe('valid'); });
+    const foreign = await writeSharedSoloProgress(progress(4), first.token);
+    expect(foreign.kind).toBe('saved');
+    timers[1]!();
+    const result = await pending;
+    expect(result).toMatchObject({ kind: 'conflict', snapshot: { token: foreign.kind === 'saved' ? foreign.token : null } });
   });
 
   it('fails within a bound when IndexedDB open is blocked', async () => {

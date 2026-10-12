@@ -98,9 +98,9 @@ export async function readSharedSoloSnapshot(gameId: SoloGameId): Promise<SoloSn
 }
 
 export async function writeSharedSoloProgress(progress: SoloProgress, expectedToken: string | null,
-  isCurrent: () => boolean = () => true): Promise<SoloWriteResult> {
+  isCurrent: () => boolean = () => true, onAttempt?: (token: string) => void): Promise<SoloWriteResult> {
   let serialized: string, token: string;
-  try { serialized = encodeSoloProgress(progress); token = `idb:${secureUuid()}`; }
+  try { serialized = encodeSoloProgress(progress); token = `idb:${secureUuid()}`; onAttempt?.(token); }
   catch { return { kind: 'unavailable' }; }
   const database = await openDatabase();
   if (!database) return { kind: 'unavailable' };
@@ -115,7 +115,7 @@ export async function writeSharedSoloProgress(progress: SoloProgress, expectedTo
       resolve(value);
     };
     let transaction: IDBTransaction;
-    const timer = window.setTimeout(() => { try { transaction?.abort(); } catch { /* already settled */ } finish({ kind: 'unavailable' }); }, STORAGE_TIMEOUT_MS);
+    const timer = window.setTimeout(() => { try { transaction?.abort(); } catch { /* may already be committed */ } finish({ kind: 'uncertain', token }); }, STORAGE_TIMEOUT_MS);
     try {
       transaction = database.transaction(STORE, 'readwrite');
       const request = transaction.objectStore(STORE).get(progress.gameId);
@@ -131,6 +131,12 @@ export async function writeSharedSoloProgress(progress: SoloProgress, expectedTo
       transaction.onabort = transaction.onerror = () => finish({ kind: 'unavailable' });
     } catch { finish({ kind: 'unavailable' }); }
   });
+  if (result.kind === 'uncertain') {
+    const snapshot = await readSharedSoloSnapshot(progress.gameId);
+    if (snapshot.read.kind === 'valid' && snapshot.token === token) { announceSave(progress.gameId); return { kind: 'saved', token }; }
+    if (snapshot.read.kind !== 'unavailable' && snapshot.token !== expectedToken) return { kind: 'conflict', snapshot };
+    return result;
+  }
   if (result.kind === 'saved') announceSave(progress.gameId);
   return result;
 }

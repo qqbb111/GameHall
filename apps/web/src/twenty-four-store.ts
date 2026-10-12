@@ -10,8 +10,8 @@ const TIMEOUT = 4_000;
 const tabId = (() => { try { return secureUuid(); } catch { return null; } })();
 type RecordValue = { gameId: typeof KEY; token: string; serialized: string };
 export type Snapshot = { kind: 'valid'; progress: TwentyFourProgress; token: string } | { kind: 'empty' | 'unavailable'; token: null } | { kind: 'invalid'; token: string };
-export type WriteResult = { kind: 'saved'; token: string } | { kind: 'conflict'; snapshot: Snapshot } | { kind: 'unavailable' | 'superseded' };
-export type Draft = { progress: TwentyFourProgress; baseToken: string | null };
+export type WriteResult = { kind: 'saved' | 'uncertain'; token: string } | { kind: 'conflict'; snapshot: Snapshot } | { kind: 'unavailable' | 'superseded' };
+export type Draft = { progress: TwentyFourProgress; baseToken: string | null; pendingToken?: string | null };
 
 async function open(): Promise<IDBDatabase | null> {
   if (typeof indexedDB === 'undefined') return null;
@@ -62,9 +62,10 @@ export async function readTwentyFourSnapshot(): Promise<Snapshot> {
     } catch { finish({ kind: 'unavailable', token: null }); }
   });
 }
-export async function writeTwentyFourProgress(progress: TwentyFourProgress, expectedToken: string | null, isCurrent: () => boolean): Promise<WriteResult> {
+export async function writeTwentyFourProgress(progress: TwentyFourProgress, expectedToken: string | null, isCurrent: () => boolean,
+  onAttempt?: (token: string) => void): Promise<WriteResult> {
   let serialized: string, token: string;
-  try { serialized = encodeTwentyFourProgress(progress); token = `idb:${secureUuid()}`; } catch { return { kind: 'unavailable' }; }
+  try { serialized = encodeTwentyFourProgress(progress); token = `idb:${secureUuid()}`; onAttempt?.(token); } catch { return { kind: 'unavailable' }; }
   const db = await open();
   if (!db) return { kind: 'unavailable' };
   const result = await new Promise<WriteResult>((resolve) => {
@@ -72,7 +73,7 @@ export async function writeTwentyFourProgress(progress: TwentyFourProgress, expe
     let outcome: WriteResult = { kind: 'unavailable' };
     let transaction: IDBTransaction;
     const finish = (value: WriteResult) => { if (done) return; done = true; window.clearTimeout(timer); db.close(); resolve(value); };
-    const timer = window.setTimeout(() => { try { transaction?.abort(); } catch { /* settled */ } finish({ kind: 'unavailable' }); }, TIMEOUT);
+    const timer = window.setTimeout(() => { try { transaction?.abort(); } catch { /* may already be committed */ } finish({ kind: 'uncertain', token }); }, TIMEOUT);
     try {
       transaction = db.transaction(STORE, 'readwrite');
       transaction.objectStore(STORE).get(KEY).onsuccess = (event) => {
@@ -87,12 +88,21 @@ export async function writeTwentyFourProgress(progress: TwentyFourProgress, expe
       transaction.onerror = transaction.onabort = () => finish({ kind: 'unavailable' });
     } catch { finish({ kind: 'unavailable' }); }
   });
+  if (result.kind === 'uncertain') {
+    // A committed transaction can outlive its JS completion callback. Only this
+    // write's fresh UUID proves ownership; matching serialized data does not.
+    const snapshot = await readTwentyFourSnapshot();
+    const observed = snapshot.kind === 'valid' || snapshot.kind === 'invalid' ? snapshot.token : null;
+    if (snapshot.kind === 'valid' && observed === token) { announce(); return { kind: 'saved', token }; }
+    if (snapshot.kind !== 'unavailable' && observed !== expectedToken) return { kind: 'conflict', snapshot };
+    return result;
+  }
   if (result.kind === 'saved') announce();
   return result;
 }
 export function writeTwentyFourDraft(draft: Draft): boolean {
   try {
-    const serialized = JSON.stringify({ version: 1, baseToken: draft.baseToken, progress: encodeTwentyFourProgress(draft.progress) });
+    const serialized = JSON.stringify({ version: 1, baseToken: draft.baseToken, pendingToken: draft.pendingToken ?? null, progress: encodeTwentyFourProgress(draft.progress) });
     if (new TextEncoder().encode(serialized).byteLength > TWENTY_FOUR_MAX_BYTES + 512) return false;
     window.sessionStorage.setItem(DRAFT_KEY, serialized);
     return true;
@@ -105,9 +115,10 @@ export function readTwentyFourDraft(): Draft | null {
     if (new TextEncoder().encode(serialized).byteLength > TWENTY_FOUR_MAX_BYTES + 512) throw new Error('large draft');
     const value: unknown = JSON.parse(serialized);
     if (!value || typeof value !== 'object') throw new Error('invalid draft');
-    const draft = value as { version?: unknown; baseToken?: unknown; progress?: unknown };
-    if (draft.version !== 1 || draft.baseToken !== null && (typeof draft.baseToken !== 'string' || !/^idb:[0-9a-f-]{36}$/.test(draft.baseToken)) || typeof draft.progress !== 'string') throw new Error('invalid draft');
-    return { progress: decodeTwentyFourProgress(draft.progress), baseToken: draft.baseToken as string | null };
+    const draft = value as { version?: unknown; baseToken?: unknown; pendingToken?: unknown; progress?: unknown };
+    if (draft.version !== 1 || draft.baseToken !== null && (typeof draft.baseToken !== 'string' || !/^idb:[0-9a-f-]{36}$/.test(draft.baseToken)) || draft.pendingToken !== undefined && draft.pendingToken !== null && (typeof draft.pendingToken !== 'string' || !/^idb:[0-9a-f-]{36}$/.test(draft.pendingToken)) || typeof draft.progress !== 'string') throw new Error('invalid draft');
+    return { progress: decodeTwentyFourProgress(draft.progress), baseToken: draft.baseToken as string | null,
+      ...(typeof draft.pendingToken === 'string' ? { pendingToken: draft.pendingToken } : {}) };
   } catch { try { window.sessionStorage.removeItem(DRAFT_KEY); } catch { /* blocked */ } return null; }
 }
 export function clearTwentyFourDraft() { try { window.sessionStorage.removeItem(DRAFT_KEY); } catch { /* blocked */ } }

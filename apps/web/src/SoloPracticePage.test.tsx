@@ -8,6 +8,7 @@ import { readSoloDraft, saveSoloProgress, soloProgressKey, writeSoloDraft, type 
 import { readSharedSoloSnapshot, writeSharedSoloProgress } from './solo-shared-store';
 import * as sharedStore from './solo-shared-store';
 import { SoloPracticePage } from './SoloPracticePage';
+import { captureStorageTimers, holdFirstWriteCompletion } from './idb-late-ack.test-helper';
 
 class FakeWorker {
   static instances: FakeWorker[] = [];
@@ -939,5 +940,23 @@ describe('local computer practice', () => {
     const current = FakeWorker.instances.find((item) => !item.terminated)!;
     act(() => current.reply({ action: { type: 'drop', col: 2 } }));
     expect(screen.getByRole('grid', { name: /已投放 2 枚棋子/ })).toBeInTheDocument();
+  });
+
+  it('落子已提交但 ACK 尚未返回就刷新，凭写前 UUID 接续而不把自己当另一窗口', async () => {
+    const first = await start();
+    await waitFor(async () => expect((await readSharedSoloSnapshot('connect-four')).read.kind).toBe('valid'));
+    const base = await readSharedSoloSnapshot('connect-four');
+    const held = holdFirstWriteCompletion();
+    const timers = captureStorageTimers();
+    fireEvent.click(screen.getByRole('button', { name: '投放第 1 列' }));
+    await vi.waitFor(() => expect(held()).toBe(true));
+    let committed = await readSharedSoloSnapshot('connect-four');
+    await vi.waitFor(async () => { committed = await readSharedSoloSnapshot('connect-four'); expect(committed.token).not.toBe(base.token); });
+    expect(readSoloDraft('connect-four')?.pendingToken).toBe(committed.token);
+    first.unmount();
+    render(<SoloPracticePage gameId="connect-four" recoveredRoom={false} onExit={vi.fn()} />);
+    await screen.findByRole('grid', { name: /已投放 1 枚棋子/ });
+    expect(screen.queryByText('另一窗口更新了这款练习')).not.toBeInTheDocument();
+    timers[1]!();
   });
 });
