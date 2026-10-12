@@ -946,6 +946,13 @@ describe('local computer practice', () => {
     const first = await start();
     await waitFor(async () => expect((await readSharedSoloSnapshot('connect-four')).read.kind).toBe('valid'));
     const base = await readSharedSoloSnapshot('connect-four');
+    const actualWrite = sharedStore.writeSharedSoloProgress;
+    const writes: Array<ReturnType<typeof writeSharedSoloProgress>> = [];
+    vi.spyOn(sharedStore, 'writeSharedSoloProgress').mockImplementation((...args) => {
+      const write = actualWrite(...args);
+      writes.push(write);
+      return write;
+    });
     const held = holdFirstWriteCompletion();
     const timers = captureStorageTimers();
     fireEvent.click(screen.getByRole('button', { name: '投放第 1 列' }));
@@ -957,6 +964,8 @@ describe('local computer practice', () => {
     render(<SoloPracticePage gameId="connect-four" recoveredRoom={false} onExit={vi.fn()} />);
     await screen.findByRole('grid', { name: /已投放 1 枚棋子/ });
     expect(screen.queryByText('另一窗口更新了这款练习')).not.toBeInTheDocument();
-    timers[1]!();
+    expect(writes).toHaveLength(1);
+    await act(async () => { timers[1]!(); expect(await writes[0]).toMatchObject({ kind: 'saved', token: committed.token }); });
+    expect(readSoloDraft('connect-four')).toBeNull();
   });
 });

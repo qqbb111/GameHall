@@ -563,6 +563,13 @@ describe('24 点单人流程', () => {
     if (base.kind !== 'saved') throw new Error('seed failed');
     const first = render(<TwentyFourPracticePage recoveredRoom={false} onExit={vi.fn()} />);
     await screen.findByText('已暂停，点击继续后作答');
+    const actualWrite = store.writeTwentyFourProgress;
+    const writes: Array<ReturnType<typeof writeTwentyFourProgress>> = [];
+    vi.spyOn(store, 'writeTwentyFourProgress').mockImplementation((...args) => {
+      const write = actualWrite(...args);
+      writes.push(write);
+      return write;
+    });
     const held = holdFirstWriteCompletion();
     const timers = captureStorageTimers();
     fireEvent.click(screen.getByRole('button', { name: '继续' }));
@@ -576,6 +583,8 @@ describe('24 点单人流程', () => {
     await screen.findByText('已暂停，点击继续后作答');
     expect(screen.getByLabelText('输入算式')).toHaveValue('8+');
     expect(screen.queryByText('另一窗口的 24 点进度已改变')).not.toBeInTheDocument();
-    timers[1]!();
+    expect(writes).toHaveLength(1);
+    await act(async () => { timers[1]!(); expect(await writes[0]).toMatchObject({ kind: 'saved', token: committed.token }); });
+    expect(store.readTwentyFourDraft()).toMatchObject({ baseToken: committed.token, progress: { draft: '8+' } });
   });
 });
