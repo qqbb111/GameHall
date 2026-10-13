@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { applyConnectFourAction, type ConnectFourState } from '@gamehall/game-core';
 import type { GameActionCommand } from '@gamehall/protocol';
 import { ConnectFourGame } from './ConnectFourGame';
@@ -51,7 +51,10 @@ export function ConnectFourPuzzlePage({ recoveredRoom, onExit }: { recoveredRoom
   const [completionWriteWarning, setCompletionWriteWarning] = useState<string | null>(null);
   const [feedback, setFeedback] = useState('');
   const nextButton = useRef<HTMLButtonElement>(null);
+  const goalHeading = useRef<HTMLHeadingElement>(null);
   const focusNext = useRef(false);
+  const focusGoalAfterSelection = useRef(false);
+  const puzzleTrack = useRef<HTMLDivElement>(null);
   const pendingCompletionWrites = useRef<Record<string, PuzzleCompletion>>({});
   const puzzle = connectFourPuzzles.find((entry) => entry.id === attempt.id)!;
   const board = useMemo(() => puzzleAttemptBoard(attempt), [attempt]);
@@ -61,6 +64,27 @@ export function ConnectFourPuzzlePage({ recoveredRoom, onExit }: { recoveredRoom
   const hintColumn = attempt.hintShown ? hintColumns[0] ?? null : null;
   const completedCount = Object.keys(completions).length;
   const independentCount = Object.values(completions).filter((value) => value === 'independent').length;
+
+  useLayoutEffect(() => {
+    const revealCurrent = () => {
+      const track = puzzleTrack.current;
+      const current = track?.querySelector<HTMLButtonElement>('button[aria-current="step"]');
+      if (!track || !current) return;
+      const viewport = track.getBoundingClientRect();
+      const button = current.getBoundingClientRect();
+      if (viewport.width <= 0 || button.width <= 0) return;
+      const inset = 8;
+      if (button.left < viewport.left + inset) track.scrollLeft += button.left - viewport.left - inset;
+      else if (button.right > viewport.right - inset) track.scrollLeft += button.right - viewport.right + inset;
+    };
+    revealCurrent();
+    if (focusGoalAfterSelection.current) {
+      focusGoalAfterSelection.current = false;
+      goalHeading.current?.focus({ preventScroll: true });
+    }
+    window.addEventListener('resize', revealCurrent);
+    return () => window.removeEventListener('resize', revealCurrent);
+  }, [attempt.id]);
 
   useEffect(() => {
     const update = (event: StorageEvent) => {
@@ -89,6 +113,7 @@ export function ConnectFourPuzzlePage({ recoveredRoom, onExit }: { recoveredRoom
   function selectPuzzle(id: string) {
     if (id === attempt.id) return;
     focusNext.current = false;
+    focusGoalAfterSelection.current = true;
     setFeedback('');
     updateAttempt(freshPuzzleAttempt(id));
   }
@@ -143,7 +168,7 @@ export function ConnectFourPuzzlePage({ recoveredRoom, onExit }: { recoveredRoom
       if (!first.ok) throw new Error('validated puzzle move failed');
       const reply = choosePuzzleReply(first.state);
       updateAttempt({ ...attempt, moves: [col, reply.col], hintShown: false });
-      setFeedback(`对手已合法应在${columnName(reply.col)}。现在请你亲自完成第二步。`);
+      setFeedback('');
       return;
     }
     finishPuzzle({ ...attempt, moves: [col], completed: true, hintShown: false });
@@ -171,18 +196,20 @@ export function ConnectFourPuzzlePage({ recoveredRoom, onExit }: { recoveredRoom
     <div className="puzzle-layout">
       <nav className="puzzle-list" aria-label="残局关卡选择">
         <div className="puzzle-list-summary"><strong>已通关 {completedCount}/{connectFourPuzzles.length}</strong><span>独立完成 {independentCount} 关 · 参考完成 {completedCount - independentCount} 关</span>{completedCount === connectFourPuzzles.length && <span>全部通关，可选任一关重新挑战。</span>}</div>
-        {connectFourPuzzles.map((entry, entryIndex) => <button key={entry.id} type="button" aria-current={entry.id === puzzle.id ? 'step' : undefined} onClick={() => selectPuzzle(entry.id)}>
-          <span>第 {entryIndex + 1} 关 · {kindLabel[entry.kind]}</span><strong>{entry.title}</strong><small>{completions[entry.id] === 'independent' ? '独立完成' : completions[entry.id] === 'reference' ? '参考完成' : '待挑战'}</small>
-        </button>)}
+        <div ref={puzzleTrack} className="puzzle-list-track">
+          {connectFourPuzzles.map((entry, entryIndex) => <button key={entry.id} type="button" aria-current={entry.id === puzzle.id ? 'step' : undefined} onClick={() => selectPuzzle(entry.id)}>
+            <span>第 {entryIndex + 1} 关 · {kindLabel[entry.kind]}</span><strong>{entry.title}</strong><small>{completions[entry.id] === 'independent' ? '独立完成' : completions[entry.id] === 'reference' ? '参考完成' : '待挑战'}</small>
+          </button>)}
+        </div>
       </nav>
       <div className="puzzle-main">
         <section className="puzzle-intro" aria-label="本关目标">
-          <div><span className="puzzle-eyebrow">第 {index + 1} / {connectFourPuzzles.length} 关 · {kindLabel[puzzle.kind]}</span><h2>{puzzle.title}</h2></div>
+          <div><span className="puzzle-eyebrow">第 {index + 1} / {connectFourPuzzles.length} 关 · {kindLabel[puzzle.kind]}</span><h2 ref={goalHeading} tabIndex={-1}>{puzzle.title}</h2></div>
           <p>{goalLabel[puzzle.kind]}</p>
           <p className="puzzle-colors"><span>你 · {color}</span><span>对手 · {opponentColor}</span></p>
           {isFinalStep && <p className="puzzle-phase" role="status">你先投了{columnName(attempt.moves[0]!)}，对手应在{columnName(attempt.moves[1]!)}。现在轮到你完成第二步。</p>}
           {attempt.completed && <div className="puzzle-result" role="status"><strong>{attempt.hintUsed ? '本次参考完成' : '本次独立完成'}</strong><p>{completionExplanation(puzzle, attempt, board)}</p></div>}
-          {feedback && !attempt.completed && <p className={feedback.startsWith('对手已合法') ? 'puzzle-feedback' : 'puzzle-feedback is-wrong'} role={feedback.startsWith('对手已合法') ? 'status' : 'alert'}>{feedback}</p>}
+          {feedback && !attempt.completed && <p className="puzzle-feedback is-wrong" role="alert">{feedback}</p>}
           {attempt.hintShown && !attempt.completed && <p className="puzzle-hint" role="status">提示：{hintText} 棋盘已标出参考列；由你决定是否落子。</p>}
           <div className="puzzle-controls">
             {!attempt.completed && <button type="button" onClick={showHint}>{attempt.hintShown ? '收起提示' : '提示思路'}</button>}

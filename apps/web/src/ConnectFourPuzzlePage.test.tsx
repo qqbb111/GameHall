@@ -65,7 +65,8 @@ describe('四子连线残局闯关', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/对手可以应在/);
     expect(screen.getByRole('grid', { name: /已投放 10 枚棋子/ })).toBeInTheDocument();
     await drop(2);
-    expect(await screen.findByText(/对手已合法应在第 5 列/)).toBeInTheDocument();
+    expect(await screen.findByText(/对手应在第 5 列。现在轮到你完成第二步/)).toBeInTheDocument();
+    expect(screen.queryByText(/对手已合法应在/)).not.toBeInTheDocument();
     expect(screen.getByRole('grid', { name: /已投放 12 枚棋子/ })).toBeInTheDocument();
     expect(readPuzzleAttempt().attempt.moves).toEqual([2, 4]);
     unmount();
@@ -228,5 +229,105 @@ describe('四子连线残局闯关', () => {
     expect(screen.queryByText(/通关记录暂时无法保存/)).not.toBeInTheDocument();
     expect(readPuzzleCompletions().completions).toMatchObject({ bridge: 'independent', tower: 'independent' });
     expect(screen.getByText('独立完成 2 关 · 参考完成 0 关')).toBeInTheDocument();
+  });
+
+  it('手机刷新第七关只滚关卡轨道露出当前按钮，摘要与页面焦点保持原位', () => {
+    window.sessionStorage.setItem(PUZZLE_ATTEMPT_KEY, JSON.stringify({ version: 1, id: 'fork', moves: [2, 4], hintUsed: false, hintShown: false, completed: false }));
+    let trackWidth = 342;
+    const originalRect = HTMLElement.prototype.getBoundingClientRect;
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      if (this.classList.contains('puzzle-list-track')) return { left: 8, right: 8 + trackWidth, width: trackWidth } as DOMRect;
+      if (this instanceof HTMLButtonElement && this.parentElement?.classList.contains('puzzle-list-track')) {
+        const index = Array.from(this.parentElement.children).indexOf(this);
+        const left = 8 + index * 153 - this.parentElement.scrollLeft;
+        return { left, right: left + 145, width: 145 } as DOMRect;
+      }
+      return originalRect.call(this);
+    });
+    const pageScroll = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    outside.focus();
+    render(<ConnectFourPuzzlePage recoveredRoom={false} onExit={vi.fn()} />);
+    const nav = screen.getByRole('navigation', { name: '残局关卡选择' });
+    const track = nav.querySelector<HTMLElement>('.puzzle-list-track')!;
+    const current = within(nav).getByRole('button', { current: 'step' });
+    expect(current).toHaveTextContent('第 7 关');
+    expect(track.scrollLeft).toBeGreaterThan(0);
+    expect(current.getBoundingClientRect().left).toBeGreaterThanOrEqual(track.getBoundingClientRect().left);
+    expect(current.getBoundingClientRect().right).toBeLessThanOrEqual(track.getBoundingClientRect().right);
+    expect(nav.querySelector('.puzzle-list-summary')?.parentElement).toBe(nav);
+    expect(outside).toHaveFocus();
+    expect(pageScroll).not.toHaveBeenCalled();
+
+    track.scrollLeft = 500;
+    fireEvent.click(screen.getByRole('button', { name: '提示思路' }));
+    expect(track.scrollLeft).toBe(500);
+    trackWidth = 180;
+    act(() => window.dispatchEvent(new Event('resize')));
+    expect(track.scrollLeft).toBeGreaterThan(500);
+    expect(current.getBoundingClientRect().right).toBeLessThanOrEqual(track.getBoundingClientRect().right);
+    const afterResize = track.scrollLeft;
+    window.localStorage.setItem(`${PUZZLE_COMPLETION_PREFIX}bridge:reference`, '1');
+    act(() => window.dispatchEvent(new StorageEvent('storage', { key: `${PUZZLE_COMPLETION_PREFIX}bridge:reference` })));
+    expect(track.scrollLeft).toBe(afterResize);
+    expect(outside).toHaveFocus();
+    expect(pageScroll).not.toHaveBeenCalled();
+    outside.remove();
+  });
+
+  it('切换关卡及下一关只调整轨道，落子与提示不反复拉回用户手动浏览的位置', async () => {
+    let trackWidth = 342;
+    const originalRect = HTMLElement.prototype.getBoundingClientRect;
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      if (this.classList.contains('puzzle-list-track')) return { left: 8, right: 8 + trackWidth, width: trackWidth } as DOMRect;
+      if (this instanceof HTMLButtonElement && this.parentElement?.classList.contains('puzzle-list-track')) {
+        const index = Array.from(this.parentElement.children).indexOf(this);
+        const left = 8 + index * 153 - this.parentElement.scrollLeft;
+        return { left, right: left + 145, width: 145 } as DOMRect;
+      }
+      return originalRect.call(this);
+    });
+    const pageScroll = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+    render(<ConnectFourPuzzlePage recoveredRoom={false} onExit={vi.fn()} />);
+    const nav = screen.getByRole('navigation', { name: '残局关卡选择' });
+    const track = nav.querySelector<HTMLElement>('.puzzle-list-track')!;
+    selectPuzzle(8);
+    expect(screen.getByRole('heading', { name: '两路都能赢' })).toHaveFocus();
+    expect(track.scrollLeft).toBeGreaterThan(700);
+    const choice = within(nav).getByRole('button', { current: 'step' });
+    choice.focus();
+    expect(choice).toHaveFocus();
+    const scrolledForChoice = track.scrollLeft;
+    fireEvent.click(screen.getByRole('button', { name: '提示思路' }));
+    expect(track.scrollLeft).toBe(scrolledForChoice);
+    await drop(3);
+    expect(screen.getByText(/对手应在第 4 列。现在轮到你完成第二步/)).toBeInTheDocument();
+    expect(screen.queryByText(/对手已合法应在/)).not.toBeInTheDocument();
+    expect(track.scrollLeft).toBe(scrolledForChoice);
+    expect(choice).toHaveFocus();
+    trackWidth = 180;
+    act(() => window.dispatchEvent(new Event('resize')));
+    expect(track.scrollLeft).toBeGreaterThan(scrolledForChoice);
+    expect(pageScroll).not.toHaveBeenCalled();
+  });
+
+  it('键盘完成后从下一关按钮显式换题，焦点进入新题目标而不落到 body', async () => {
+    render(<ConnectFourPuzzlePage recoveredRoom={false} onExit={vi.fn()} />);
+    const dropButton = screen.getByRole('button', { name: '投放第 3 列' });
+    dropButton.focus();
+    fireEvent.keyDown(dropButton, { key: 'Enter' });
+    fireEvent.click(dropButton);
+    const next = await screen.findByRole('button', { name: '下一关' });
+    await waitFor(() => expect(next).toHaveFocus());
+    fireEvent.keyDown(next, { key: 'Enter' });
+    fireEvent.click(next);
+    const goal = screen.getByRole('heading', { name: '向上连珠' });
+    expect(goal).toHaveFocus();
+    expect(document.activeElement).not.toBe(document.body);
+    const retry = screen.getByRole('button', { name: '重试本关' });
+    retry.focus();
+    fireEvent.click(screen.getByRole('button', { name: '提示思路' }));
+    expect(retry).toHaveFocus();
   });
 });
