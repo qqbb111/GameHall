@@ -60,6 +60,50 @@ function finishedClient(gameId: keyof typeof finishedViews, rematchReady: [boole
 }
 
 describe('online game turn headings', () => {
+  it('room recovery offers one manual reconnect after automatic attempts stop without changing the game', () => {
+    const client = playableClient('connect-four');
+    client.reconnect = vi.fn();
+    const savedRoom = client.room;
+    const savedGame = client.game;
+    const savedBoard = (client.game!.view as typeof playableViews['connect-four']).board;
+    expect(savedBoard).toHaveLength(42);
+    const rendered = render(<RoomPage client={client} />);
+    expect(screen.queryByRole('button', { name: '重新连接' })).not.toBeInTheDocument();
+
+    client.connection = 'offline';
+    rendered.rerender(<RoomPage client={client} />);
+    expect(screen.getByText('连接已中断，对局暂时不可操作')).toBeInTheDocument();
+    const retry = screen.getByRole('button', { name: '重新连接' });
+    expect(retry).toBeEnabled();
+    fireEvent.click(retry);
+    fireEvent.click(retry);
+    expect(client.reconnect).toHaveBeenCalledTimes(1);
+    expect(client.room).toBe(savedRoom);
+    expect(client.game).toBe(savedGame);
+    expect((client.game!.view as typeof playableViews['connect-four']).board).toBe(savedBoard);
+
+    client.connection = 'connecting';
+    rendered.rerender(<RoomPage client={client} />);
+    expect(screen.getByRole('button', { name: '正在连接…' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '正在连接…' }));
+    expect(client.reconnect).toHaveBeenCalledTimes(1);
+    client.connection = 'offline';
+    rendered.rerender(<RoomPage client={client} />);
+    fireEvent.click(screen.getByRole('button', { name: '重新连接' }));
+    expect(client.reconnect).toHaveBeenCalledTimes(2);
+
+    client.connection = 'online';
+    rendered.rerender(<RoomPage client={client} />);
+    expect(screen.queryByRole('button', { name: /重新连接|正在连接/ })).not.toBeInTheDocument();
+    for (const pauseReason of ['disconnect', 'restart'] as const) {
+      client.room = { ...client.room!, status: 'paused', pauseReason };
+      rendered.rerender(<RoomPage client={client} />);
+      expect(screen.queryByRole('button', { name: /重新连接|正在连接/ })).not.toBeInTheDocument();
+      expect(screen.getByText(pauseReason === 'restart' ? '服务恢复后等待双方回来' : '好友暂时断线，对局已暂停')).toBeInTheDocument();
+    }
+    rendered.unmount();
+  });
+
   it.each(Object.keys(playableViews) as Array<keyof typeof playableViews>)('%s distinguishes turn, pause and lost connection', (gameId) => {
     const client = playableClient(gameId);
     const original = client.game!.view as Record<string, unknown>;

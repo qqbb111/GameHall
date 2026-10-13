@@ -62,6 +62,7 @@ export function RoomPage({ client }: { client: GameHallClient }) {
   const gameActionInFlight = useRef<{ roomId: string; id: number; promise: ReturnType<GameHallClient['submitGameAction']> } | null>(null);
   const gameActionSequence = useRef(0);
   const gameContext = useRef<{ roomId: string; version: number } | null>(null);
+  const reconnectRequested = useRef(false);
   const mounted = useRef(true);
   const [starting, setStarting] = useState(false);
   const pendingRef = useRef(false);
@@ -87,6 +88,10 @@ export function RoomPage({ client }: { client: GameHallClient }) {
     mounted.current = true;
     return () => { mounted.current = false; gameContext.current = null; };
   }, []);
+
+  useEffect(() => {
+    if (client.connection === 'offline') reconnectRequested.current = false;
+  }, [client.connection]);
 
   useEffect(() => {
     if (!room?.roomId) return;
@@ -227,6 +232,12 @@ export function RoomPage({ client }: { client: GameHallClient }) {
     return promise;
   }
 
+  function reconnectRoom() {
+    if (client.connection !== 'offline' || reconnectRequested.current) return;
+    reconnectRequested.current = true;
+    client.reconnect();
+  }
+
   async function copyInvite(target: 'link' | 'code') {
     const value = target === 'link' ? inviteUrl : currentRoom.code;
     try {
@@ -323,11 +334,12 @@ export function RoomPage({ client }: { client: GameHallClient }) {
 
           {(room.status === 'paused' || client.connection !== 'online') && (
             <div className="pause-banner" role="status">
-              <LoaderCircle size={20} />
+              {client.connection === 'offline' ? <WifiOff className="pause-offline-icon" size={20} /> : <LoaderCircle size={20} />}
               <div>
-                <strong>{client.connection !== 'online' ? '正在恢复连接与对局…' : room.pauseReason === 'restart' ? multiplayer ? '服务恢复后等待全员回来' : '服务恢复后等待双方回来' : '好友暂时断线，对局已暂停'}</strong>
+                <strong>{client.connection === 'offline' ? '连接已中断，对局暂时不可操作' : client.connection === 'connecting' ? '正在恢复连接与对局…' : room.pauseReason === 'restart' ? multiplayer ? '服务恢复后等待全员回来' : '服务恢复后等待双方回来' : '好友暂时断线，对局已暂停'}</strong>
                 <span>{pauseSeconds === null ? '你的座位和对局状态会保留。' : `${pauseSeconds} 秒内重连即可继续本局。`}</span>
               </div>
+              {client.connection !== 'online' && <button className="pause-reconnect" type="button" disabled={client.connection === 'connecting'} onClick={reconnectRoom}>{client.connection === 'connecting' ? '正在连接…' : '重新连接'}</button>}
             </div>
           )}
 

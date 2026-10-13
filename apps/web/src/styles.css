@@ -266,9 +266,15 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
 
 .pause-banner { margin-bottom: 18px; padding: 13px 16px; display: flex; gap: 12px; align-items: center; border: 1px solid rgba(224,155,94,.25); border-radius: 12px; color: #f0c394; background: rgba(125,69,34,.18); animation: banner-enter .36s cubic-bezier(.22,1,.36,1) both; }
 .pause-banner svg { flex: 0 0 auto; animation: spin 1.25s linear infinite; }
+.pause-banner svg.pause-offline-icon { animation: none; }
 .pause-banner div { display: flex; flex-direction: column; gap: 3px; }
 .pause-banner strong { font-size: 13px; }
 .pause-banner span { color: #cba88b; font-size: 11px; }
+.pause-banner > div { flex: 1; min-width: 0; }
+.pause-reconnect { flex: 0 0 auto; min-height: 44px; padding: 0 16px; border: 1px solid rgba(240,195,148,.48); border-radius: 9px; color: #ffe0bd; background: rgba(108,59,31,.5); font-size: 13px; font-weight: 700; font-family: inherit; cursor: pointer; }
+.pause-reconnect:hover:not(:disabled) { background: rgba(151,83,42,.65); }
+.pause-reconnect:focus-visible { outline: 2px solid #ffe0bd; outline-offset: 3px; }
+.pause-reconnect:disabled { opacity: .68; cursor: wait; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .waiting-panel {
