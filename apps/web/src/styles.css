@@ -338,6 +338,15 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
 .turn-stone.black { background: radial-gradient(circle at 32% 27%, #4a514c, #0d1210 62%); box-shadow: 0 4px 10px #0008; }
 .turn-stone.white { background: radial-gradient(circle at 32% 27%, #fff, #d9d2c3 68%); box-shadow: 0 4px 10px #0006; }
 .board-scroll { width: 100%; max-width: 100%; overflow: visible; }
+.gomoku-surface { min-width: 0; }
+.gomoku-view-controls { display: flex; flex-wrap: wrap; gap: 8px; margin: -6px 0 4px; }
+.gomoku-view-controls button { min-height: 44px; padding: 8px 14px; border: 1px solid rgba(240,206,139,.35); border-radius: 9px; color: #d8e1d2; background: #1d3f35; font-weight: 700; cursor: pointer; }
+.gomoku-view-controls button[aria-pressed="true"] { border-color: #e8c67e; color: #172c23; background: #e8c67e; }
+.gomoku-view-controls button:focus-visible { outline: 3px solid #f8df9e; outline-offset: 2px; }
+.gomoku-view-tip { margin: 0 0 12px; color: #b7c6b8; font-size: 12px; line-height: 1.5; }
+.gomoku-surface .board-scroll { max-width: 100%; overflow: hidden; }
+.gomoku-surface .board-scroll.is-zoomed { max-height: min(70dvh, 600px); overflow: auto; overscroll-behavior: contain; touch-action: pan-x pan-y; }
+.gomoku-surface .board-scroll.is-zoomed .gomoku-board { width: 720px; min-width: 720px; max-width: none; height: 720px; margin: 0; }
 .gomoku-board { --gomoku-padding: clamp(8px, 2.7%, 15px); width: min(558px, 100%); aspect-ratio: 1; margin: 0 auto; padding: var(--gomoku-padding); display: grid; grid-template-columns: repeat(15, minmax(0, 1fr)); grid-template-rows: repeat(15, minmax(0, 1fr)); position: relative; border: clamp(5px, 1.6vw, 9px) solid #72512d; border-radius: 8px; background-color: #c99b58; box-shadow: inset 0 0 30px #67441d55, 0 20px 45px #0005; }
 .gomoku-cell { min-width: 0; min-height: 0; position: relative; z-index: 2; appearance: none; border: 0; padding: 0; background: transparent; }
 .gomoku-cell::before, .gomoku-cell::after { content: ''; position: absolute; z-index: 0; pointer-events: none; background: rgba(69,48,28,.62); }

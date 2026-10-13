@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import {
   canPlaceQuoridorWall,
   GOMOKU_SIZE,
@@ -28,12 +28,57 @@ export function GomokuGame({ state, mySeat, active, onAction, opponentLabel = '�
   state: GomokuState; mySeat: Player; active: boolean; onAction: ActionHandler; opponentLabel?: string; hintCell?: { row: number; col: number } | null;
 }) {
   const [focusIndex, setFocusIndex] = useState(7 * GOMOKU_SIZE + 7);
+  const [zoomed, setZoomed] = useState(false);
+  const [locateRequest, setLocateRequest] = useState(0);
   const buttons = useRef<Array<HTMLButtonElement | null>>([]);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const locateIndex = useRef(7 * GOMOKU_SIZE + 7);
+  const gestureEpoch = useRef(0);
+  const gesture = useRef<{ pointerId: number; x: number; y: number; epoch: number; moved: boolean } | null>(null);
+  const suppressPointerClick = useRef(false);
   const myTurn = active && state.phase === 'playing' && state.turn === mySeat;
   const myColor = state.blackPlayer === mySeat ? '黑方' : '白方';
   const nearestEmpty = state.board[focusIndex] === null ? focusIndex : state.board.findIndex((cell, index) => cell === null && index >= focusIndex);
   const focusTarget = nearestEmpty >= 0 ? nearestEmpty : state.board.findIndex((cell) => cell === null);
   const { boardRef, onKeyDownCapture, onPointerDownCapture } = useBoardKeyboardContinuity(myTurn, focusTarget >= 0 ? `[data-cell-index="${focusTarget}"]` : null);
+
+  useLayoutEffect(() => { gestureEpoch.current++; }, [state, active]);
+  useLayoutEffect(() => {
+    const viewport = scrollRef.current;
+    if (!viewport) return;
+    if (!zoomed) { viewport.scrollLeft = 0; viewport.scrollTop = 0; return; }
+    const board = boardRef.current;
+    if (!board) return;
+    const row = Math.floor(locateIndex.current / GOMOKU_SIZE), col = locateIndex.current % GOMOKU_SIZE;
+    const width = board.getBoundingClientRect().width || board.clientWidth;
+    const height = board.getBoundingClientRect().height || board.clientHeight;
+    viewport.scrollLeft = Math.max(0, (col + .5) * width / GOMOKU_SIZE - viewport.clientWidth / 2);
+    viewport.scrollTop = Math.max(0, (row + .5) * height / GOMOKU_SIZE - viewport.clientHeight / 2);
+  }, [zoomed, locateRequest, boardRef]);
+
+  function showZoom(index: number) {
+    locateIndex.current = index;
+    setZoomed(true);
+    setLocateRequest((request) => request + 1);
+  }
+
+  function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    onPointerDownCapture();
+    if (!(event.target instanceof HTMLElement) || !event.target.closest('.gomoku-cell')) return;
+    suppressPointerClick.current = false;
+    gesture.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, epoch: gestureEpoch.current, moved: false };
+  }
+
+  function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    const current = gesture.current;
+    if (current?.pointerId === event.pointerId && Math.hypot(event.clientX - current.x, event.clientY - current.y) > 9) current.moved = true;
+  }
+
+  function handlePointerEnd(event: ReactPointerEvent<HTMLDivElement>, cancelled: boolean) {
+    const current = gesture.current;
+    if (current?.pointerId !== event.pointerId) return;
+    if (cancelled || current.moved || current.epoch !== gestureEpoch.current) suppressPointerClick.current = true;
+  }
 
   function moveFocus(next: number) {
     const bounded = Math.max(0, Math.min(GOMOKU_SIZE * GOMOKU_SIZE - 1, next));
@@ -55,13 +100,19 @@ export function GomokuGame({ state, mySeat, active, onAction, opponentLabel = '�
   }
 
   return (
-    <section className="game-surface" aria-label="五子棋对局">
+    <section className="game-surface gomoku-surface" aria-label="五子棋对局">
       <div className="surface-title">
         <div><span>你执 {myColor}</span><h2 aria-live="polite">{state.phase === 'finished' ? '本局结束' : state.turn === mySeat ? '轮到你落子' : `等待${opponentLabel}落子`}</h2></div>
         <div className={`turn-stone ${state.turn === state.blackPlayer ? 'black' : 'white'}`} aria-label={state.turn === state.blackPlayer ? '当前黑方回合' : '当前白方回合'} />
       </div>
-      <div className="board-scroll" aria-label="完整五子棋棋盘">
-        <div ref={boardRef} onKeyDownCapture={onKeyDownCapture} onPointerDownCapture={onPointerDownCapture} className="gomoku-board" role="grid" aria-label="15乘15五子棋棋盘" aria-describedby="gomoku-keyboard-help">
+      <div className="gomoku-view-controls" role="group" aria-label="棋盘视图">
+        <button type="button" aria-pressed={!zoomed} onClick={() => setZoomed(false)}>全盘</button>
+        <button type="button" aria-pressed={zoomed} onClick={() => showZoom(state.lastMove ? state.lastMove.row * GOMOKU_SIZE + state.lastMove.col : focusIndex)}>放大</button>
+        <button type="button" onClick={() => showZoom(state.lastMove ? state.lastMove.row * GOMOKU_SIZE + state.lastMove.col : 7 * GOMOKU_SIZE + 7)}>{state.lastMove ? '定位最近一步' : '定位棋盘中心'}</button>
+      </div>
+      <p className="gomoku-view-tip">全盘可看完整局面；放大后可在棋盘内滑动查看。</p>
+      <div ref={scrollRef} onScrollCapture={() => { if (gesture.current) { gesture.current.moved = true; suppressPointerClick.current = true; } }} className={`board-scroll ${zoomed ? 'is-zoomed' : ''}`} aria-label={zoomed ? '放大的五子棋棋盘，可横向和纵向滚动' : '完整五子棋棋盘'}>
+        <div ref={boardRef} onKeyDownCapture={onKeyDownCapture} onPointerDownCapture={handlePointerDown} onPointerMoveCapture={handlePointerMove} onPointerUpCapture={(event) => handlePointerEnd(event, false)} onPointerCancelCapture={(event) => handlePointerEnd(event, true)} className="gomoku-board" role="grid" aria-label="15乘15五子棋棋盘" aria-describedby="gomoku-keyboard-help">
           <span className="gomoku-grid-lines" aria-hidden="true">
             <svg viewBox="-0.5 -0.5 15 15" preserveAspectRatio="none" focusable="false">
               <path d={GOMOKU_GRID_PATH} />
@@ -90,7 +141,12 @@ export function GomokuGame({ state, mySeat, active, onAction, opponentLabel = '�
                 aria-disabled={!myTurn || cell !== null}
                 onFocus={() => setFocusIndex(index)}
                 onKeyDown={(event) => handleKey(event, index)}
-                onClick={() => { if (myTurn && cell === null) void onAction({ type: 'place', row, col }); }}
+                onClick={(event) => {
+                  const blocked = event.detail > 0 && (suppressPointerClick.current || gesture.current?.moved || gesture.current?.epoch !== undefined && gesture.current.epoch !== gestureEpoch.current);
+                  gesture.current = null;
+                  suppressPointerClick.current = false;
+                  if (!blocked && myTurn && cell === null) void onAction({ type: 'place', row, col });
+                }}
               >
                 {isStar && <span className="board-star" aria-hidden="true" />}
                 {cell !== null && <span className={`stone ${cell === state.blackPlayer ? 'black' : 'white'}`}><i /></span>}

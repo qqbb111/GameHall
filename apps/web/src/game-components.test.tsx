@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   applyTexasHoldemAction,
+  applyGomokuAction,
   createGomokuState,
   createQuoridorState,
   createTwentyFourState,
@@ -49,6 +50,90 @@ describe('game components', () => {
       expect(container.querySelector(`.gomoku-cell[data-row="${row}"][data-col="${col}"] .board-star`)).not.toBeNull();
     }
     expect(screen.getByText(/方向键移动焦点/)).toHaveClass('sr-only');
+  });
+
+  it('五子棋全盘与放大定位只滚棋盘视窗，不落子、不改棋局或键盘入口', () => {
+    const onAction = vi.fn();
+    const initial = createGomokuState(0);
+    const move = applyGomokuAction(initial, 0, { type: 'place', row: 8, col: 9 });
+    if (!move.ok) throw new Error('bad fixture');
+    const original = JSON.stringify(move.state);
+    const { container, rerender } = render(<GomokuGame state={move.state} mySeat={0} active onAction={onAction} />);
+    const board = screen.getByRole('grid', { name: '15乘15五子棋棋盘' });
+    const viewport = container.querySelector<HTMLElement>('.board-scroll')!;
+    vi.spyOn(board, 'getBoundingClientRect').mockReturnValue({ width: 720, height: 720 } as DOMRect);
+    Object.defineProperties(viewport, { clientWidth: { configurable: true, value: 320 }, clientHeight: { configurable: true, value: 300 } });
+    expect(board.querySelectorAll('[role="gridcell"]')).toHaveLength(225);
+    expect(board.querySelectorAll('[tabindex="0"]')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: '全盘' })).toHaveAttribute('aria-pressed', 'true');
+    const locate = screen.getByRole('button', { name: '定位最近一步' });
+    locate.focus();
+    fireEvent.click(locate);
+    expect(locate).toHaveFocus();
+    expect(screen.getByRole('button', { name: '放大' })).toHaveAttribute('aria-pressed', 'true');
+    expect(viewport).toHaveClass('is-zoomed');
+    expect(viewport.scrollLeft).toBeGreaterThan(0);
+    expect(viewport.scrollTop).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole('button', { name: '全盘' }));
+    expect(viewport).not.toHaveClass('is-zoomed');
+    expect(viewport.scrollLeft).toBe(0);
+    expect(viewport.scrollTop).toBe(0);
+    expect(board.querySelectorAll('[tabindex="0"]')).toHaveLength(1);
+    expect(onAction).not.toHaveBeenCalled();
+    expect(JSON.stringify(move.state)).toBe(original);
+    rerender(<GomokuGame state={initial} mySeat={0} active onAction={onAction} />);
+    fireEvent.click(screen.getByRole('button', { name: '定位棋盘中心' }));
+    expect(viewport.scrollLeft).toBeGreaterThan(0);
+    expect(viewport.scrollTop).toBeGreaterThan(0);
+    expect(onAction).not.toHaveBeenCalled();
+  });
+
+  it('五子棋拖动和触摸取消不会误落子，之后点按及键盘仍可落', () => {
+    const onAction = vi.fn().mockResolvedValue(undefined);
+    const { container } = render(<GomokuGame state={createGomokuState(0)} mySeat={0} active onAction={onAction} />);
+    const center = screen.getByRole('gridcell', { name: '第 8 行第 8 列，空位' });
+    fireEvent.pointerDown(center, { pointerId: 1, clientX: 90, clientY: 90, pointerType: 'mouse' });
+    fireEvent.pointerMove(center, { pointerId: 1, clientX: 115, clientY: 92, pointerType: 'mouse' });
+    fireEvent.pointerUp(center, { pointerId: 1, clientX: 115, clientY: 92, pointerType: 'mouse' });
+    fireEvent.click(center, { detail: 1 });
+    expect(onAction).not.toHaveBeenCalled();
+    fireEvent.pointerDown(center, { pointerId: 5, clientX: 90, clientY: 90, pointerType: 'touch' });
+    fireEvent.scroll(container.querySelector('.board-scroll')!);
+    fireEvent.pointerUp(center, { pointerId: 5, clientX: 90, clientY: 90, pointerType: 'touch' });
+    fireEvent.click(center, { detail: 1 });
+    expect(onAction).not.toHaveBeenCalled();
+    fireEvent.pointerDown(center, { pointerId: 2, clientX: 90, clientY: 90, pointerType: 'touch' });
+    fireEvent.pointerCancel(center, { pointerId: 2, clientX: 90, clientY: 90, pointerType: 'touch' });
+    fireEvent.click(center, { detail: 1 });
+    expect(onAction).not.toHaveBeenCalled();
+    fireEvent.pointerDown(center, { pointerId: 3, clientX: 90, clientY: 90, pointerType: 'touch' });
+    fireEvent.pointerUp(center, { pointerId: 3, clientX: 91, clientY: 91, pointerType: 'touch' });
+    fireEvent.click(center, { detail: 1 });
+    expect(onAction).toHaveBeenCalledTimes(1);
+    center.focus();
+    fireEvent.keyDown(center, { key: 'Enter' });
+    expect(onAction).toHaveBeenCalledTimes(2);
+  });
+
+  it('五子棋手势未结束时回合切换会废弃旧点击，电脑回合和终局禁止落子', () => {
+    const onAction = vi.fn().mockResolvedValue(undefined);
+    const initial = createGomokuState(0);
+    const { rerender } = render(<GomokuGame state={initial} mySeat={0} active onAction={onAction} />);
+    const center = screen.getByRole('gridcell', { name: '第 8 行第 8 列，空位' });
+    fireEvent.pointerDown(center, { pointerId: 4, clientX: 10, clientY: 10 });
+    const move = applyGomokuAction(initial, 0, { type: 'place', row: 0, col: 0 });
+    if (!move.ok) throw new Error('bad fixture');
+    rerender(<GomokuGame state={move.state} mySeat={0} active onAction={onAction} />);
+    rerender(<GomokuGame state={initial} mySeat={0} active onAction={onAction} />);
+    fireEvent.pointerUp(center, { pointerId: 4, clientX: 10, clientY: 10 });
+    fireEvent.click(center, { detail: 1 });
+    expect(onAction).not.toHaveBeenCalled();
+    rerender(<GomokuGame state={move.state} mySeat={0} active onAction={onAction} />);
+    fireEvent.click(center, { detail: 1 });
+    expect(onAction).not.toHaveBeenCalled();
+    rerender(<GomokuGame state={{ ...initial, phase: 'finished', result: { type: 'draw' } }} mySeat={0} active onAction={onAction} />);
+    fireEvent.click(center, { detail: 1 });
+    expect(onAction).not.toHaveBeenCalled();
   });
 
   it('路墙棋只在合法目标上触发移动', () => {
