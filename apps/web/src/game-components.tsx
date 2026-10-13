@@ -13,6 +13,7 @@ import {
 import type { GameActionCommand, RoomMemberView } from '@gamehall/protocol';
 import { TwentyFourExpressionEditor } from './TwentyFourExpressionEditor';
 import { useBoardKeyboardContinuity } from './useBoardKeyboardContinuity';
+import { onlineGameHeading, type OnlineGameAvailability } from './online-game-heading';
 
 type ActionHandler = (action: GameActionCommand['action']) => Promise<unknown>;
 const GOMOKU_STAR_POINTS = new Set(['3,3', '3,11', '7,7', '11,3', '11,11']);
@@ -24,8 +25,8 @@ function playerName(player: Player): string {
   return player === 0 ? '玩家一' : '玩家二';
 }
 
-export function GomokuGame({ state, mySeat, active, onAction, opponentLabel = '对手', hintCell = null }: {
-  state: GomokuState; mySeat: Player; active: boolean; onAction: ActionHandler; opponentLabel?: string; hintCell?: { row: number; col: number } | null;
+export function GomokuGame({ state, mySeat, active, onAction, opponentLabel = '对手', hintCell = null, availability, actionPending }: {
+  state: GomokuState; mySeat: Player; active: boolean; onAction: ActionHandler; opponentLabel?: string; hintCell?: { row: number; col: number } | null; availability?: OnlineGameAvailability; actionPending?: boolean;
 }) {
   const [focusIndex, setFocusIndex] = useState(7 * GOMOKU_SIZE + 7);
   const [zoomed, setZoomed] = useState(false);
@@ -102,7 +103,7 @@ export function GomokuGame({ state, mySeat, active, onAction, opponentLabel = '�
   return (
     <section className="game-surface gomoku-surface" aria-label="五子棋对局">
       <div className="surface-title">
-        <div><span>你执 {myColor}</span><h2 aria-live="polite">{state.phase === 'finished' ? '本局结束' : state.turn === mySeat ? '轮到你落子' : `等待${opponentLabel}落子`}</h2></div>
+        <div><span>你执 {myColor}</span><h2 aria-live="polite">{onlineGameHeading(state.phase === 'finished', '本局结束', availability, actionPending, state.turn === mySeat ? '轮到你落子' : `等待${opponentLabel}落子`)}</h2></div>
         <div className={`turn-stone ${state.turn === state.blackPlayer ? 'black' : 'white'}`} aria-label={state.turn === state.blackPlayer ? '当前黑方回合' : '当前白方回合'} />
       </div>
       <div className="gomoku-view-controls" role="group" aria-label="棋盘视图">
@@ -160,7 +161,7 @@ export function GomokuGame({ state, mySeat, active, onAction, opponentLabel = '�
   );
 }
 
-export function QuoridorGame({ state, mySeat, active, onAction }: { state: QuoridorView; mySeat: Player; active: boolean; onAction: ActionHandler }) {
+export function QuoridorGame({ state, mySeat, active, onAction, availability, actionPending }: { state: QuoridorView; mySeat: Player; active: boolean; onAction: ActionHandler; availability?: OnlineGameAvailability; actionPending?: boolean }) {
   const [mode, setMode] = useState<'move' | WallOrientation>('move');
   const [cellFocusIndex, setCellFocusIndex] = useState(() => state.pawns[mySeat].row * 9 + state.pawns[mySeat].col);
   const [wallFocusIndex, setWallFocusIndex] = useState(0);
@@ -247,7 +248,7 @@ export function QuoridorGame({ state, mySeat, active, onAction }: { state: Quori
   return (
     <section className="game-surface quoridor-surface" aria-label="路墙棋对局">
       <div className="surface-title">
-        <div><span>目标：抵达棋盘{goal}</span><h2 aria-live="polite">{state.phase === 'finished' ? '本局结束' : state.turn === mySeat ? '轮到你行动' : '等待对手行动'}</h2></div>
+        <div><span>目标：抵达棋盘{goal}</span><h2 aria-live="polite">{onlineGameHeading(state.phase === 'finished', '本局结束', availability, actionPending, state.turn === mySeat ? '轮到你行动' : '等待对手行动')}</h2></div>
         <div className="wall-counts"><b>你 {state.wallsRemaining[mySeat]}</b><span>墙</span><b>对手 {state.wallsRemaining[mySeat === 0 ? 1 : 0]}</b></div>
       </div>
       <div className="quoridor-tools" role="toolbar" aria-label="行动方式">
@@ -401,7 +402,7 @@ function pokerStreetLabel(street: 'flop' | 'turn' | 'river' | null): string {
   return '发牌';
 }
 
-export function TexasHoldemGame({ state, snapshotVersion = 0, mySeat, active, members = [], onAction, onPresentationLockChange }: { state: TexasHoldemView; snapshotVersion?: number; mySeat: number; active: boolean; members?: RoomMemberView[]; onAction: ActionHandler; onPresentationLockChange?: (locked: boolean) => void }) {
+export function TexasHoldemGame({ state, snapshotVersion = 0, mySeat, active, members = [], onAction, onPresentationLockChange, availability, actionPending }: { state: TexasHoldemView; snapshotVersion?: number; mySeat: number; active: boolean; members?: RoomMemberView[]; onAction: ActionHandler; onPresentationLockChange?: (locked: boolean) => void; availability?: OnlineGameAvailability; actionPending?: boolean }) {
   const me = state.players.find((player) => player.seat === mySeat);
   const communityCount = state.communityCards.length;
   const communityCardIds = state.communityCards.map((card) => card.id).join(',');
@@ -535,7 +536,8 @@ export function TexasHoldemGame({ state, snapshotVersion = 0, mySeat, active, me
   const showPotChips = state.pot > 0 && !showSettlement;
   const stageLabel = presentationLocked
     ? `${runoutActive ? 'ALL-IN · ' : ''}${presentationStage === 'payout' ? '筹码结算中' : presentationStage === 'showdown' ? '摊牌揭晓' : `${pokerStreetLabel(presentationStreet ?? pokerStreetForCount(Math.max(3, displayedCommunityCount + 1)))}发牌中`}`
-    : state.phase === 'finished' ? '整局结束' : state.phase === 'hand-complete' ? '本手结算' : state.turn === mySeat ? '轮到你行动' : '等待好友行动';
+    : state.phase === 'hand-complete' ? onlineGameHeading(false, '', availability, actionPending, '本手结算')
+      : onlineGameHeading(state.phase === 'finished', '整局结束', availability, actionPending, state.turn === mySeat ? '轮到你行动' : '等待好友行动');
 
   return (
     <section className={`game-surface texas-holdem-surface ${presentationLocked ? 'is-presenting' : ''} ${runoutActive ? 'is-runout' : ''} ${payoutActive ? 'is-payout-active' : ''}`} aria-label="德州扑克牌桌">

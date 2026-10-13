@@ -1,7 +1,7 @@
 import { Check, Clipboard, DoorOpen, Flag, Link2, LoaderCircle, LogOut, RotateCcw, Send, ShieldCheck, TriangleAlert, Wifi, WifiOff, X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { requireBinaryPlayer, type GomokuState, type ConnectFourState, type ReversiState, type DotsAndBoxesState, type QuoridorView, type TwentyFourView, type SplendorView, type TexasHoldemView } from '@gamehall/game-core';
-import type { RoomMemberView } from '@gamehall/protocol';
+import type { GameActionCommand, RoomMemberView } from '@gamehall/protocol';
 import type { GameHallClient } from './gamehall-client';
 import { GomokuGame, QuoridorGame, TexasHoldemGame, TwentyFourGame } from './game-components';
 import { ClickSpark, Reveal } from './motion-primitives';
@@ -11,6 +11,7 @@ import { ConnectFourGame } from './ConnectFourGame';
 import { ReversiGame } from './ReversiGame';
 import { DotsAndBoxesGame } from './DotsAndBoxesGame';
 import { gameNames, games } from './games';
+import type { OnlineGameAvailability } from './online-game-heading';
 
 const quickMessages = ['👍', '👏', '😄', '🤔', '🔥', '🎉', '😮', '😭'] as const;
 
@@ -57,6 +58,11 @@ export function RoomPage({ client }: { client: GameHallClient }) {
   const [copiedTarget, setCopiedTarget] = useState<'link' | 'code' | null>(null);
   const copiedTimer = useRef<number | null>(null);
   const [pending, setPending] = useState(false);
+  const [gameActionRequest, setGameActionRequest] = useState<{ roomId: string; version: number; id: number } | null>(null);
+  const gameActionInFlight = useRef<{ roomId: string; version: number; id: number; promise: ReturnType<GameHallClient['submitGameAction']> } | null>(null);
+  const gameActionSequence = useRef(0);
+  const gameContext = useRef<{ roomId: string; version: number } | null>(null);
+  const mounted = useRef(true);
   const [starting, setStarting] = useState(false);
   const pendingRef = useRef(false);
   const [confirmAction, setConfirmAction] = useState<'leave' | 'resign' | null>(null);
@@ -73,6 +79,14 @@ export function RoomPage({ client }: { client: GameHallClient }) {
   const pauseDeadline = room?.pauseReason === 'restart'
     ? room.restartDeadlineMs
     : room?.members.find((member) => !member.online)?.disconnectDeadlineMs;
+  useLayoutEffect(() => {
+    gameContext.current = room && game ? { roomId: room.roomId, version: game.version } : null;
+  }, [room, game]);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; gameContext.current = null; };
+  }, []);
 
   useEffect(() => {
     if (!room?.roomId) return;
@@ -140,6 +154,10 @@ export function RoomPage({ client }: { client: GameHallClient }) {
   const pokerBetweenHands = room?.gameId === 'texas-holdem' && (game?.view as TexasHoldemView | undefined)?.phase === 'hand-complete';
   const pauseSeconds = pauseDeadline ? Math.max(0, Math.ceil((pauseDeadline - now) / 1000)) : null;
   const canPlay = room?.status === 'active' && client.connection === 'online';
+  const availability: OnlineGameAvailability = client.connection !== 'online' ? 'reconnecting'
+    : room?.status === 'paused' ? room.pauseReason === 'restart' ? 'paused-restart' : 'paused-peer' : null;
+  const gameActionPending = Boolean(gameActionRequest && gameActionRequest.roomId === room?.roomId && gameActionRequest.version === game?.version);
+  const canSubmitGameAction = canPlay && !gameActionPending;
   useEffect(() => {
     const anchorServerMs = game?.serverTimeMs ?? room?.serverTimeMs;
     if (anchorServerMs === undefined) return undefined;
@@ -183,6 +201,27 @@ export function RoomPage({ client }: { client: GameHallClient }) {
     pendingRef.current = true;
     setPending(true); setStarting(start);
     try { await operation(); } finally { pendingRef.current = false; setPending(false); setStarting(false); }
+  }
+
+  function submitRoomGameAction(action: GameActionCommand['action']): ReturnType<GameHallClient['submitGameAction']> {
+    const context = gameContext.current;
+    if (!context || context.roomId !== currentRoom.roomId || context.version !== game?.version || !canPlay) {
+      return Promise.resolve({ ok: false, error: { commandId: null, event: 'game:action', code: 'ACTION_UNAVAILABLE', message: '对局暂时不能操作', retryable: false } });
+    }
+    const inFlight = gameActionInFlight.current;
+    if (inFlight?.roomId === context.roomId && inFlight.version === context.version) return inFlight.promise;
+    const request = { ...context, id: ++gameActionSequence.current };
+    const promise = client.submitGameAction(action);
+    gameActionInFlight.current = { ...request, promise };
+    setGameActionRequest(request);
+    const settle = () => {
+      if (gameActionInFlight.current?.id === request.id) gameActionInFlight.current = null;
+      if (mounted.current && gameContext.current?.roomId === request.roomId && gameContext.current.version === request.version) {
+        setGameActionRequest((previous) => previous?.id === request.id ? null : previous);
+      }
+    };
+    void promise.then(settle, settle);
+    return promise;
   }
 
   async function copyInvite(target: 'link' | 'code') {
@@ -313,15 +352,15 @@ export function RoomPage({ client }: { client: GameHallClient }) {
           )}
 
           {game && room.status !== 'waiting' && (
-            <div className={`game-stage ${result ? 'has-result' : ''}`}>
-              {room.gameId === 'splendor' && <SplendorGame key={game.version} state={game.view as SplendorView} mySeat={room.mySeat} active={canPlay} members={room.members} onAction={client.submitGameAction} />}
-              {room.gameId === 'gomoku' && <GomokuGame state={game.view as GomokuState} mySeat={requireBinaryPlayer(room.mySeat)} active={canPlay} onAction={client.submitGameAction} />}
-              {room.gameId === 'connect-four' && <ConnectFourGame state={game.view as ConnectFourState} mySeat={requireBinaryPlayer(room.mySeat)} active={canPlay} onAction={client.submitGameAction} />}
-              {room.gameId === 'reversi' && <ReversiGame state={game.view as ReversiState} mySeat={requireBinaryPlayer(room.mySeat)} active={canPlay} onAction={client.submitGameAction} />}
-              {room.gameId === 'dots-and-boxes' && <DotsAndBoxesGame state={game.view as DotsAndBoxesState} mySeat={requireBinaryPlayer(room.mySeat)} active={canPlay} onAction={client.submitGameAction} />}
-              {room.gameId === 'quoridor' && <QuoridorGame state={game.view as QuoridorView} mySeat={requireBinaryPlayer(room.mySeat)} active={canPlay} onAction={client.submitGameAction} />}
-              {room.gameId === 'twenty-four' && <TwentyFourGame key={(game.view as TwentyFourView).round} state={game.view as TwentyFourView} mySeat={requireBinaryPlayer(room.mySeat)} active={canPlay} serverNowMs={gameClockNow} onAction={client.submitGameAction} />}
-              {room.gameId === 'texas-holdem' && <TexasHoldemGame snapshotVersion={game.version} state={game.view as TexasHoldemView} mySeat={room.mySeat} active={canPlay} members={room.members} onAction={client.submitGameAction} onPresentationLockChange={setPokerPresentationLocked} />}
+            <div key={room.roomId} className={`game-stage ${result ? 'has-result' : ''}`}>
+              {room.gameId === 'splendor' && <SplendorGame key={game.version} state={game.view as SplendorView} mySeat={room.mySeat} active={canSubmitGameAction} members={room.members} onAction={submitRoomGameAction} availability={availability} actionPending={gameActionPending} />}
+              {room.gameId === 'gomoku' && <GomokuGame state={game.view as GomokuState} mySeat={requireBinaryPlayer(room.mySeat)} active={canSubmitGameAction} onAction={submitRoomGameAction} availability={availability} actionPending={gameActionPending} />}
+              {room.gameId === 'connect-four' && <ConnectFourGame state={game.view as ConnectFourState} mySeat={requireBinaryPlayer(room.mySeat)} active={canSubmitGameAction} onAction={submitRoomGameAction} availability={availability} actionPending={gameActionPending} />}
+              {room.gameId === 'reversi' && <ReversiGame state={game.view as ReversiState} mySeat={requireBinaryPlayer(room.mySeat)} active={canSubmitGameAction} onAction={submitRoomGameAction} availability={availability} actionPending={gameActionPending} />}
+              {room.gameId === 'dots-and-boxes' && <DotsAndBoxesGame state={game.view as DotsAndBoxesState} mySeat={requireBinaryPlayer(room.mySeat)} active={canSubmitGameAction} onAction={submitRoomGameAction} availability={availability} actionPending={gameActionPending} />}
+              {room.gameId === 'quoridor' && <QuoridorGame state={game.view as QuoridorView} mySeat={requireBinaryPlayer(room.mySeat)} active={canSubmitGameAction} onAction={submitRoomGameAction} availability={availability} actionPending={gameActionPending} />}
+              {room.gameId === 'twenty-four' && <TwentyFourGame key={(game.view as TwentyFourView).round} state={game.view as TwentyFourView} mySeat={requireBinaryPlayer(room.mySeat)} active={canSubmitGameAction} serverNowMs={gameClockNow} onAction={submitRoomGameAction} />}
+              {room.gameId === 'texas-holdem' && <TexasHoldemGame snapshotVersion={game.version} state={game.view as TexasHoldemView} mySeat={room.mySeat} active={canSubmitGameAction} members={room.members} onAction={submitRoomGameAction} onPresentationLockChange={setPokerPresentationLocked} availability={availability} actionPending={gameActionPending} />}
               {result && (
                 <Reveal className="result-reveal" distance={20} key={result}>
                   <div className="result-panel" role="status">

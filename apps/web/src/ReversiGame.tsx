@@ -2,19 +2,21 @@ import { useRef, useState, type KeyboardEvent } from 'react';
 import { legalReversiMoves, type Player, type ReversiState } from '@gamehall/game-core';
 import type { GameActionCommand } from '@gamehall/protocol';
 import './board-games.css';
+import { onlineGameHeading, type OnlineGameAvailability } from './online-game-heading';
 
-export function ReversiGame({ state, mySeat, active, onAction, opponentLabel = '好友', hintCell = null }: {
-  state: ReversiState; mySeat: Player; active: boolean; opponentLabel?: string; hintCell?: { row: number; col: number } | null;
+export function ReversiGame({ state, mySeat, active, onAction, opponentLabel = '好友', hintCell = null, availability, actionPending }: {
+  state: ReversiState; mySeat: Player; active: boolean; opponentLabel?: string; hintCell?: { row: number; col: number } | null; availability?: OnlineGameAvailability; actionPending?: boolean;
   onAction: (action: GameActionCommand['action']) => Promise<unknown>;
 }) {
   const [focusIndex, setFocusIndex] = useState(19);
   const [pending, setPending] = useState(false);
+  const busy = actionPending ?? pending;
   const buttons = useRef<Array<HTMLButtonElement | null>>([]);
   const mine = active && state.phase === 'playing' && state.turn === mySeat;
   const legal = new Set(legalReversiMoves(state.board, state.turn).map(({ row, col }) => row * 8 + col));
   const flipped = new Set(state.lastFlipped.map(({ row, col }) => row * 8 + col));
   async function place(index: number) {
-    if (!mine || pending || !legal.has(index)) return;
+    if (!mine || busy || !legal.has(index)) return;
     setPending(true);
     try { await onAction({ type: 'placeDisc', row: Math.floor(index / 8), col: index % 8 }); } finally { setPending(false); }
   }
@@ -30,15 +32,15 @@ export function ReversiGame({ state, mySeat, active, onAction, opponentLabel = '
   }
   const myColor = state.blackPlayer === mySeat ? '黑' : '白';
   return <section className="game-surface reversi-surface" aria-label="黑白棋对局">
-    <div className="surface-title"><div><span>你执{myColor} · 夹住对方棋子后翻转</span><h2 aria-live="polite">{state.phase === 'finished' ? '本局结束' : mine ? '轮到你落子' : `等待${opponentLabel}落子`}</h2></div><div className="reversi-scores"><span>黑 <b>{state.counts[state.blackPlayer]}</b></span><span>白 <b>{state.counts[state.blackPlayer === 0 ? 1 : 0]}</b></span></div></div>
-    {state.lastPass !== null && state.phase === 'playing' && <p className="reversi-pass" role="status">{state.lastPass === mySeat ? `你暂无合法步，已自动跳过；${opponentLabel}继续落子。` : `${opponentLabel}暂无合法步，轮到你继续落子。`}</p>}
+    <div className="surface-title"><div><span>你执{myColor} · 夹住对方棋子后翻转</span><h2 aria-live="polite">{onlineGameHeading(state.phase === 'finished', '本局结束', availability, actionPending, state.turn === mySeat ? '轮到你落子' : `等待${opponentLabel}落子`)}</h2></div><div className="reversi-scores"><span>黑 <b>{state.counts[state.blackPlayer]}</b></span><span>白 <b>{state.counts[state.blackPlayer === 0 ? 1 : 0]}</b></span></div></div>
+    {state.lastPass !== null && state.phase === 'playing' && !availability && !actionPending && <p className="reversi-pass" role="status">{state.lastPass === mySeat ? `你暂无合法步，已自动跳过；${opponentLabel}继续落子。` : `${opponentLabel}暂无合法步，轮到你继续落子。`}</p>}
     <div className="reversi-board" role="grid" aria-label="8乘8黑白棋棋盘" aria-describedby="reversi-help">{state.board.map((cell, index) => {
       const row = Math.floor(index / 8), col = index % 8;
       const last = state.lastMove?.row === row && state.lastMove.col === col;
       return <button key={index} ref={(element) => { buttons.current[index] = element; }} type="button" role="gridcell" tabIndex={focusIndex === index ? 0 : -1}
         className={`reversi-cell ${mine && legal.has(index) ? 'is-legal' : ''} ${hintCell?.row === row && hintCell.col === col ? 'is-hint' : ''} ${last ? 'is-last' : ''} ${flipped.has(index) ? 'is-flipped' : ''}`}
         aria-label={`第 ${row + 1} 行第 ${col + 1} 列，${cell === null ? '空位' : cell === state.blackPlayer ? '黑棋' : '白棋'}${mine && legal.has(index) ? '，可落子' : ''}${hintCell?.row === row && hintCell.col === col ? '，建议落点' : ''}`}
-        aria-disabled={!mine || !legal.has(index) || pending} onFocus={() => setFocusIndex(index)} onKeyDown={(event) => key(event, index)} onClick={() => void place(index)}>
+        aria-disabled={!mine || !legal.has(index) || busy} onFocus={() => setFocusIndex(index)} onKeyDown={(event) => key(event, index)} onClick={() => void place(index)}>
         {cell !== null ? <i className={cell === state.blackPlayer ? 'black' : 'white'} /> : mine && legal.has(index) ? <i className="legal-hint" /> : null}
       </button>;
     })}</div>

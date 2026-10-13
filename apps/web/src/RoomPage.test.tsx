@@ -1,10 +1,11 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { abortSplendorState, createSplendorState, splendorDefinition, createGomokuState, createQuoridorState, createTwentyFourState, viewTwentyFourState } from '@gamehall/game-core';
+import { abortSplendorState, createSplendorState, splendorDefinition, createGomokuState, createQuoridorState, quoridorDefinition, createTwentyFourState, viewTwentyFourState, createConnectFourState, createReversiState, createDotsAndBoxesState, createTexasHoldemState, texasHoldemDefinition } from '@gamehall/game-core';
 import type { GameSnapshot, RoomSnapshot } from '@gamehall/protocol';
 import type { GameHallClient } from './gamehall-client';
 import { RoomPage } from './RoomPage';
 import { resultMessage } from './room-result';
+import { onlineGameHeading } from './online-game-heading';
 
 const state = createTwentyFourState([
   { id: 0, suit: 'S', rank: 1 },
@@ -19,6 +20,23 @@ const finishedViews = {
   quoridor: { ...createQuoridorState(0), phase: 'finished', result: { type: 'win', winner: 0, reason: 'goal' }, legalMoves: [] },
   'twenty-four': { ...base, phase: 'finished', winner: 0, finishReason: 'score' },
 } as const;
+
+const playableViews = {
+  gomoku: createGomokuState(0),
+  'connect-four': createConnectFourState(0),
+  reversi: createReversiState(0),
+  'dots-and-boxes': createDotsAndBoxesState(0),
+  quoridor: quoridorDefinition.viewFor(createQuoridorState(0), 0, 0),
+  splendor: splendorDefinition.viewFor(createSplendorState({ playerCount: 2 }), 0, 0),
+  'texas-holdem': texasHoldemDefinition.viewFor(createTexasHoldemState({ seats: [0, 1], dealerSeat: 0, rng: () => 0.2 }), 0, 0),
+};
+
+function playableClient(gameId: keyof typeof playableViews): GameHallClient {
+  const client = finishedClient('gomoku');
+  client.room = { ...client.room!, gameId, status: 'active', version: 1 };
+  client.game = { ...client.game!, gameId, status: 'active', version: 1, view: playableViews[gameId] } as GameSnapshot;
+  return client;
+}
 
 function finishedClient(gameId: keyof typeof finishedViews, rematchReady: [boolean, boolean] = [false, false], requestRematch = vi.fn().mockResolvedValue({ ok: true })): GameHallClient {
   const room: RoomSnapshot = {
@@ -40,6 +58,103 @@ function finishedClient(gameId: keyof typeof finishedViews, rematchReady: [boole
     submitGameAction: vi.fn(), requestRematch, sendMessage: vi.fn(),
   } as GameHallClient;
 }
+
+describe('online game turn headings', () => {
+  it.each(Object.keys(playableViews) as Array<keyof typeof playableViews>)('%s distinguishes turn, pause and lost connection', (gameId) => {
+    const client = playableClient(gameId);
+    const original = client.game!.view as Record<string, unknown>;
+    const rendered = render(<RoomPage client={client} />);
+    const heading = () => screen.getByLabelText(gameId === 'connect-four' ? '四子连线对局' : gameId === 'reversi' ? '黑白棋对局' : gameId === 'dots-and-boxes' ? '点格棋对局' : gameId === 'gomoku' ? '五子棋对局' : gameId === 'quoridor' ? '路墙棋对局' : gameId === 'splendor' ? '璀璨宝石对局' : '德州扑克牌桌').querySelector('.surface-title h2');
+    for (const turn of [0, 1] as const) {
+      client.game = { ...client.game!, view: { ...original, turn } } as GameSnapshot;
+      rendered.rerender(<RoomPage client={client} />);
+      expect(heading()).toHaveTextContent(turn === 0 ? /轮到你|发牌中/ : /等待|发牌中/);
+      client.room = { ...client.room!, status: 'paused', pauseReason: 'disconnect' };
+      rendered.rerender(<RoomPage client={client} />);
+      expect(heading()).toHaveTextContent('好友暂时离线，对局已暂停');
+      client.connection = 'offline';
+      rendered.rerender(<RoomPage client={client} />);
+      expect(heading()).toHaveTextContent('正在恢复连接与对局');
+      client.connection = 'online';
+      client.room = { ...client.room!, status: 'active', pauseReason: null };
+    }
+    rendered.unmount();
+  });
+
+  it('finish, availability and current action confirmation have stable priority', () => {
+    expect(onlineGameHeading(true, '本局结束', 'reconnecting', true, '轮到你')).toBe('本局结束');
+    expect(onlineGameHeading(false, '', 'reconnecting', true, '轮到你')).toBe('正在恢复连接与对局');
+    expect(onlineGameHeading(false, '', 'paused-restart', true, '轮到你')).toBe('等待大家回到对局');
+    expect(onlineGameHeading(false, '', 'paused-peer', true, '等待好友')).toBe('好友暂时离线，对局已暂停');
+    expect(onlineGameHeading(false, '', null, true, '轮到你')).toBe('正在确认你的操作');
+    expect(onlineGameHeading(false, '', undefined, false, '等待电脑')).toBe('等待电脑');
+  });
+
+  it('game action alone shows confirmation, locks duplicate moves and ignores a late old-room result', async () => {
+    const client = playableClient('connect-four');
+    let resolveFirst!: (result: { ok: true }) => void;
+    let resolveSecond!: (result: { ok: true }) => void;
+    client.submitGameAction = vi.fn()
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveSecond = resolve; }));
+    client.sendMessage = vi.fn().mockResolvedValue({ ok: true });
+    const rendered = render(<RoomPage client={client} />);
+    fireEvent.click(screen.getByRole('button', { name: '发送 👍' }));
+    await waitFor(() => expect(client.sendMessage).toHaveBeenCalledTimes(1));
+    expect(screen.getByLabelText('四子连线对局').querySelector('h2')).toHaveTextContent('轮到你投放棋子');
+    fireEvent.click(screen.getByRole('button', { name: /投放第 1 列/ }));
+    expect(screen.getByLabelText('四子连线对局').querySelector('h2')).toHaveTextContent('正在确认你的操作');
+    expect(screen.getByRole('button', { name: /投放第 2 列/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: /投放第 2 列/ }));
+    expect(client.submitGameAction).toHaveBeenCalledTimes(1);
+    client.room = { ...client.room!, roomId: 'new-room', code: 'XYZ789' };
+    client.game = { ...client.game!, roomId: 'new-room' };
+    rendered.rerender(<RoomPage client={client} />);
+    fireEvent.click(screen.getByRole('button', { name: /投放第 2 列/ }));
+    expect(client.submitGameAction).toHaveBeenCalledTimes(2);
+    expect(screen.getByLabelText('四子连线对局').querySelector('h2')).toHaveTextContent('正在确认你的操作');
+    await act(async () => resolveFirst({ ok: true }));
+    expect(screen.getByLabelText('四子连线对局').querySelector('h2')).toHaveTextContent('正在确认你的操作');
+    await act(async () => resolveSecond({ ok: true }));
+    expect(screen.getByLabelText('四子连线对局').querySelector('h2')).toHaveTextContent('轮到你投放棋子');
+    rendered.unmount();
+  });
+
+  it('a rejected action acknowledgement releases the board; a paused 24-point question keeps its title', async () => {
+    const client = playableClient('connect-four');
+    client.submitGameAction = vi.fn().mockResolvedValueOnce({ ok: false, error: { commandId: null, event: 'game:action', code: 'ACTION_REJECTED', message: '请重试', retryable: false } });
+    const rendered = render(<RoomPage client={client} />);
+    fireEvent.click(screen.getByRole('button', { name: /投放第 1 列/ }));
+    await waitFor(() => expect(screen.getByLabelText('四子连线对局').querySelector('h2')).toHaveTextContent('轮到你投放棋子'));
+    expect(screen.getByRole('button', { name: /投放第 2 列/ })).toBeEnabled();
+    rendered.unmount();
+
+    const challenge = finishedClient('twenty-four');
+    challenge.room = { ...challenge.room!, status: 'paused', pauseReason: 'disconnect' };
+    challenge.game = { ...challenge.game!, status: 'paused', view: base };
+    render(<RoomPage client={challenge} />);
+    expect(screen.getByLabelText('24点速度对决').querySelector('.surface-title h2')).toHaveTextContent('抢先算出 24');
+    expect(screen.getByText('好友暂时断线，对局已暂停')).toBeInTheDocument();
+  });
+
+  it('a new snapshot request survives the earlier acknowledgement and unmount', async () => {
+    const client = playableClient('connect-four');
+    const resolvers: Array<(result: { ok: true }) => void> = [];
+    client.submitGameAction = vi.fn(() => new Promise<{ ok: true }>((resolve) => { resolvers.push(resolve); }));
+    const rendered = render(<RoomPage client={client} />);
+    fireEvent.click(screen.getByRole('button', { name: /投放第 1 列/ }));
+    expect(screen.getByLabelText('四子连线对局').querySelector('h2')).toHaveTextContent('正在确认你的操作');
+    client.game = { ...client.game!, version: 2 };
+    rendered.rerender(<RoomPage client={client} />);
+    expect(screen.getByLabelText('四子连线对局').querySelector('h2')).toHaveTextContent('轮到你投放棋子');
+    fireEvent.click(screen.getByRole('button', { name: /投放第 2 列/ }));
+    expect(client.submitGameAction).toHaveBeenCalledTimes(2);
+    await act(async () => resolvers[0]!({ ok: true }));
+    expect(screen.getByLabelText('四子连线对局').querySelector('h2')).toHaveTextContent('正在确认你的操作');
+    rendered.unmount();
+    await act(async () => resolvers[1]!({ ok: true }));
+  });
+});
 
 describe('RoomPage result copy', () => {
   it('璀璨宝石四座等待区由房主确认开局，中止可保留邀请码返回等待区', async () => {

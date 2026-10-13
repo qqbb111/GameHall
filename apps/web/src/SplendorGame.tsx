@@ -3,6 +3,7 @@ import { canAffordSplendorCard, gemColors, legalSplendorPayment, tokenColors, ty
 import type { CommandAck, GameActionCommand, RoomMemberView } from '@gamehall/protocol';
 import './splendor.css';
 import { GemMark } from './GemMark';
+import { onlineGameHeading, type OnlineGameAvailability } from './online-game-heading';
 
 const gemNames: Record<TokenColor, string> = { white: '钻石', blue: '蓝宝石', green: '祖母绿', red: '红宝石', black: '缟玛瑙', gold: '黄金' };
 const emptyTokens = (): TokenCounts => ({ white: 0, blue: 0, green: 0, red: 0, black: 0, gold: 0 });
@@ -26,8 +27,8 @@ function CardFace({ card }: { card: SplendorCard }) {
     <span className="splendor-card-label">{['', '矿场', '工坊', '宫殿'][card.tier]} · {gemNames[card.bonus]}</span></>;
 }
 
-export function SplendorGame({ state, mySeat, active, members, onAction }: {
-  state: SplendorView; mySeat: number; active: boolean; members: RoomMemberView[];
+export function SplendorGame({ state, mySeat, active, members, onAction, availability, actionPending }: {
+  state: SplendorView; mySeat: number; active: boolean; members: RoomMemberView[]; availability?: OnlineGameAvailability; actionPending?: boolean;
   onAction: (action: GameActionCommand['action']) => Promise<CommandAck>;
 }) {
   const [selected, setSelected] = useState<SplendorCard | null>(null);
@@ -109,7 +110,7 @@ export function SplendorGame({ state, mySeat, active, members, onAction }: {
 
   return <section className="game-surface splendor-surface" aria-label="璀璨宝石对局">
     <div className="surface-title"><div><span>璀璨宝石 · 经典基础版 · {state.playerCount} 人</span>
-      <h2 aria-live="polite">{state.phase === 'finished' ? '商会结算' : !active ? '对局已暂停' : state.turn === mySeat ? '轮到你行动' : `等待 ${name(state.turn)}`}</h2></div>
+      <h2 aria-live="polite">{state.phase !== 'finished' && availability === undefined && !active ? '对局已暂停' : onlineGameHeading(state.phase === 'finished', '商会结算', availability, actionPending, state.turn === mySeat ? '轮到你行动' : `等待 ${name(state.turn)}`)}</h2></div>
       <span className={`splendor-round ${state.finalRound ? 'is-final' : ''}`}>{state.finalRound ? '最后一轮' : '目标 15 分'}</span></div>
 
     <div className="splendor-players">{state.players.map((player) => <details className={`splendor-player ${player.seat === state.turn ? 'is-current' : ''}`} key={player.seat}>
@@ -123,7 +124,7 @@ export function SplendorGame({ state, mySeat, active, members, onAction }: {
     </details>)}</div>
 
     {(state.phase === 'return-tokens' || state.phase === 'choose-noble') && <section className="splendor-required" ref={forced} tabIndex={-1} aria-label={state.phase === 'return-tokens' ? '归还超额宝石' : '选择来访贵族'}>
-      <h3>{state.phase === 'choose-noble' ? myTurn ? '请选择下方一位来访贵族' : `等待 ${name(state.turn)} 选择贵族` : myTurn ? `请归还 ${total(me.tokens) - 10} 枚宝石` : `等待 ${name(state.turn)} 归还宝石`}</h3>
+      <h3>{availability || actionPending ? onlineGameHeading(false, '', availability, actionPending, '') : availability === undefined && !active ? '对局已暂停' : state.phase === 'choose-noble' ? myTurn ? '请选择下方一位来访贵族' : `等待 ${name(state.turn)} 选择贵族` : myTurn ? `请归还 ${total(me.tokens) - 10} 枚宝石` : `等待 ${name(state.turn)} 归还宝石`}</h3>
       {state.phase === 'return-tokens' && myTurn ? <><p>可以归还刚拿到的宝石或黄金，完成后才能结束回合。</p><div className="splendor-count-inputs">{tokenColors.map((color) => <label key={color}><GemMark color={color} />归还{gemNames[color]}<input type="number" min={0} max={me.tokens[color]} value={returned[color]} disabled={pending} onChange={(event) => setReturned((current) => ({ ...current, [color]: Number(event.target.value) }))} /></label>)}</div>
         <button className="splendor-confirm" type="button" disabled={pending || total(returned) !== total(me.tokens) - 10 || tokenColors.some((color) => !Number.isInteger(returned[color]) || returned[color] < 0 || returned[color] > me.tokens[color])} onClick={() => void send({ type: 'returnTokens', tokens: returned })}>确认归还</button></> : <p>{state.phase === 'choose-noble' ? '每回合只能获得一位贵族，完成选择后再切换玩家。' : '全桌等待这项必选操作完成。'}</p>}
     </section>}
@@ -192,7 +193,7 @@ export function SplendorGame({ state, mySeat, active, members, onAction }: {
       <p>达到十五分后打完本轮，所有人行动次数相同；最高分获胜，同分时已购买卡牌较少者获胜，仍相同则共享胜利。</p>
       <p>线上约定：随机首家，不设回合计时；断线暂停，六十秒未恢复或有人认输、离开则中止且不计胜负。服务重启提供十分钟恢复窗口。只有无合法行动才可跳过，全员连续无合法行动则中止。房主可保留邀请码返回等待区再开。</p>
     </details>
-    {state.phase !== 'finished' && <nav className="splendor-mobile-actions" aria-label="桌面快捷操作"><span>{!active ? '对局暂停' : myTurn ? '轮到你' : '等待好友'}</span>
+    {state.phase !== 'finished' && <nav className="splendor-mobile-actions" aria-label="桌面快捷操作"><span>{availability === undefined && !active ? '对局暂停' : onlineGameHeading(false, '', availability, actionPending, state.turn === mySeat ? '轮到你' : '等待好友')}</span>
       <button type="button" onClick={() => { const target = state.phase === 'action' ? supply : forced; target.current?.focus({ preventScroll: true }); target.current?.scrollIntoView({ block: 'center', behavior: 'instant' }); }}>{state.phase === 'action' ? '拿取宝石' : '必选操作'}</button>
       <button type="button" onClick={() => { personal.current?.focus({ preventScroll: true }); personal.current?.scrollIntoView({ block: 'center', behavior: 'instant' }); }}>我的商会</button></nav>}
   </section>;

@@ -3,13 +3,15 @@ import { type DotsAndBoxesState, type EdgeOrientation, type Player } from '@game
 import type { GameActionCommand } from '@gamehall/protocol';
 import './board-games.css';
 import { useBoardKeyboardContinuity } from './useBoardKeyboardContinuity';
+import { onlineGameHeading, type OnlineGameAvailability } from './online-game-heading';
 
-export function DotsAndBoxesGame({ state, mySeat, active, onAction, opponentLabel = '好友', hintEdge = null }: {
-  state: DotsAndBoxesState; mySeat: Player; active: boolean;
+export function DotsAndBoxesGame({ state, mySeat, active, onAction, opponentLabel = '好友', hintEdge = null, availability, actionPending }: {
+  state: DotsAndBoxesState; mySeat: Player; active: boolean; availability?: OnlineGameAvailability; actionPending?: boolean;
   opponentLabel?: string; hintEdge?: { orientation: EdgeOrientation; row: number; col: number } | null;
   onAction: (action: GameActionCommand['action']) => Promise<unknown>;
 }) {
   const [pending, setPending] = useState(false);
+  const busy = actionPending ?? pending;
   const [focusIndex, setFocusIndex] = useState(0);
   const mine = active && state.phase === 'playing' && state.turn === mySeat;
   const open = Array.from({ length: 49 }, (_, index) => index).filter((index) => {
@@ -23,11 +25,11 @@ export function DotsAndBoxesGame({ state, mySeat, active, onAction, opponentLabe
     return distance(a) - distance(b) || a - b;
   })[0];
   const { boardRef, onKeyDownCapture, onPointerDownCapture } = useBoardKeyboardContinuity(
-    mine && !pending, currentFocus === undefined ? null : `[data-grid-index="${currentFocus}"]`,
+    mine && !busy, currentFocus === undefined ? null : `[data-grid-index="${currentFocus}"]`,
   );
   async function draw(orientation: EdgeOrientation, row: number, col: number) {
     const taken = orientation === 'H' ? state.horizontal[row * 3 + col] !== null : state.vertical[row * 4 + col] !== null;
-    if (!mine || pending || taken) return;
+    if (!mine || busy || taken) return;
     setPending(true);
     try { await onAction({ type: 'drawEdge', orientation, row, col }); } finally { setPending(false); }
   }
@@ -53,7 +55,7 @@ export function DotsAndBoxesGame({ state, mySeat, active, onAction, opponentLabe
     boardRef.current?.querySelector<HTMLButtonElement>(`button[data-grid-index="${next}"]`)?.focus();
   }
   return <section className="game-surface dots-surface" aria-label="点格棋对局">
-    <div className="surface-title"><div><span>连点成格 · 画完第四边得分并继续</span><h2 aria-live="polite">{state.phase === 'finished' ? '本局结束' : state.lastBoxes.length && state.lastEdge?.player === mySeat && mine ? `你获得 ${state.lastBoxes.length} 分，继续画边` : mine ? '轮到你画边' : `等待${opponentLabel}画边`}</h2></div><div className="dots-scores"><span>你 <b>{state.scores[mySeat]}</b></span><span>{opponentLabel} <b>{state.scores[mySeat === 0 ? 1 : 0]}</b></span></div></div>
+    <div className="surface-title"><div><span>连点成格 · 画完第四边得分并继续</span><h2 aria-live="polite">{onlineGameHeading(state.phase === 'finished', '本局结束', availability, actionPending, state.turn === mySeat ? state.lastBoxes.length && state.lastEdge?.player === mySeat ? `你获得 ${state.lastBoxes.length} 分，继续画边` : '轮到你画边' : `等待${opponentLabel}画边`)}</h2></div><div className="dots-scores"><span>你 <b>{state.scores[mySeat]}</b></span><span>{opponentLabel} <b>{state.scores[mySeat === 0 ? 1 : 0]}</b></span></div></div>
     <div ref={boardRef} className="dots-board" role="group" aria-label="4乘4点、3乘3格子的点格棋棋盘" onKeyDownCapture={onKeyDownCapture} onPointerDownCapture={onPointerDownCapture}>{Array.from({ length: 49 }, (_, index) => {
       const gridRow = Math.floor(index / 7), gridCol = index % 7;
       if (gridRow % 2 === 0 && gridCol % 2 === 0) return <span key={index} className="dots-point" aria-hidden="true"><i /></span>;
@@ -68,8 +70,8 @@ export function DotsAndBoxesGame({ state, mySeat, active, onAction, opponentLabe
       const last = state.lastEdge?.orientation === orientation && state.lastEdge.row === row && state.lastEdge.col === col;
       const hinted = hintEdge?.orientation === orientation && hintEdge.row === row && hintEdge.col === col && owner === null;
       return <button key={index} className={`dots-edge ${orientation === 'H' ? 'horizontal' : 'vertical'} ${owner === null ? 'is-open' : owner === mySeat ? 'mine' : 'theirs'} ${last ? 'is-last' : ''} ${hinted ? 'is-hint' : ''}`}
-        type="button" disabled={!mine || pending || owner !== null} aria-label={`${orientation === 'H' ? '横边' : '竖边'}，第 ${row + 1} 行第 ${col + 1} 列${owner === null ? '，可画' : '，已画'}`}
-        data-grid-index={index} tabIndex={mine && !pending && index === currentFocus ? 0 : -1} onFocus={() => setFocusIndex(index)} onKeyDown={(event) => arrow(event, index)}
+        type="button" disabled={!mine || busy || owner !== null} aria-label={`${orientation === 'H' ? '横边' : '竖边'}，第 ${row + 1} 行第 ${col + 1} 列${owner === null ? '，可画' : '，已画'}`}
+        data-grid-index={index} tabIndex={mine && !busy && index === currentFocus ? 0 : -1} onFocus={() => setFocusIndex(index)} onKeyDown={(event) => arrow(event, index)}
         onClick={() => void draw(orientation, row, col)}><i /></button>;
     })}</div>
     <p className="board-hint">点击空边，或用 Tab 进入棋盘后用方向键选边、按 Enter/空格画边。画出一个格子的第四条边即可得 1 分，并继续行动；一次封住两个格子得 2 分。24 条边画完后分高者获胜。</p>
