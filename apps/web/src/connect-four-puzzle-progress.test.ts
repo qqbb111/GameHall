@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { applyConnectFourAction } from '@gamehall/game-core';
 import { connectFourPuzzles, puzzleSolutions, replayConnectFourPuzzle, choosePuzzleReply, immediatePuzzleWins } from './connect-four-puzzles';
-import { decodePuzzleAttempt, freshPuzzleAttempt, markPuzzleCompleted, PUZZLE_ATTEMPT_KEY, PUZZLE_COMPLETION_PREFIX, puzzleAttemptBoard, readPuzzleAttempt, readPuzzleCompletions, savePuzzleAttempt } from './connect-four-puzzle-progress';
+import { decodePuzzleAttempt, freshPuzzleAttempt, markPuzzleCompleted, mergePuzzleCompletions, PUZZLE_ATTEMPT_KEY, PUZZLE_COMPLETION_PREFIX, puzzleAttemptBoard, readPuzzleAttempt, readPuzzleCompletions, savePuzzleAttempt } from './connect-four-puzzle-progress';
 
 describe('independent four-in-a-row puzzle progress', () => {
   afterEach(() => { window.sessionStorage.clear(); window.localStorage.clear(); vi.restoreAllMocks(); });
@@ -55,6 +55,14 @@ describe('independent four-in-a-row puzzle progress', () => {
     expect(window.localStorage.getItem(oldPractice)).toBe('older practice');
     expect(window.localStorage.getItem(`${PUZZLE_COMPLETION_PREFIX}bridge:independent`)).toBe('1');
     expect(window.localStorage.getItem(`${PUZZLE_COMPLETION_PREFIX}tower:independent`)).toBe('1');
+  });
+
+  it('merges partial records without forgetting known wins or downgrading an independent result', () => {
+    expect(mergePuzzleCompletions(
+      { bridge: 'independent', tower: 'reference' },
+      { bridge: 'reference', edge: 'reference' },
+      { edge: 'independent' },
+    )).toEqual({ bridge: 'independent', tower: 'reference', edge: 'independent' });
   });
 
   it('surfaces unavailable storage without preventing an in-memory attempt', () => {

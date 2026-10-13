@@ -3,7 +3,7 @@ import { applyConnectFourAction, type ConnectFourState } from '@gamehall/game-co
 import type { GameActionCommand } from '@gamehall/protocol';
 import { ConnectFourGame } from './ConnectFourGame';
 import { choosePuzzleReply, connectFourPuzzles, immediatePuzzleWins, openPuzzleColumns, puzzleLineDirection, puzzleSolutions, replayConnectFourPuzzle, type ConnectFourPuzzle } from './connect-four-puzzles';
-import { freshPuzzleAttempt, markPuzzleCompleted, puzzleAttemptBoard, PUZZLE_COMPLETION_PREFIX, readPuzzleAttempt, readPuzzleCompletions, savePuzzleAttempt, type PuzzleAttempt, type PuzzleCompletion } from './connect-four-puzzle-progress';
+import { freshPuzzleAttempt, markPuzzleCompleted, mergePuzzleCompletions, puzzleAttemptBoard, PUZZLE_COMPLETION_PREFIX, readPuzzleAttempt, readPuzzleCompletions, savePuzzleAttempt, type PuzzleAttempt, type PuzzleCompletion } from './connect-four-puzzle-progress';
 import './connect-four-puzzle-page.css';
 
 const kindLabel = { 'win-now': '一手制胜', defend: '堵住胜着', 'win-in-two': '两步制胜' } as const;
@@ -46,7 +46,9 @@ export function ConnectFourPuzzlePage({ recoveredRoom, onExit }: { recoveredRoom
   const [completionLoad] = useState(readPuzzleCompletions);
   const [attempt, setAttempt] = useState(loaded.attempt);
   const [completions, setCompletions] = useState(completionLoad.completions);
-  const [notice, setNotice] = useState(loaded.warning ?? completionLoad.warning);
+  const [attemptNotice, setAttemptNotice] = useState(loaded.warning);
+  const [completionReadWarning, setCompletionReadWarning] = useState(completionLoad.warning);
+  const [completionWriteWarning, setCompletionWriteWarning] = useState<string | null>(null);
   const [feedback, setFeedback] = useState('');
   const nextButton = useRef<HTMLButtonElement>(null);
   const focusNext = useRef(false);
@@ -63,8 +65,8 @@ export function ConnectFourPuzzlePage({ recoveredRoom, onExit }: { recoveredRoom
     const update = (event: StorageEvent) => {
       if (event.key?.startsWith(PUZZLE_COMPLETION_PREFIX)) {
         const current = readPuzzleCompletions();
-        setCompletions(current.completions);
-        if (current.warning) setNotice(current.warning);
+        setCompletions((known) => mergePuzzleCompletions(known, current.completions));
+        setCompletionReadWarning(current.warning);
       }
     };
     window.addEventListener('storage', update);
@@ -80,7 +82,7 @@ export function ConnectFourPuzzlePage({ recoveredRoom, onExit }: { recoveredRoom
 
   function updateAttempt(next: PuzzleAttempt) {
     setAttempt(next);
-    if (!savePuzzleAttempt(next)) setNotice('本关当前步骤暂时无法保存；刷新后可能需要重做。');
+    if (!savePuzzleAttempt(next)) setAttemptNotice('本关当前步骤暂时无法保存；刷新后可能需要重做。');
   }
 
   function selectPuzzle(id: string) {
@@ -103,8 +105,10 @@ export function ConnectFourPuzzlePage({ recoveredRoom, onExit }: { recoveredRoom
 
   function finishPuzzle(next: PuzzleAttempt) {
     const status: PuzzleCompletion = next.hintUsed ? 'reference' : 'independent';
-    if (!markPuzzleCompleted(next.id, status)) setNotice('通关记录暂时无法保存；本页仍可继续闯关。');
-    setCompletions(readPuzzleCompletions().completions);
+    if (!markPuzzleCompleted(next.id, status)) setCompletionWriteWarning('通关记录暂时无法保存；本页仍可继续闯关，刷新后此关成绩可能需要重做。');
+    const current = readPuzzleCompletions();
+    setCompletions((known) => mergePuzzleCompletions(known, current.completions, { [next.id]: status }));
+    setCompletionReadWarning(current.warning);
     updateAttempt(next);
     focusNext.current = Boolean(document.activeElement?.closest('.four-columns'));
     setFeedback('');
@@ -153,7 +157,9 @@ export function ConnectFourPuzzlePage({ recoveredRoom, onExit }: { recoveredRoom
       <button type="button" onClick={onExit}>{recoveredRoom ? '返回好友房' : '返回大厅'}</button>
     </header>
     {recoveredRoom && <p className="puzzle-notice" role="status">好友房已恢复，你可以随时返回原对局。</p>}
-    {notice && <p className="puzzle-notice is-warning" role="status">{notice}</p>}
+    {attemptNotice && <p className="puzzle-notice is-warning" role="status">{attemptNotice}</p>}
+    {completionReadWarning && <p className="puzzle-notice is-warning" role="status">{completionReadWarning}</p>}
+    {completionWriteWarning && <p className="puzzle-notice is-warning" role="status">{completionWriteWarning}</p>}
     <div className="puzzle-layout">
       <nav className="puzzle-list" aria-label="残局关卡选择">
         <div className="puzzle-list-summary"><strong>已通关 {completedCount}/{connectFourPuzzles.length}</strong><span>独立完成 {independentCount} 关 · 参考完成 {completedCount - independentCount} 关</span>{completedCount === connectFourPuzzles.length && <span>全部通关，可选任一关重新挑战。</span>}</div>

@@ -6,6 +6,16 @@ export const PUZZLE_COMPLETION_PREFIX = 'gamehall:connect-four-puzzles:solved:v1
 export type PuzzleCompletion = 'independent' | 'reference';
 export type PuzzleAttempt = { version: 1; id: string; moves: number[]; hintUsed: boolean; hintShown: boolean; completed: boolean };
 
+export function mergePuzzleCompletions(...sources: ReadonlyArray<Record<string, PuzzleCompletion>>): Record<string, PuzzleCompletion> {
+  const merged: Record<string, PuzzleCompletion> = {};
+  for (const source of sources) {
+    for (const [id, status] of Object.entries(source)) {
+      if (status === 'independent' || merged[id] === undefined) merged[id] = status;
+    }
+  }
+  return merged;
+}
+
 export function freshPuzzleAttempt(id = connectFourPuzzles[0]!.id): PuzzleAttempt {
   return { version: 1, id, moves: [], hintUsed: false, hintShown: false, completed: false };
 }

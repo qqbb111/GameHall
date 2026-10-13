@@ -113,4 +113,53 @@ describe('四子连线残局闯关', () => {
     expect(screen.getByText('已通关 2/9')).toBeInTheDocument();
     expect(screen.getByText('独立完成 1 关 · 参考完成 1 关')).toBeInTheDocument();
   });
+
+  it('已有独立与参考成果时，存储事件读取失败不清空已知成绩；恢复后仅合并更高成绩', async () => {
+    render(<ConnectFourPuzzlePage recoveredRoom={false} onExit={vi.fn()} />);
+    await drop(2);
+    selectPuzzle(1);
+    fireEvent.click(screen.getByRole('button', { name: '提示思路' }));
+    await drop(1);
+    expect(screen.getByText('独立完成 1 关 · 参考完成 1 关')).toBeInTheDocument();
+
+    const originalGet = Storage.prototype.getItem;
+    const brokenRead = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key) {
+      if (this === window.localStorage && key.startsWith(PUZZLE_COMPLETION_PREFIX)) throw Error('temporarily blocked');
+      return originalGet.call(this, key);
+    });
+    act(() => window.dispatchEvent(new StorageEvent('storage', { key: `${PUZZLE_COMPLETION_PREFIX}tower:reference` })));
+    expect(screen.getByText('已通关 2/9')).toBeInTheDocument();
+    expect(screen.getByText('独立完成 1 关 · 参考完成 1 关')).toBeInTheDocument();
+    expect(screen.getByText(/暂不能读取通关记录/)).toBeInTheDocument();
+
+    brokenRead.mockRestore();
+    window.localStorage.setItem(`${PUZZLE_COMPLETION_PREFIX}tower:independent`, '1');
+    act(() => window.dispatchEvent(new StorageEvent('storage', { key: `${PUZZLE_COMPLETION_PREFIX}tower:independent` })));
+    expect(screen.getByText('已通关 2/9')).toBeInTheDocument();
+    expect(screen.getByText('独立完成 2 关 · 参考完成 0 关')).toBeInTheDocument();
+    expect(screen.queryByText(/暂不能读取通关记录/)).not.toBeInTheDocument();
+  });
+
+  it('读写通关标记暂不可用时，本页本次胜着仍增加成果，旧成果不丢', async () => {
+    window.localStorage.setItem(`${PUZZLE_COMPLETION_PREFIX}bridge:independent`, '1');
+    window.localStorage.setItem(`${PUZZLE_COMPLETION_PREFIX}tower:reference`, '1');
+    render(<ConnectFourPuzzlePage recoveredRoom={false} onExit={vi.fn()} />);
+    selectPuzzle(2);
+    const originalGet = Storage.prototype.getItem;
+    const originalSet = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key) {
+      if (this === window.localStorage && key.startsWith(PUZZLE_COMPLETION_PREFIX)) throw Error('read blocked');
+      return originalGet.call(this, key);
+    });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+      if (this === window.localStorage && key.startsWith(PUZZLE_COMPLETION_PREFIX)) throw Error('write blocked');
+      return originalSet.call(this, key, value);
+    });
+    await drop(3);
+    expect(screen.getByText('本次独立完成')).toBeInTheDocument();
+    expect(screen.getByText('已通关 3/9')).toBeInTheDocument();
+    expect(screen.getByText('独立完成 2 关 · 参考完成 1 关')).toBeInTheDocument();
+    expect(screen.getByText(/通关记录暂时无法保存/)).toBeInTheDocument();
+    expect(screen.getByRole('grid', { name: /已投放 15 枚棋子/ })).toBeInTheDocument();
+  });
 });
