@@ -3,6 +3,7 @@ import { HomePage } from './HomePage';
 import { RoomPage } from './RoomPage';
 import { SoloPracticePage } from './SoloPracticePage';
 import { TwentyFourPracticePage } from './TwentyFourPracticePage';
+import { ConnectFourPuzzlePage } from './ConnectFourPuzzlePage';
 import { rememberNickname } from './client-preferences';
 import { useGameHallClient } from './gamehall-client';
 import { leavePracticeAddress, practiceFromSearch, pushPracticeAddress, type PracticeGameId } from './solo-navigation';
@@ -53,6 +54,7 @@ export function App() {
   }
 
   if (practiceGame === 'twenty-four') return <TwentyFourPracticePage recoveredRoom={!!client.room} onExit={exitPractice} />;
+  if (practiceGame === 'connect-four-puzzles') return <ConnectFourPuzzlePage recoveredRoom={!!client.room} onExit={exitPractice} />;
   if (practiceGame) return <SoloPracticePage key={practiceGame} gameId={practiceGame} recoveredRoom={!!client.room} onExit={exitPractice} />;
   return client.room ? <RoomPage client={client} /> : <HomePage client={client} onPractice={enterPractice} />;
 }

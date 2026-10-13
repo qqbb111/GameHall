@@ -5,7 +5,7 @@ import type { SoloWorkerRequest, SoloWorkerResponse } from './solo-ai.worker';
 
 const mocks = vi.hoisted(() => ({ useClient: vi.fn() }));
 vi.mock('./gamehall-client', () => ({ useGameHallClient: mocks.useClient }));
-vi.mock('./HomePage', () => ({ HomePage: ({ onPractice }: { onPractice: (game: 'connect-four' | 'twenty-four') => void }) => <main><h1 tabIndex={-1}>home</h1><button onClick={() => onPractice('connect-four')}>practice</button><button data-practice-game="twenty-four" onClick={() => onPractice('twenty-four')}>practice 24</button></main> }));
+vi.mock('./HomePage', () => ({ HomePage: ({ onPractice }: { onPractice: (game: 'connect-four' | 'twenty-four' | 'connect-four-puzzles') => void }) => <main><h1 tabIndex={-1}>home</h1><button onClick={() => onPractice('connect-four')}>practice</button><button data-practice-game="twenty-four" onClick={() => onPractice('twenty-four')}>practice 24</button><button data-practice-game="connect-four-puzzles" onClick={() => onPractice('connect-four-puzzles')}>puzzles</button></main> }));
 vi.mock('./RoomPage', () => ({ RoomPage: () => <main><h1>room</h1></main> }));
 
 import { App } from './App';
@@ -28,6 +28,7 @@ describe('practice browser navigation with real board', () => {
   afterEach(() => {
     FakeWorker.instances = [];
     window.localStorage.clear();
+    window.sessionStorage.clear();
     window.history.replaceState(null, '', '/');
     mocks.useClient.mockReset();
     vi.unstubAllGlobals();
@@ -101,5 +102,22 @@ describe('practice browser navigation with real board', () => {
     act(() => { window.history.replaceState(null, '', '/?room=ABC234&practice=twenty-four#board'); window.dispatchEvent(new PopStateEvent('popstate')); });
     expect(await screen.findByRole('heading', { name: '24 点 · 单人练习' })).toBeInTheDocument();
     expect(window.location.search).toBe('?room=ABC234&practice=twenty-four');
+  });
+
+  it('残局闯关离线入口、直达地址与前进后退恢复题面和焦点', async () => {
+    vi.stubGlobal('scrollTo', vi.fn());
+    window.history.replaceState(null, '', '/?room=ABC234#board');
+    mocks.useClient.mockReturnValue({ loading: true, room: null } as unknown as GameHallClient);
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'puzzles' }));
+    expect(window.location.search).toBe('?room=ABC234&practice=connect-four-puzzles');
+    expect(screen.getByRole('heading', { name: '四子连线 · 残局闯关' })).toHaveFocus();
+    fireEvent.click(screen.getByRole('button', { name: '投放第 3 列' }));
+    expect(screen.getByText('本次独立完成')).toBeInTheDocument();
+    act(() => { window.history.replaceState(null, '', '/?room=ABC234#board'); window.dispatchEvent(new PopStateEvent('popstate')); });
+    expect(screen.getByRole('button', { name: 'puzzles' })).toHaveFocus();
+    act(() => { window.history.replaceState(null, '', '/?room=ABC234&practice=connect-four-puzzles#board'); window.dispatchEvent(new PopStateEvent('popstate')); });
+    expect(screen.getByText('本次独立完成')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '四子连线 · 残局闯关' })).toHaveFocus();
   });
 });

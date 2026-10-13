@@ -282,7 +282,7 @@ describe('HomePage', () => {
     expect(reconnect).toHaveBeenCalledTimes(1);
   });
 
-  it.each(['connecting', 'offline'] as const)('%s 时仍能免昵称进入四种电脑练习，联网开房不可操作', async (connection) => {
+  it.each(['connecting', 'offline'] as const)('%s 时仍能免昵称进入电脑练习和四子残局，联网开房不可操作', async (connection) => {
     const onPractice = vi.fn();
     const client = clientStub({ loading: true, connection });
     render(<HomePage client={client} onPractice={onPractice} />);
@@ -292,7 +292,8 @@ describe('HomePage', () => {
     fireEvent.click(await screen.findByRole('button', { name: '和电脑练习黑白棋' }));
     fireEvent.click(await screen.findByRole('button', { name: '和电脑练习点格棋' }));
     fireEvent.click(await screen.findByRole('button', { name: '和电脑练习五子棋' }));
-    expect(onPractice.mock.calls).toEqual([['connect-four'], ['reversi'], ['dots-and-boxes'], ['gomoku']]);
+    fireEvent.click(screen.getByRole('button', { name: '四子连线残局闯关' }));
+    expect(onPractice.mock.calls).toEqual([['connect-four'], ['reversi'], ['dots-and-boxes'], ['gomoku'], ['connect-four-puzzles']]);
     expect(client.createRoom).not.toHaveBeenCalled();
   });
 

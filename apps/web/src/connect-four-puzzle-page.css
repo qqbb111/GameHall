@@ -1,0 +1,51 @@
+.puzzle-shell { min-height: 100dvh; padding: clamp(16px, 3vw, 40px); color: #f6edda; background: radial-gradient(circle at 80% 0, #295440 0, transparent 38%), #0b211c; }
+.puzzle-header, .puzzle-layout, .puzzle-notice { width: min(100%, 1200px); margin-inline: auto; }
+.puzzle-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin-bottom: 22px; }
+.puzzle-header h1 { margin: 7px 0; font: 700 clamp(28px, 3.6vw, 44px) 'Noto Serif SC', serif; }
+.puzzle-header p { margin: 0; color: #c1d4c6; }
+.puzzle-eyebrow { color: #e9c47c; font-size: 12px; font-weight: 700; letter-spacing: .06em; }
+.puzzle-header button, .puzzle-controls button, .puzzle-list button { min-height: 44px; font-family: inherit; cursor: pointer; }
+.puzzle-header button { padding: 9px 16px; border: 1px solid #be9c66; border-radius: 10px; color: #ffe4af; background: #18392f; white-space: nowrap; }
+.puzzle-notice { margin-bottom: 12px; padding: 11px 15px; border: 1px solid #718f77; border-radius: 11px; background: #214034; }
+.puzzle-notice.is-warning { border-color: #c99562; color: #f9d3ab; }
+.puzzle-layout { display: grid; grid-template-columns: minmax(190px, 250px) minmax(0, 1fr); align-items: start; gap: 20px; }
+.puzzle-list { min-width: 0; display: grid; gap: 8px; padding: 16px; border: 1px solid #6b907b80; border-radius: 18px; background: #15382e; }
+.puzzle-list-summary { display: grid; gap: 3px; padding: 1px 3px 9px; }
+.puzzle-list-summary strong { color: #f4d597; }
+.puzzle-list-summary span { color: #bad0bf; font-size: 12px; }
+.puzzle-list button { width: 100%; display: grid; gap: 2px; padding: 8px 11px; border: 1px solid #7794826b; border-radius: 10px; color: #f2ead8; background: #1c4034; text-align: left; }
+.puzzle-list button[aria-current='step'] { border-color: #f3cf85; background: #315343; box-shadow: inset 3px 0 #f3cf85; }
+.puzzle-list button:hover, .puzzle-header button:hover, .puzzle-controls button:hover { filter: brightness(1.13); }
+.puzzle-list button span, .puzzle-list button small { color: #c6d3bd; font-size: 11px; }
+.puzzle-list button strong { font-size: 14px; }
+.puzzle-main { min-width: 0; }
+.puzzle-intro { padding: clamp(16px, 3vw, 25px); margin-bottom: 16px; border: 1px solid #78948280; border-radius: 18px; background: #15372e; }
+.puzzle-intro h2 { margin: 5px 0 12px; font: 700 clamp(22px, 2.5vw, 30px) 'Noto Serif SC', serif; }
+.puzzle-intro > p { margin: 8px 0; line-height: 1.55; }
+.puzzle-colors { display: flex; flex-wrap: wrap; gap: 8px; }
+.puzzle-colors span { padding: 6px 10px; border: 1px solid #a6a87888; border-radius: 999px; color: #f7d99b; background: #274839; font-weight: 700; font-size: 12px; }
+.puzzle-phase, .puzzle-feedback, .puzzle-hint, .puzzle-result { padding: 10px 13px; border-radius: 10px; background: #2b4a38; color: #f4ddb2; }
+.puzzle-feedback.is-wrong { border: 1px solid #dd9c76; background: #5a382b; color: #ffe0c8; }
+.puzzle-result { margin-top: 12px; border: 1px solid #dfbd7d; }
+.puzzle-result strong { color: #ffe3a8; }
+.puzzle-result p { margin: 5px 0 0; line-height: 1.6; }
+.puzzle-controls { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 14px; }
+.puzzle-controls button { padding: 8px 15px; border: 1px solid #c7a66c; border-radius: 9px; color: #ffe5b6; background: #285142; font-weight: 700; }
+.puzzle-controls button.is-primary { color: #17352b; background: #eed08c; }
+.puzzle-main > .connect-four-surface { width: 100%; margin: 0; }
+.puzzle-shell button:focus-visible { outline: 2px solid #ffdd95; outline-offset: 3px; }
+@media (max-width: 760px) {
+  .puzzle-layout { grid-template-columns: minmax(0, 1fr); }
+  .puzzle-list { display: flex; overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-gutter: stable; }
+  .puzzle-list-summary { min-width: 120px; align-content: center; }
+  .puzzle-list button { flex: 0 0 145px; }
+}
+@media (max-width: 480px) {
+  .puzzle-shell { padding: 12px 8px 28px; }
+  .puzzle-header { flex-direction: column; gap: 12px; }
+  .puzzle-intro { padding: 14px 12px; }
+  .puzzle-main > .connect-four-surface { padding-inline: 5px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .puzzle-shell *, .puzzle-shell *::before, .puzzle-shell *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}

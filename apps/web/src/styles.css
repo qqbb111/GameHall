@@ -1547,6 +1547,10 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
 .featured-card .card-actions .card-create:disabled { opacity: .5; cursor: not-allowed; }
 .featured-card .card-actions .card-practice { border: 1px solid #d6bf83; color: #f5deaa; background: #17392f; }
 .featured-card .card-actions .card-practice:hover { background: #245341; }
+.featured-card .card-actions .card-puzzles { border: 1px solid #a9bd92; color: #e2f2ca; background: #28513f; }
+.featured-card .card-actions .card-puzzles:hover { background: #35684f; }
+.featured-card .card-actions.has-puzzles { gap: 5px; }
+.featured-card .card-actions.has-puzzles button { padding-inline: 3px; font-size: 11px; }
 .card-utilities button[aria-pressed='true'] { color: #ffdb91; }
 .featured-card.is-suggested { border-color: #e7c47d; box-shadow: 0 0 0 2px rgba(231,196,125,.38), 0 24px 55px #0005; }
 .coming-reveal { margin-top: 32px; }

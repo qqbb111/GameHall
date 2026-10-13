@@ -1,11 +1,11 @@
 import type { SoloGameId } from './solo-ai';
-export type PracticeGameId = SoloGameId | 'twenty-four';
+export type PracticeGameId = SoloGameId | 'twenty-four' | 'connect-four-puzzles';
 
 const practiceEntryKey = '__gamehallPracticeEntryV1';
 
 export function practiceFromSearch(search: string): PracticeGameId | null {
   const value = new URLSearchParams(search).get('practice');
-  return value === 'connect-four' || value === 'reversi' || value === 'dots-and-boxes' || value === 'gomoku' || value === 'twenty-four' ? value : null;
+  return value === 'connect-four' || value === 'connect-four-puzzles' || value === 'reversi' || value === 'dots-and-boxes' || value === 'gomoku' || value === 'twenty-four' ? value : null;
 }
 
 function addressWithPractice(gameId: PracticeGameId | null): string {
