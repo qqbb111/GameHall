@@ -52,6 +52,7 @@ export function ConnectFourPuzzlePage({ recoveredRoom, onExit }: { recoveredRoom
   const [feedback, setFeedback] = useState('');
   const nextButton = useRef<HTMLButtonElement>(null);
   const focusNext = useRef(false);
+  const pendingCompletionWrites = useRef<Record<string, PuzzleCompletion>>({});
   const puzzle = connectFourPuzzles.find((entry) => entry.id === attempt.id)!;
   const board = useMemo(() => puzzleAttemptBoard(attempt), [attempt]);
   const index = connectFourPuzzles.indexOf(puzzle);
@@ -82,7 +83,7 @@ export function ConnectFourPuzzlePage({ recoveredRoom, onExit }: { recoveredRoom
 
   function updateAttempt(next: PuzzleAttempt) {
     setAttempt(next);
-    if (!savePuzzleAttempt(next)) setAttemptNotice('本关当前步骤暂时无法保存；刷新后可能需要重做。');
+    setAttemptNotice(savePuzzleAttempt(next) ? null : '本关当前步骤暂时无法保存；刷新后可能需要重做。');
   }
 
   function selectPuzzle(id: string) {
@@ -105,7 +106,14 @@ export function ConnectFourPuzzlePage({ recoveredRoom, onExit }: { recoveredRoom
 
   function finishPuzzle(next: PuzzleAttempt) {
     const status: PuzzleCompletion = next.hintUsed ? 'reference' : 'independent';
-    if (!markPuzzleCompleted(next.id, status)) setCompletionWriteWarning('通关记录暂时无法保存；本页仍可继续闯关，刷新后此关成绩可能需要重做。');
+    const best = mergePuzzleCompletions(completions, { [next.id]: status })[next.id]!;
+    const writes = mergePuzzleCompletions(pendingCompletionWrites.current, { [next.id]: best });
+    const stillPending: Record<string, PuzzleCompletion> = {};
+    for (const [id, grade] of Object.entries(writes)) {
+      if (!markPuzzleCompleted(id, grade)) stillPending[id] = grade;
+    }
+    pendingCompletionWrites.current = stillPending;
+    setCompletionWriteWarning(Object.keys(stillPending).length ? '通关记录暂时无法保存；本页仍可继续闯关，刷新后部分成绩可能需要重做。' : null);
     const current = readPuzzleCompletions();
     setCompletions((known) => mergePuzzleCompletions(known, current.completions, { [next.id]: status }));
     setCompletionReadWarning(current.warning);

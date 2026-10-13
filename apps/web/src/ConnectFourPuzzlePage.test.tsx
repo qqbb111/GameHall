@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConnectFourPuzzlePage } from './ConnectFourPuzzlePage';
 import { connectFourPuzzles, puzzleSolutions } from './connect-four-puzzles';
-import { PUZZLE_ATTEMPT_KEY, PUZZLE_COMPLETION_PREFIX, readPuzzleAttempt } from './connect-four-puzzle-progress';
+import { PUZZLE_ATTEMPT_KEY, PUZZLE_COMPLETION_PREFIX, readPuzzleAttempt, readPuzzleCompletions } from './connect-four-puzzle-progress';
 
 function selectPuzzle(index: number) {
   fireEvent.click(within(screen.getByRole('navigation', { name: '残局关卡选择' })).getByRole('button', { name: new RegExp(`第 ${index + 1} 关`) }));
@@ -161,5 +161,72 @@ describe('四子连线残局闯关', () => {
     expect(screen.getByText('独立完成 2 关 · 参考完成 1 关')).toBeInTheDocument();
     expect(screen.getByText(/通关记录暂时无法保存/)).toBeInTheDocument();
     expect(screen.getByRole('grid', { name: /已投放 15 枚棋子/ })).toBeInTheDocument();
+  });
+
+  it('本标签步骤写入恢复后，下一次成功保存会消除旧警告且保留最佳成绩', () => {
+    window.localStorage.setItem(`${PUZZLE_COMPLETION_PREFIX}bridge:independent`, '1');
+    render(<ConnectFourPuzzlePage recoveredRoom={false} onExit={vi.fn()} />);
+    const originalSet = Storage.prototype.setItem;
+    const brokenWrite = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+      if (this === window.sessionStorage && key === PUZZLE_ATTEMPT_KEY) throw Error('session blocked');
+      return originalSet.call(this, key, value);
+    });
+    fireEvent.click(screen.getByRole('button', { name: '提示思路' }));
+    expect(screen.getByText(/本关当前步骤暂时无法保存/)).toBeInTheDocument();
+    expect(screen.getByText('独立完成 1 关 · 参考完成 0 关')).toBeInTheDocument();
+    brokenWrite.mockRestore();
+    fireEvent.click(screen.getByRole('button', { name: '重试本关' }));
+    expect(screen.queryByText(/本关当前步骤暂时无法保存/)).not.toBeInTheDocument();
+    expect(readPuzzleAttempt().attempt).toMatchObject({ id: 'bridge', moves: [], hintUsed: false });
+    expect(readPuzzleCompletions().completions.bridge).toBe('independent');
+  });
+
+  it('通关标记恢复成功只清其写入警告，仍失败的步骤警告要保留', async () => {
+    window.localStorage.setItem(`${PUZZLE_COMPLETION_PREFIX}tower:independent`, '1');
+    render(<ConnectFourPuzzlePage recoveredRoom={false} onExit={vi.fn()} />);
+    const originalSet = Storage.prototype.setItem;
+    let localBlocked = true;
+    let attemptBlocked = true;
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+      if (this === window.localStorage && key.startsWith(PUZZLE_COMPLETION_PREFIX) && localBlocked) throw Error('local blocked');
+      if (this === window.sessionStorage && key === PUZZLE_ATTEMPT_KEY && attemptBlocked) throw Error('session blocked');
+      return originalSet.call(this, key, value);
+    });
+    await drop(2);
+    expect(screen.getByText(/通关记录暂时无法保存/)).toBeInTheDocument();
+    expect(screen.getByText(/本关当前步骤暂时无法保存/)).toBeInTheDocument();
+    expect(screen.getByText('独立完成 2 关 · 参考完成 0 关')).toBeInTheDocument();
+
+    localBlocked = false;
+    fireEvent.click(screen.getByRole('button', { name: '重试本关' }));
+    fireEvent.click(screen.getByRole('button', { name: '提示思路' }));
+    await drop(2);
+    expect(screen.queryByText(/通关记录暂时无法保存/)).not.toBeInTheDocument();
+    expect(screen.getByText(/本关当前步骤暂时无法保存/)).toBeInTheDocument();
+    expect(readPuzzleCompletions().completions).toMatchObject({ tower: 'independent', bridge: 'independent' });
+    expect(screen.getByText('独立完成 2 关 · 参考完成 0 关')).toBeInTheDocument();
+
+    attemptBlocked = false;
+    fireEvent.click(screen.getByRole('button', { name: '重试本关' }));
+    expect(screen.queryByText(/本关当前步骤暂时无法保存/)).not.toBeInTheDocument();
+    expect(readPuzzleAttempt().attempt.moves).toEqual([]);
+  });
+
+  it('下一关写入恢复时同时补存前一关失败的较好成绩', async () => {
+    render(<ConnectFourPuzzlePage recoveredRoom={false} onExit={vi.fn()} />);
+    const originalSet = Storage.prototype.setItem;
+    let localBlocked = true;
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+      if (this === window.localStorage && key.startsWith(PUZZLE_COMPLETION_PREFIX) && localBlocked) throw Error('local blocked');
+      return originalSet.call(this, key, value);
+    });
+    await drop(2);
+    expect(screen.getByText(/通关记录暂时无法保存/)).toBeInTheDocument();
+    selectPuzzle(1);
+    localBlocked = false;
+    await drop(1);
+    expect(screen.queryByText(/通关记录暂时无法保存/)).not.toBeInTheDocument();
+    expect(readPuzzleCompletions().completions).toMatchObject({ bridge: 'independent', tower: 'independent' });
+    expect(screen.getByText('独立完成 2 关 · 参考完成 0 关')).toBeInTheDocument();
   });
 });
