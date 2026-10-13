@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { abortSplendorState, createSplendorState, splendorDefinition, createGomokuState, createQuoridorState, quoridorDefinition, createTwentyFourState, viewTwentyFourState, createConnectFourState, createReversiState, createDotsAndBoxesState, createTexasHoldemState, texasHoldemDefinition } from '@gamehall/game-core';
-import type { GameSnapshot, RoomSnapshot } from '@gamehall/protocol';
+import { abortSplendorState, createSplendorState, splendorDefinition, createGomokuState, createQuoridorState, quoridorDefinition, createTwentyFourState, viewTwentyFourState, createConnectFourState, createReversiState, createDotsAndBoxesState, applyDotsAndBoxesAction, createTexasHoldemState, texasHoldemDefinition } from '@gamehall/game-core';
+import type { CommandAck, GameSnapshot, RoomSnapshot } from '@gamehall/protocol';
 import type { GameHallClient } from './gamehall-client';
 import { RoomPage } from './RoomPage';
 import { resultMessage } from './room-result';
@@ -137,22 +137,74 @@ describe('online game turn headings', () => {
     expect(screen.getByText('好友暂时断线，对局已暂停')).toBeInTheDocument();
   });
 
-  it('a new snapshot request survives the earlier acknowledgement and unmount', async () => {
+  it('a new same-room snapshot remains locked until its original acknowledgement settles', async () => {
     const client = playableClient('connect-four');
-    const resolvers: Array<(result: { ok: true }) => void> = [];
-    client.submitGameAction = vi.fn(() => new Promise<{ ok: true }>((resolve) => { resolvers.push(resolve); }));
+    let resolveAction!: (result: { ok: true }) => void;
+    client.submitGameAction = vi.fn(() => new Promise<{ ok: true }>((resolve) => { resolveAction = resolve; }));
     const rendered = render(<RoomPage client={client} />);
     fireEvent.click(screen.getByRole('button', { name: /投放第 1 列/ }));
     expect(screen.getByLabelText('四子连线对局').querySelector('h2')).toHaveTextContent('正在确认你的操作');
     client.game = { ...client.game!, version: 2 };
     rendered.rerender(<RoomPage client={client} />);
-    expect(screen.getByLabelText('四子连线对局').querySelector('h2')).toHaveTextContent('轮到你投放棋子');
-    fireEvent.click(screen.getByRole('button', { name: /投放第 2 列/ }));
-    expect(client.submitGameAction).toHaveBeenCalledTimes(2);
-    await act(async () => resolvers[0]!({ ok: true }));
     expect(screen.getByLabelText('四子连线对局').querySelector('h2')).toHaveTextContent('正在确认你的操作');
+    expect(screen.getByRole('button', { name: /投放第 2 列/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: /投放第 2 列/ }));
+    expect(client.submitGameAction).toHaveBeenCalledTimes(1);
+    await act(async () => resolveAction({ ok: true }));
+    expect(screen.getByLabelText('四子连线对局').querySelector('h2')).toHaveTextContent('轮到你投放棋子');
     rendered.unmount();
-    await act(async () => resolvers[1]!({ ok: true }));
+  });
+
+  it.each([true, false])('dots scoring snapshot arriving before %s acknowledgement holds the extra turn', async (accepted) => {
+    let dots = createDotsAndBoxesState(1);
+    for (const [actor, orientation, row, col] of [[1, 'H', 0, 0], [0, 'V', 0, 0], [1, 'H', 1, 0]] as const) {
+      const move = applyDotsAndBoxesAction(dots, actor, { type: 'drawEdge', orientation, row, col });
+      expect(move.ok).toBe(true);
+      if (move.ok) dots = move.state;
+    }
+    const next = applyDotsAndBoxesAction(dots, 0, { type: 'drawEdge', orientation: 'V', row: 0, col: 1 });
+    expect(next.ok).toBe(true);
+    if (!next.ok) return;
+    expect(next.state.turn).toBe(0);
+    expect(next.state.lastBoxes).toEqual([0]);
+
+    const client = playableClient('dots-and-boxes');
+    client.game = { ...client.game!, view: dots };
+    let resolveAction!: (result: CommandAck) => void;
+    client.submitGameAction = vi.fn(() => new Promise<CommandAck>((resolve) => { resolveAction = resolve; }));
+    const rendered = render(<RoomPage client={client} />);
+    fireEvent.click(screen.getByRole('button', { name: /竖边，第 1 行第 2 列/ }));
+    expect(client.submitGameAction).toHaveBeenCalledTimes(1);
+    client.game = { ...client.game!, version: 2, view: next.state };
+    rendered.rerender(<RoomPage client={client} />);
+    expect(screen.getByLabelText('点格棋对局').querySelector('h2')).toHaveTextContent('正在确认你的操作');
+    expect(screen.getByRole('button', { name: /横边，第 1 行第 2 列/ })).toBeDisabled();
+    client.room = { ...client.room!, status: 'paused', pauseReason: 'disconnect' };
+    rendered.rerender(<RoomPage client={client} />);
+    expect(screen.getByLabelText('点格棋对局').querySelector('h2')).toHaveTextContent('好友暂时离线，对局已暂停');
+    client.connection = 'offline';
+    rendered.rerender(<RoomPage client={client} />);
+    expect(screen.getByLabelText('点格棋对局').querySelector('h2')).toHaveTextContent('正在恢复连接与对局');
+    client.connection = 'online';
+    client.room = { ...client.room!, status: 'active', pauseReason: null };
+    rendered.rerender(<RoomPage client={client} />);
+    expect(screen.getByLabelText('点格棋对局').querySelector('h2')).toHaveTextContent('正在确认你的操作');
+    fireEvent.click(screen.getByRole('button', { name: /横边，第 1 行第 2 列/ }));
+    expect(client.submitGameAction).toHaveBeenCalledTimes(1);
+    await act(async () => resolveAction(accepted ? { ok: true } : { ok: false, error: { commandId: null, event: 'game:action', code: 'ACTION_REJECTED', message: '请重试', retryable: false } }));
+    expect(screen.getByLabelText('点格棋对局').querySelector('h2')).toHaveTextContent('你获得 1 分，继续画边');
+    expect(screen.getByRole('button', { name: /横边，第 1 行第 2 列/ })).toBeEnabled();
+    rendered.unmount();
+  });
+
+  it('an unmounted room ignores its late action acknowledgement', async () => {
+    const client = playableClient('connect-four');
+    let resolveAction!: (result: { ok: true }) => void;
+    client.submitGameAction = vi.fn(() => new Promise<{ ok: true }>((resolve) => { resolveAction = resolve; }));
+    const rendered = render(<RoomPage client={client} />);
+    fireEvent.click(screen.getByRole('button', { name: /投放第 1 列/ }));
+    rendered.unmount();
+    await act(async () => resolveAction({ ok: true }));
   });
 });
 

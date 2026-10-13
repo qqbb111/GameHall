@@ -58,8 +58,8 @@ export function RoomPage({ client }: { client: GameHallClient }) {
   const [copiedTarget, setCopiedTarget] = useState<'link' | 'code' | null>(null);
   const copiedTimer = useRef<number | null>(null);
   const [pending, setPending] = useState(false);
-  const [gameActionRequest, setGameActionRequest] = useState<{ roomId: string; version: number; id: number } | null>(null);
-  const gameActionInFlight = useRef<{ roomId: string; version: number; id: number; promise: ReturnType<GameHallClient['submitGameAction']> } | null>(null);
+  const [gameActionRequest, setGameActionRequest] = useState<{ roomId: string; id: number } | null>(null);
+  const gameActionInFlight = useRef<{ roomId: string; id: number; promise: ReturnType<GameHallClient['submitGameAction']> } | null>(null);
   const gameActionSequence = useRef(0);
   const gameContext = useRef<{ roomId: string; version: number } | null>(null);
   const mounted = useRef(true);
@@ -156,7 +156,7 @@ export function RoomPage({ client }: { client: GameHallClient }) {
   const canPlay = room?.status === 'active' && client.connection === 'online';
   const availability: OnlineGameAvailability = client.connection !== 'online' ? 'reconnecting'
     : room?.status === 'paused' ? room.pauseReason === 'restart' ? 'paused-restart' : 'paused-peer' : null;
-  const gameActionPending = Boolean(gameActionRequest && gameActionRequest.roomId === room?.roomId && gameActionRequest.version === game?.version);
+  const gameActionPending = Boolean(gameActionRequest && gameActionRequest.roomId === room?.roomId);
   const canSubmitGameAction = canPlay && !gameActionPending;
   useEffect(() => {
     const anchorServerMs = game?.serverTimeMs ?? room?.serverTimeMs;
@@ -205,18 +205,21 @@ export function RoomPage({ client }: { client: GameHallClient }) {
 
   function submitRoomGameAction(action: GameActionCommand['action']): ReturnType<GameHallClient['submitGameAction']> {
     const context = gameContext.current;
-    if (!context || context.roomId !== currentRoom.roomId || context.version !== game?.version || !canPlay) {
+    if (!context || context.roomId !== currentRoom.roomId) {
       return Promise.resolve({ ok: false, error: { commandId: null, event: 'game:action', code: 'ACTION_UNAVAILABLE', message: '对局暂时不能操作', retryable: false } });
     }
     const inFlight = gameActionInFlight.current;
-    if (inFlight?.roomId === context.roomId && inFlight.version === context.version) return inFlight.promise;
-    const request = { ...context, id: ++gameActionSequence.current };
+    if (inFlight?.roomId === context.roomId) return inFlight.promise;
+    if (context.version !== game?.version || !canPlay) {
+      return Promise.resolve({ ok: false, error: { commandId: null, event: 'game:action', code: 'ACTION_UNAVAILABLE', message: '对局暂时不能操作', retryable: false } });
+    }
+    const request = { roomId: context.roomId, id: ++gameActionSequence.current };
     const promise = client.submitGameAction(action);
     gameActionInFlight.current = { ...request, promise };
     setGameActionRequest(request);
     const settle = () => {
       if (gameActionInFlight.current?.id === request.id) gameActionInFlight.current = null;
-      if (mounted.current && gameContext.current?.roomId === request.roomId && gameContext.current.version === request.version) {
+      if (mounted.current && gameContext.current?.roomId === request.roomId) {
         setGameActionRequest((previous) => previous?.id === request.id ? null : previous);
       }
     };
