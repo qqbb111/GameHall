@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SokobanPracticePage } from './SokobanPracticePage';
 import { SOKOBAN_ATTEMPT_KEY, SOKOBAN_BEST_PREFIX, sokobanBestKey } from './sokoban-progress';
@@ -33,6 +33,59 @@ describe('推箱子单人界面', () => {
     expect(screen.getByText('步数').parentElement).toHaveTextContent('0');
     expect(screen.getByText('推箱').parentElement).toHaveTextContent('0');
     expect(right).toHaveFocus();
+  });
+
+  it('快速移动、反向和悔棋保持同一视觉实体，阻挡步不动且方向标记跟随实际移动', () => {
+    render(<SokobanPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    const board = screen.getByRole('grid', { name: /推到终点棋盘/ });
+    const player = board.querySelector<HTMLElement>('[data-piece-id="player"]')!;
+    const crate = board.querySelector<HTMLElement>('[data-piece-id="box-0"]')!;
+    expect(board.querySelectorAll('.sokoban-piece')).toHaveLength(2);
+    expect(player.dataset.cell).toBe('16');
+    expect(crate.dataset.cell).toBe('17');
+    board.focus();
+    for (const key of ['ArrowUp', 'ArrowDown', 'ArrowRight']) fireEvent.keyDown(board, { key });
+    expect(board.querySelector('[data-piece-id="player"]')).toBe(player);
+    expect(board.querySelector('[data-piece-id="box-0"]')).toBe(crate);
+    expect(player.dataset.cell).toBe('17');
+    expect(crate.dataset.cell).toBe('18');
+    expect(player.dataset.facing).toBe('R');
+    fireEvent.click(screen.getByRole('button', { name: '悔棋' }));
+    expect(player.dataset.cell).toBe('16');
+    expect(crate.dataset.cell).toBe('17');
+    expect(player.dataset.facing).toBe('L');
+    fireEvent.keyDown(board, { key: 'ArrowRight' });
+    fireEvent.click(screen.getByRole('button', { name: '悔棋' }));
+    expect(board.querySelectorAll('.sokoban-piece')).toHaveLength(2);
+    expect(player.dataset.cell).toBe('16');
+    expect(crate.dataset.cell).toBe('17');
+    fireEvent.keyDown(board, { key: 'ArrowUp' });
+    fireEvent.keyDown(board, { key: 'ArrowUp' });
+    expect(board.querySelector('[data-piece-id="player"]')).toBe(player);
+    expect(player.dataset.cell).toBe('9');
+    expect(screen.getByRole('grid', { name: /3步，0次推箱/ })).toBeInTheDocument();
+  });
+
+  it('刷新和重试直接建立正确棋面，缩放期间禁用过渡，方向盘与棋格名称照常可用', async () => {
+    const first = render(<SokobanPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: '向右移动' }));
+    const oldPiece = screen.getByRole('grid').querySelector('[data-piece-id="player"]');
+    first.unmount();
+    render(<SokobanPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    const board = screen.getByRole('grid', { name: /1步，1次推箱/ });
+    const restored = board.querySelector<HTMLElement>('[data-piece-id="player"]')!;
+    expect(restored).not.toBe(oldPiece);
+    expect(restored.dataset.cell).toBe('17');
+    expect(within(board).getByRole('gridcell', { name: '第 3 行第 4 列，玩家' })).toBeInTheDocument();
+    fireEvent(window, new Event('resize'));
+    expect(board).toHaveClass('is-resizing');
+    await waitFor(() => expect(board).not.toHaveClass('is-resizing'));
+    fireEvent.click(screen.getByRole('button', { name: '重试本关' }));
+    fireEvent.click(screen.getByRole('button', { name: '清空并继续' }));
+    const reset = board.querySelector<HTMLElement>('[data-piece-id="player"]')!;
+    expect(reset).not.toBe(restored);
+    expect(reset.dataset.cell).toBe('16');
+    expect(board.querySelectorAll('.sokoban-piece')).toHaveLength(2);
   });
 
   it('进行中选关需确认，Esc 取消回原焦点；通关后手动下一关无需二次确认', () => {

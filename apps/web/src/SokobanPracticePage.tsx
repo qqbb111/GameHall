@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperti
 import { createPortal } from 'react-dom';
 import { hasSokobanCornerTrap, isSokobanSolved, MAX_SOKOBAN_HISTORY, moveSokoban, replaySokobanHistory, sokobanLevels, type SokobanDirection, type SokobanLevel } from '@gamehall/game-core';
 import { mergeSokobanBests, readSokobanAttempt, readSokobanBests, SOKOBAN_BEST_PREFIX, writeSokobanAttempt, writeSokobanBests, type SokobanAttempt, type SokobanBests } from './sokoban-progress';
+import { oppositeSokobanDirection, traceSokobanVisuals } from './sokoban-visuals';
 import './sokoban-practice.css';
 
 type PendingChange = { kind: 'retry' } | { kind: 'select'; levelId: string };
@@ -30,6 +31,10 @@ function cellLabel(level: SokobanLevel, cell: number, player: number, boxes: rea
   return `${position}，${target ? '目标' : '地面'}`;
 }
 
+function pieceStyle(level: SokobanLevel, cell: number): CSSProperties {
+  return { '--piece-x': cell % level.width, '--piece-y': Math.floor(cell / level.width) } as CSSProperties;
+}
+
 export function SokobanPracticePage({ recoveredRoom, onExit }: { recoveredRoom: boolean; onExit: () => void }) {
   const [attemptLoad] = useState(readSokobanAttempt);
   const [bestLoad] = useState(readSokobanBests);
@@ -38,11 +43,17 @@ export function SokobanPracticePage({ recoveredRoom, onExit }: { recoveredRoom: 
   const [bestReadWarning, setBestReadWarning] = useState(bestLoad.warning);
   const [bestWriteWarning, setBestWriteWarning] = useState<string | null>(null);
   const [bests, setBests] = useState<SokobanBests>(bestLoad.bests);
+  const [visualRun, setVisualRun] = useState(0);
+  const [facing, setFacing] = useState<SokobanDirection>(() => {
+    const last = attemptLoad.attempt.history.at(-1);
+    return last === 'U' || last === 'R' || last === 'D' || last === 'L' ? last : 'D';
+  });
   const bestsRef = useRef(bests);
   const [feedback, setFeedback] = useState('');
   const [pendingChange, setPendingChange] = useState<PendingChange | null>(null);
   const shellRef = useRef<HTMLElement>(null);
   const boardRef = useRef<HTMLDivElement>(null);
+  const boardWrapRef = useRef<HTMLDivElement>(null);
   const levelTrackRef = useRef<HTMLDivElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -53,9 +64,41 @@ export function SokobanPracticePage({ recoveredRoom, onExit }: { recoveredRoom: 
   const level = sokobanLevels.find((entry) => entry.id === attempt.levelId)!;
   const levelIndex = sokobanLevels.indexOf(level);
   const state = useMemo(() => replaySokobanHistory(level, attempt.history), [level, attempt.history]);
+  const visuals = useMemo(() => traceSokobanVisuals(level, attempt.history), [level, attempt.history]);
   const solved = isSokobanSolved(level, state);
   const cornerTrap = !solved && hasSokobanCornerTrap(level, state);
   const best = bests[level.id] ? replaySokobanHistory(level, bests[level.id]) : null;
+
+  useEffect(() => {
+    const board = boardRef.current;
+    const wrap = boardWrapRef.current;
+    if (!board || !wrap) return;
+    let timer = 0;
+    const suppressMotion = () => {
+      board.classList.add('is-resizing');
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => board.classList.remove('is-resizing'), 120);
+    };
+    const onResize = () => suppressMotion();
+    window.addEventListener('resize', onResize);
+    let observer: ResizeObserver | undefined;
+    if (typeof ResizeObserver !== 'undefined') {
+      let width: number | null = null;
+      observer = new ResizeObserver(([entry]) => {
+        const nextWidth = entry?.contentRect.width;
+        if (nextWidth === undefined) return;
+        if (width !== null && Math.abs(nextWidth - width) > 0.5) suppressMotion();
+        width = nextWidth;
+      });
+      observer.observe(wrap);
+    }
+    return () => {
+      window.removeEventListener('resize', onResize);
+      observer?.disconnect();
+      window.clearTimeout(timer);
+      board.classList.remove('is-resizing');
+    };
+  }, []);
 
   useEffect(() => {
     if (!solved) return;
@@ -164,6 +207,7 @@ export function SokobanPracticePage({ recoveredRoom, onExit }: { recoveredRoom: 
       return;
     }
     saveAttempt({ ...attempt, history: attempt.history + direction });
+    setFacing(direction);
     setFeedback('');
   }
 
@@ -177,12 +221,15 @@ export function SokobanPracticePage({ recoveredRoom, onExit }: { recoveredRoom: 
 
   function undo() {
     if (!attempt.history) return;
+    setFacing(oppositeSokobanDirection(attempt.history.at(-1) as SokobanDirection));
     saveAttempt({ ...attempt, history: attempt.history.slice(0, -1) });
     setFeedback('');
   }
 
   function change(next: PendingChange) {
     setFeedback('');
+    setVisualRun((current) => current + 1);
+    setFacing('D');
     saveAttempt({ levelId: next.kind === 'select' ? next.levelId : level.id, history: '' });
     focusAfterChange.current = next.kind === 'select' ? 'heading' : 'board';
   }
@@ -227,7 +274,7 @@ export function SokobanPracticePage({ recoveredRoom, onExit }: { recoveredRoom: 
           {solved && <div className="sokoban-result" role="status"><strong>本关完成！</strong><span>你走了 {state.steps} 步、推动 {state.pushes} 次。可以重试挑战，也可以手动进入下一关。</span></div>}
           {cornerTrap && <p className="sokoban-corner" role="status">有箱子卡在非目标墙角。可以悔棋，重新安排推送顺序。</p>}
           {feedback && <p className="sokoban-feedback" role="status">{feedback}</p>}
-          <div className="sokoban-board-wrap">
+          <div ref={boardWrapRef} className="sokoban-board-wrap">
             <div ref={boardRef} className="sokoban-board" role="grid" tabIndex={0} aria-label={`${level.title}棋盘，${state.steps}步，${state.pushes}次推箱`} style={boardStyle} onKeyDown={onMoveKey}>
               {level.rows.map((row, y) => <div key={y} className="sokoban-row" role="row">{[...row].map((_, x) => {
                 const cell = y * level.width + x;
@@ -235,10 +282,12 @@ export function SokobanPracticePage({ recoveredRoom, onExit }: { recoveredRoom: 
                 const goal = level.goals.has(cell);
                 const box = state.boxes.includes(cell);
                 const player = state.player === cell;
-                return <span key={cell} className={`sokoban-cell${wall ? ' is-wall' : ''}${goal ? ' is-goal' : ''}${box ? ' has-box' : ''}${player ? ' has-player' : ''}`} role="gridcell" aria-label={cellLabel(level, cell, state.player, state.boxes)}>
-                  {box && <i className="sokoban-crate" aria-hidden="true" />}{player && <i key={state.steps} className="sokoban-player" aria-hidden="true" />}
-                </span>;
+                return <span key={cell} className={`sokoban-cell${wall ? ' is-wall' : ''}${goal ? ' is-goal' : ''}${box ? ' has-box' : ''}${player ? ' has-player' : ''}`} role="gridcell" aria-label={cellLabel(level, cell, state.player, state.boxes)} />;
               })}</div>)}
+              <div key={`${level.id}:${visualRun}`} className="sokoban-pieces" aria-hidden="true">
+                {visuals.boxes.map(({ id, cell }) => <span key={`box-${id}`} className={`sokoban-piece is-box${level.goals.has(cell) ? ' is-on-goal' : ''}`} data-piece-id={`box-${id}`} data-cell={cell} style={pieceStyle(level, cell)}><i className="sokoban-crate" /></span>)}
+                <span key="player" className="sokoban-piece is-player" data-piece-id="player" data-cell={visuals.player} data-facing={facing} style={pieceStyle(level, visuals.player)}><i className="sokoban-player" /></span>
+              </div>
             </div>
           </div>
           <div className="sokoban-control-row">
