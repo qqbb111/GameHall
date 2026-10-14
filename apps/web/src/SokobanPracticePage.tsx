@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { hasSokobanCornerTrap, isSokobanSolved, MAX_SOKOBAN_HISTORY, moveSokoban, replaySokobanHistory, sokobanLevels, type SokobanDirection, type SokobanLevel } from '@gamehall/game-core';
+import { mergeSokobanBests, readSokobanAttempt, readSokobanBests, SOKOBAN_BEST_PREFIX, writeSokobanAttempt, writeSokobanBests, type SokobanAttempt, type SokobanBests } from './sokoban-progress';
 import './sokoban-practice.css';
 
-type Attempt = { levelId: string; history: string };
 type PendingChange = { kind: 'retry' } | { kind: 'select'; levelId: string };
 
 const directions: ReadonlyArray<{ move: SokobanDirection; label: string; arrow: string }> = [
@@ -31,7 +31,14 @@ function cellLabel(level: SokobanLevel, cell: number, player: number, boxes: rea
 }
 
 export function SokobanPracticePage({ recoveredRoom, onExit }: { recoveredRoom: boolean; onExit: () => void }) {
-  const [attempt, setAttempt] = useState<Attempt>({ levelId: sokobanLevels[0]!.id, history: '' });
+  const [attemptLoad] = useState(readSokobanAttempt);
+  const [bestLoad] = useState(readSokobanBests);
+  const [attempt, setAttempt] = useState<SokobanAttempt>(attemptLoad.attempt);
+  const [attemptWarning, setAttemptWarning] = useState(attemptLoad.warning);
+  const [bestReadWarning, setBestReadWarning] = useState(bestLoad.warning);
+  const [bestWriteWarning, setBestWriteWarning] = useState<string | null>(null);
+  const [bests, setBests] = useState<SokobanBests>(bestLoad.bests);
+  const bestsRef = useRef(bests);
   const [feedback, setFeedback] = useState('');
   const [pendingChange, setPendingChange] = useState<PendingChange | null>(null);
   const shellRef = useRef<HTMLElement>(null);
@@ -48,6 +55,48 @@ export function SokobanPracticePage({ recoveredRoom, onExit }: { recoveredRoom: 
   const state = useMemo(() => replaySokobanHistory(level, attempt.history), [level, attempt.history]);
   const solved = isSokobanSolved(level, state);
   const cornerTrap = !solved && hasSokobanCornerTrap(level, state);
+  const best = bests[level.id] ? replaySokobanHistory(level, bests[level.id]) : null;
+
+  useEffect(() => {
+    if (!solved) return;
+    const known = mergeSokobanBests(bestsRef.current, { [level.id]: attempt.history });
+    const saved = writeSokobanBests(known);
+    bestsRef.current = saved.bests;
+    setBests(saved.bests);
+    setBestWriteWarning(saved.warning);
+    if (!saved.warning) setBestReadWarning(null);
+  }, [attempt.history, level, solved]);
+
+  useEffect(() => {
+    const refresh = (event?: StorageEvent) => {
+      if (event && event.key !== null && !event.key.startsWith(SOKOBAN_BEST_PREFIX)) return;
+      const loaded = readSokobanBests();
+      const known = mergeSokobanBests(bestsRef.current, loaded.bests);
+      const saved = writeSokobanBests(known);
+      bestsRef.current = saved.bests;
+      setBests(saved.bests);
+      setBestReadWarning(saved.warning ? loaded.warning : null);
+      setBestWriteWarning(saved.warning);
+    };
+    const onFocus = () => refresh();
+    window.addEventListener('storage', refresh);
+    window.addEventListener('focus', onFocus);
+    return () => { window.removeEventListener('storage', refresh); window.removeEventListener('focus', onFocus); };
+  }, []);
+
+  function saveAttempt(next: SokobanAttempt) {
+    setAttempt(next);
+    setAttemptWarning(writeSokobanAttempt(next));
+  }
+
+  function retrySave() {
+    setAttemptWarning(writeSokobanAttempt(attempt));
+    const saved = writeSokobanBests(bestsRef.current);
+    bestsRef.current = saved.bests;
+    setBests(saved.bests);
+    setBestWriteWarning(saved.warning);
+    if (!saved.warning) setBestReadWarning(null);
+  }
 
   useLayoutEffect(() => {
     const revealCurrent = () => {
@@ -114,7 +163,7 @@ export function SokobanPracticePage({ recoveredRoom, onExit }: { recoveredRoom: 
       if (result.reason === 'BLOCKED') setFeedback('前方走不通，换个方向试试。');
       return;
     }
-    setAttempt({ ...attempt, history: attempt.history + direction });
+    saveAttempt({ ...attempt, history: attempt.history + direction });
     setFeedback('');
   }
 
@@ -128,13 +177,13 @@ export function SokobanPracticePage({ recoveredRoom, onExit }: { recoveredRoom: 
 
   function undo() {
     if (!attempt.history) return;
-    setAttempt({ ...attempt, history: attempt.history.slice(0, -1) });
+    saveAttempt({ ...attempt, history: attempt.history.slice(0, -1) });
     setFeedback('');
   }
 
   function change(next: PendingChange) {
     setFeedback('');
-    setAttempt({ levelId: next.kind === 'select' ? next.levelId : level.id, history: '' });
+    saveAttempt({ levelId: next.kind === 'select' ? next.levelId : level.id, history: '' });
     focusAfterChange.current = next.kind === 'select' ? 'heading' : 'board';
   }
 
@@ -161,18 +210,20 @@ export function SokobanPracticePage({ recoveredRoom, onExit }: { recoveredRoom: 
         <button type="button" onClick={onExit}>{recoveredRoom ? '返回好友房' : '返回大厅'}</button>
       </header>
       {recoveredRoom && <p className="sokoban-notice" role="status">好友房已恢复，你可以随时返回原对局。</p>}
+      {(attemptWarning || bestReadWarning || bestWriteWarning) && <div className="sokoban-storage-notice" role="status"><span>{[attemptWarning, bestReadWarning, bestWriteWarning].filter(Boolean).join(' ')}</span><button type="button" onClick={retrySave}>重试保存</button></div>}
       <div className="sokoban-layout">
         <nav className="sokoban-levels" aria-label="推箱子关卡选择">
           <div><strong>十关路线</strong><span>从一只箱子到三只箱子，慢慢学会绕行。</span></div>
           <div ref={levelTrackRef} className="sokoban-level-track">
             {sokobanLevels.map((entry, index) => <button key={entry.id} type="button" aria-current={entry.id === level.id ? 'step' : undefined} onClick={() => requestChange({ kind: 'select', levelId: entry.id })}>
-              <small>第 {index + 1} 关 · {entry.initial.boxes.length} 箱</small><strong>{entry.title}</strong>{entry.id === level.id && solved && <span>本次已完成</span>}
+              <small>第 {index + 1} 关 · {entry.initial.boxes.length} 箱</small><strong>{entry.title}</strong>{bests[entry.id] && <span>已通关</span>}{entry.id === level.id && solved && <span>本次已完成</span>}
             </button>)}
           </div>
         </nav>
         <section className="sokoban-main" aria-labelledby="sokoban-level-title">
           <div className="sokoban-intro"><span className="sokoban-eyebrow">第 {levelIndex + 1} / {sokobanLevels.length} 关</span><h2 ref={headingRef} id="sokoban-level-title" tabIndex={-1}>{level.title}</h2><p>{level.description}</p></div>
           <div className="sokoban-toolbar"><span>步数 <strong>{state.steps}</strong></span><span>推箱 <strong>{state.pushes}</strong></span><span>到位 <strong>{state.boxes.filter((box) => level.goals.has(box)).length}/{level.goals.size}</strong></span></div>
+          {best && <p className="sokoban-best">本关最佳：{best.steps} 步 · {best.pushes} 次推箱</p>}
           {solved && <div className="sokoban-result" role="status"><strong>本关完成！</strong><span>你走了 {state.steps} 步、推动 {state.pushes} 次。可以重试挑战，也可以手动进入下一关。</span></div>}
           {cornerTrap && <p className="sokoban-corner" role="status">有箱子卡在非目标墙角。可以悔棋，重新安排推送顺序。</p>}
           {feedback && <p className="sokoban-feedback" role="status">{feedback}</p>}
@@ -208,4 +259,3 @@ export function SokobanPracticePage({ recoveredRoom, onExit }: { recoveredRoom: 
     </div>, document.body)}
   </>;
 }
-

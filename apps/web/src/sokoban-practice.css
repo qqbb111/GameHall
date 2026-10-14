@@ -17,6 +17,8 @@
 .sokoban-header p { margin: 0; color: #b9cbbd; }
 .sokoban-header > button { min-height: 44px; padding: 0 16px; border: 1px solid #bca66e; border-radius: 9px; color: #f4d590; background: #173b30; white-space: nowrap; }
 .sokoban-notice, .sokoban-feedback, .sokoban-corner { padding: 10px 14px; border-radius: 9px; color: #f4d597; background: #32503b; }
+.sokoban-storage-notice { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin: 0 0 17px; padding: 12px 15px; border: 1px solid #d6b978; border-radius: 10px; color: #f5ddab; background: #564522; line-height: 1.55; }
+.sokoban-storage-notice button { min-height: 44px; padding: 0 14px; border: 1px solid #efd49a; border-radius: 8px; color: #152d23; background: #efd49a; font-weight: 800; }
 .sokoban-layout { display: grid; grid-template-columns: minmax(235px,280px) minmax(0,1fr); gap: 24px; align-items: start; }
 .sokoban-levels, .sokoban-main { min-width: 0; border: 1px solid #48644d; border-radius: 17px; background: #102d26; box-shadow: 0 14px 34px #041c1847; }
 .sokoban-levels { padding: 20px; }.sokoban-levels > div:first-child { display: grid; gap: 3px; }.sokoban-levels > div:first-child strong { color: #f2d38f; }.sokoban-levels > div:first-child span { color: #aec2b1; font-size: 13px; line-height: 1.5; }
@@ -26,6 +28,7 @@
 .sokoban-level-track small { color: #c6d3b6; }.sokoban-level-track button span { color: #f5d991; font-size: 11px; }
 .sokoban-main { padding: clamp(17px,3vw,30px); }.sokoban-intro h2 { margin: 5px 0; font: 700 clamp(25px,3vw,36px) 'Noto Serif SC',serif; }.sokoban-intro p { margin: 0 0 17px; color: #bdcdbf; }
 .sokoban-toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }.sokoban-toolbar span { padding: 7px 11px; border: 1px solid #466b53; border-radius: 8px; color: #cbdcca; background: #1e4735; }.sokoban-toolbar strong { color: #f4d28d; }
+.sokoban-best { margin: -7px 0 14px; color: #efd18b; font-size: 13px; font-weight: 700; }
 .sokoban-result { display: grid; gap: 2px; padding: 13px 16px; border: 1px solid #cfaa68; border-radius: 10px; background: #3f4c2f; }.sokoban-result strong { color: #ffe5a9; }.sokoban-result span { color: #e2e4c7; }
 .sokoban-board-wrap { container-type: inline-size; display: flex; justify-content: center; min-width: 0; padding: 17px; overflow: hidden; border: 1px solid #4d654d; border-radius: 13px; background: radial-gradient(circle at 50% 20%,#366445,#173b2d 75%); }
 .sokoban-board { --sokoban-cell: min(52px, calc((100cqw - 24px) / var(--sokoban-columns) - 2px)); display: grid; gap: 2px; width: max-content; padding: 5px; border: 5px solid #815b35; border-radius: 9px; background: #744b2e; box-shadow: 0 8px 0 #493521, 0 14px 24px #031b16a6; }
