@@ -180,7 +180,7 @@ function twentyFourButtonLabel(summary: TwentyFourSummary): string {
 export function HomePage({ client, onPractice, initialCatalog, onCatalogChange }: { client: GameHallClient; onPractice?: (gameId: PracticeGameId) => void; initialCatalog?: HomeCatalogState; onCatalogChange?: (state: HomeCatalogState) => void }) {
   const [practiceSaves, setPracticeSaves] = useState<PracticeSummary>(() => ({ 'connect-four': draftPracticeSummary('connect-four'), reversi: draftPracticeSummary('reversi'), 'dots-and-boxes': draftPracticeSummary('dots-and-boxes'), gomoku: draftPracticeSummary('gomoku') }));
   const [twentyFourSave, setTwentyFourSave] = useState<TwentyFourSummary>(twentyFourSummary);
-  const [sokobanAttempt, setSokobanAttempt] = useState<SokobanHomeAttempt | null>(readSokobanHomeAttempt);
+  const [sokobanAttempt, setSokobanAttempt] = useState<SokobanHomeAttempt>(readSokobanHomeAttempt);
   const [sokobanBests, setSokobanBests] = useState(() => {
     const count = readSokobanHomeCompletedCount();
     return { count, unavailable: count === null };
@@ -524,8 +524,8 @@ export function HomePage({ client, onPractice, initialCatalog, onCatalogChange }
           </div>
           {visibleSokoban && <section className="sokoban-discovery" aria-labelledby="sokoban-discovery-title">
             <div className="sokoban-discovery-mark" aria-hidden="true"><i /><i /><i /></div>
-            <div><span>本地单人解谜 · 不开好友房</span><h3 id="sokoban-discovery-title">推箱子 · 十关挑战</h3><p>从一只箱子练到三只箱子，绕行、换位，亲手安排每一步。</p><p className="sokoban-discovery-progress">{sokobanAttempt ? `本标签第 ${sokobanAttempt.levelNumber} 关 · ${sokobanAttempt.steps} 步 · ${sokobanAttempt.pushes} 次推箱` : '从第一关开始'} · {sokobanBests.count === null ? '通关数暂不可读' : `已通关 ${sokobanBests.count} / 10 关`}{sokobanBests.count !== null && sokobanBests.unavailable ? ' · 更新暂不可用' : ''}</p></div>
-            <button type="button" data-practice-game="sokoban" onClick={() => onPractice?.('sokoban')}>{sokobanAttempt ? sokobanAttempt.solved ? `查看第 ${sokobanAttempt.levelNumber} 关结果` : `继续第 ${sokobanAttempt.levelNumber} 关` : '进入推箱子'} <ArrowRight size={17} /></button>
+            <div><span>本地单人解谜 · 不开好友房</span><h3 id="sokoban-discovery-title">推箱子 · 十关挑战</h3><p>从一只箱子练到三只箱子，绕行、换位，亲手安排每一步。</p><p className="sokoban-discovery-progress">{sokobanAttempt.kind === 'saved' ? `本标签第 ${sokobanAttempt.levelNumber} 关 · ${sokobanAttempt.steps} 步 · ${sokobanAttempt.pushes} 次推箱` : sokobanAttempt.kind === 'fresh' ? '从第一关开始' : '本标签进度暂不可用'} · {sokobanBests.count === null ? '通关数暂不可读' : `已通关 ${sokobanBests.count} / 10 关`}{sokobanBests.count !== null && sokobanBests.unavailable ? ' · 更新暂不可用' : ''}</p></div>
+            <button type="button" data-practice-game="sokoban" onClick={() => onPractice?.('sokoban')}>{sokobanAttempt.kind === 'saved' ? sokobanAttempt.solved ? `查看第 ${sokobanAttempt.levelNumber} 关结果` : `继续第 ${sokobanAttempt.levelNumber} 关` : '进入推箱子'} <ArrowRight size={17} /></button>
           </section>}
           {!visibleGames.length && !visibleSokoban && <div className="catalog-empty"><p>没有符合条件的游戏。</p>{search && <button type="button" onClick={() => updateSearch('')}>清空搜索</button>}{filter !== 'all' && <button type="button" onClick={() => updateFilter('all')}>查看全部</button>}</div>}
 

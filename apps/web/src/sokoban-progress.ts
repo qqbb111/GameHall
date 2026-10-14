@@ -56,16 +56,17 @@ export function readSokobanAttempt(): { attempt: SokobanAttempt; warning: string
   }
 }
 
-export type SokobanHomeAttempt = { levelNumber: number; steps: number; pushes: number; solved: boolean };
+export type SokobanHomeAttempt = { kind: 'fresh' | 'unavailable' }
+  | { kind: 'saved'; levelNumber: number; steps: number; pushes: number; solved: boolean };
 
 /** Home only reports a validated, stored attempt; the fallback first level is not a resume. */
-export function readSokobanHomeAttempt(): SokobanHomeAttempt | null {
+export function readSokobanHomeAttempt(): SokobanHomeAttempt {
   const loaded = readSokobanAttempt();
-  if (!loaded.stored) return null;
+  if (!loaded.stored) return { kind: loaded.warning ? 'unavailable' : 'fresh' };
   const levelNumber = sokobanLevels.findIndex((level) => level.id === loaded.attempt.levelId) + 1;
   const level = sokobanLevels[levelNumber - 1]!;
   const state = replaySokobanHistory(level, loaded.attempt.history);
-  return { levelNumber, steps: state.steps, pushes: state.pushes, solved: isSokobanSolved(level, state) };
+  return { kind: 'saved', levelNumber, steps: state.steps, pushes: state.pushes, solved: isSokobanSolved(level, state) };
 }
 
 /** Null means localStorage could not be read, not that no levels were completed. */

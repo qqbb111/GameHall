@@ -137,6 +137,17 @@ describe('HomePage', () => {
     fireEvent(window, new StorageEvent('storage', { key: SOKOBAN_ATTEMPT_KEY, storageArea: window.sessionStorage }));
     expect(screen.getByRole('button', { name: '查看第 1 关结果' })).toHaveFocus();
     expect(screen.getByText(/本标签第 1 关 · 2 步 · 2 次推箱/)).toBeInTheDocument();
+    const blockedAttempt = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key: string) {
+      if (key === SOKOBAN_ATTEMPT_KEY) throw new Error('session blocked');
+      return actualGet.call(this, key);
+    });
+    fireEvent.focus(window);
+    expect(screen.getByText(/本标签进度暂不可用/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '进入推箱子' })).toHaveFocus();
+    expect(screen.queryByRole('button', { name: '查看第 1 关结果' })).not.toBeInTheDocument();
+    blockedAttempt.mockRestore();
+    fireEvent.focus(window);
+    expect(screen.getByRole('button', { name: '查看第 1 关结果' })).toHaveFocus();
     expect(writes).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '查看第 1 关结果' }));
     expect(onPractice).toHaveBeenCalledWith('sokoban');
@@ -156,11 +167,11 @@ describe('HomePage', () => {
       return actualGet.call(this, key);
     });
     render(<HomePage client={client} onPractice={onPractice} />);
-    expect(screen.getByText(/从第一关开始 · 通关数暂不可读/)).toBeInTheDocument();
+    expect(screen.getByText(/本标签进度暂不可用 · 通关数暂不可读/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '进入推箱子' })).toBeEnabled();
     blocked.mockRestore();
     fireEvent.focus(window);
-    expect(screen.getByText(/从第一关开始 · 已通关 0 \/ 10 关/)).toBeInTheDocument();
+    expect(screen.getByText(/本标签进度暂不可用 · 已通关 0 \/ 10 关/)).toBeInTheDocument();
     window.sessionStorage.setItem(SOKOBAN_ATTEMPT_KEY, JSON.stringify({ version: 1, levelId: first.id, history: 'R' }));
     fireEvent(document, new Event('visibilitychange'));
     expect(screen.getByRole('button', { name: '继续第 1 关' })).toBeEnabled();
