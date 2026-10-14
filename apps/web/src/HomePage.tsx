@@ -155,6 +155,7 @@ function validNickname(value: string): boolean {
 }
 
 type PracticeSummary = Record<SoloGameId, 'loading' | 'none' | 'active' | 'finished'>;
+export type HomeCatalogState = { search: string; filter: 'all' | 'quick' | 'strategy' | 'party' | 'favorites' };
 
 function draftPracticeSummary(gameId: SoloGameId): PracticeSummary[SoloGameId] {
   const draft = readSoloDraft(gameId);
@@ -176,7 +177,7 @@ function twentyFourButtonLabel(summary: TwentyFourSummary): string {
   return summary === 'active' ? '继续练习' : summary === 'finished' ? '查看上组结果' : '单人练习';
 }
 
-export function HomePage({ client, onPractice }: { client: GameHallClient; onPractice?: (gameId: PracticeGameId) => void }) {
+export function HomePage({ client, onPractice, initialCatalog, onCatalogChange }: { client: GameHallClient; onPractice?: (gameId: PracticeGameId) => void; initialCatalog?: HomeCatalogState; onCatalogChange?: (state: HomeCatalogState) => void }) {
   const [practiceSaves, setPracticeSaves] = useState<PracticeSummary>(() => ({ 'connect-four': draftPracticeSummary('connect-four'), reversi: draftPracticeSummary('reversi'), 'dots-and-boxes': draftPracticeSummary('dots-and-boxes'), gomoku: draftPracticeSummary('gomoku') }));
   const [twentyFourSave, setTwentyFourSave] = useState<TwentyFourSummary>(twentyFourSummary);
   const [sokobanAttempt, setSokobanAttempt] = useState<SokobanHomeAttempt | null>(readSokobanHomeAttempt);
@@ -194,8 +195,8 @@ export function HomePage({ client, onPractice }: { client: GameHallClient; onPra
   const [nicknameError, setNicknameError] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [joinError, setJoinError] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<'all' | 'quick' | 'strategy' | 'party' | 'favorites'>('all');
+  const [search, setSearch] = useState(initialCatalog?.search ?? '');
+  const [filter, setFilter] = useState<HomeCatalogState['filter']>(initialCatalog?.filter ?? 'all');
   const [favorites, setFavorites] = useState(readFavoriteGames);
   const [selectedRules, setSelectedRules] = useState<GameCardInfo | null>(null);
   const [suggestedId, setSuggestedId] = useState<GameId | null>(null);
@@ -214,6 +215,8 @@ export function HomePage({ client, onPractice }: { client: GameHallClient; onPra
   });
   const visibleSokoban = (filter === 'all' || filter === 'strategy')
     && '推箱子 单人 解谜 十关 箱子 益智 sokoban'.includes(search.trim().toLocaleLowerCase('zh-CN'));
+  const updateSearch = (next: string) => { setSearch(next); onCatalogChange?.({ search: next, filter }); };
+  const updateFilter = (next: HomeCatalogState['filter']) => { setFilter(next); onCatalogChange?.({ search, filter: next }); };
 
   useEffect(() => {
     const refreshAttempt = () => setSokobanAttempt(readSokobanHomeAttempt());
@@ -477,9 +480,9 @@ export function HomePage({ client, onPractice }: { client: GameHallClient; onPra
           )}
 
           <div className="catalog-tools">
-            <label className="catalog-search"><Search size={18} aria-hidden="true" /><span className="sr-only">搜索游戏</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索游戏名称或玩法" /></label>
+            <label className="catalog-search"><Search size={18} aria-hidden="true" /><span className="sr-only">搜索游戏</span><input value={search} onChange={(event) => updateSearch(event.target.value)} placeholder="搜索游戏名称或玩法" /></label>
             <div className="catalog-filters" role="group" aria-label="筛选游戏">
-              {([['all', '全部'], ['quick', '轻松短局'], ['strategy', '策略棋盘'], ['party', '多人桌游'], ['favorites', '收藏']] as const).map(([id, label]) => <button key={id} type="button" aria-pressed={filter === id} onClick={() => setFilter(id)}>{label}</button>)}
+              {([['all', '全部'], ['quick', '轻松短局'], ['strategy', '策略棋盘'], ['party', '多人桌游'], ['favorites', '收藏']] as const).map(([id, label]) => <button key={id} type="button" aria-pressed={filter === id} onClick={() => updateFilter(id)}>{label}</button>)}
             </div>
             <button className="suggest-button" type="button" disabled={!visibleGames.length} onClick={suggestGame}><Shuffle size={16} /> 帮我选一款</button>
           </div>
@@ -524,7 +527,7 @@ export function HomePage({ client, onPractice }: { client: GameHallClient; onPra
             <div><span>本地单人解谜 · 不开好友房</span><h3 id="sokoban-discovery-title">推箱子 · 十关挑战</h3><p>从一只箱子练到三只箱子，绕行、换位，亲手安排每一步。</p><p className="sokoban-discovery-progress">{sokobanAttempt ? `本标签第 ${sokobanAttempt.levelNumber} 关 · ${sokobanAttempt.steps} 步 · ${sokobanAttempt.pushes} 次推箱` : '从第一关开始'} · {sokobanBests.count === null ? '通关数暂不可读' : `已通关 ${sokobanBests.count} / 10 关`}{sokobanBests.count !== null && sokobanBests.unavailable ? ' · 更新暂不可用' : ''}</p></div>
             <button type="button" data-practice-game="sokoban" onClick={() => onPractice?.('sokoban')}>{sokobanAttempt ? sokobanAttempt.solved ? `查看第 ${sokobanAttempt.levelNumber} 关结果` : `继续第 ${sokobanAttempt.levelNumber} 关` : '进入推箱子'} <ArrowRight size={17} /></button>
           </section>}
-          {!visibleGames.length && !visibleSokoban && <div className="catalog-empty"><p>没有符合条件的游戏。</p>{search && <button type="button" onClick={() => setSearch('')}>清空搜索</button>}{filter !== 'all' && <button type="button" onClick={() => setFilter('all')}>查看全部</button>}</div>}
+          {!visibleGames.length && !visibleSokoban && <div className="catalog-empty"><p>没有符合条件的游戏。</p>{search && <button type="button" onClick={() => updateSearch('')}>清空搜索</button>}{filter !== 'all' && <button type="button" onClick={() => updateFilter('all')}>查看全部</button>}</div>}
 
           <Reveal className="coming-reveal" delayMs={80} distance={12}>
             <details className="coming-details">

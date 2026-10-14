@@ -2,13 +2,24 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { GameHallClient } from './gamehall-client';
 import { NICKNAME_STORAGE_KEY } from './client-preferences';
+import { useState } from 'react';
 
 const mocks = vi.hoisted(() => ({ useClient: vi.fn(), hidePractice: false }));
 
 vi.mock('./gamehall-client', () => ({ useGameHallClient: mocks.useClient }));
-vi.mock('./HomePage', () => ({ HomePage: ({ onPractice }: { onPractice: (game: 'connect-four') => void }) => <main><h1 tabIndex={-1}>home</h1>{!mocks.hidePractice && <button data-practice-game="connect-four" onClick={() => onPractice('connect-four')}>practice</button>}</main> }));
+vi.mock('./HomePage', () => ({ HomePage: ({ onPractice, initialCatalog, onCatalogChange }: { onPractice: (game: 'connect-four' | 'sokoban') => void; initialCatalog: { search: string; filter: 'all' | 'strategy' }; onCatalogChange: (state: { search: string; filter: 'all' | 'strategy' }) => void }) => {
+  const [search, setSearch] = useState(initialCatalog.search);
+  const [filter, setFilter] = useState(initialCatalog.filter);
+  return <main><h1 tabIndex={-1}>home</h1>
+    <input placeholder="搜索游戏名称或玩法" value={search} onChange={(event) => { setSearch(event.target.value); onCatalogChange({ search: event.target.value, filter }); }} />
+    <button aria-pressed={filter === 'strategy'} onClick={() => { setFilter('strategy'); onCatalogChange({ search, filter: 'strategy' }); }}>策略棋盘</button>
+    {!mocks.hidePractice && <button data-practice-game="connect-four" onClick={() => onPractice('connect-four')}>practice</button>}
+    {!mocks.hidePractice && (filter === 'all' || filter === 'strategy') && (search === '' || search === '推箱子') && <button data-practice-game="sokoban" onClick={() => onPractice('sokoban')}>进入推箱子</button>}
+  </main>;
+} }));
 vi.mock('./RoomPage', () => ({ RoomPage: () => <main><h1>room</h1></main> }));
 vi.mock('./SoloPracticePage', () => ({ SoloPracticePage: ({ gameId, recoveredRoom, onExit }: { gameId: string; recoveredRoom: boolean; onExit: () => void }) => <main><h1 tabIndex={-1}>solo {gameId}</h1>{recoveredRoom && <p>recovered</p>}<button onClick={onExit}>exit</button></main> }));
+vi.mock('./SokobanPracticePage', () => ({ SokobanPracticePage: ({ onExit }: { onExit: () => void }) => <main><h1 tabIndex={-1}>sokoban</h1><button onClick={onExit}>exit sokoban</button></main> }));
 
 import { App } from './App';
 
@@ -76,6 +87,7 @@ describe('App nickname persistence', () => {
     expect(screen.getByRole('heading', { name: 'solo reversi' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'exit' }));
     expect(screen.getByRole('heading', { name: 'home' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'home' })).toHaveFocus();
     expect(window.location.search).toBe('?room=ZZZ234&theme=dark');
     expect(window.location.hash).toBe('#board');
     expect(window.history.state).toEqual({ source: 'external' });
@@ -104,6 +116,45 @@ describe('App nickname persistence', () => {
     act(() => { window.history.replaceState(null, '', '/?practice=connect-four#top'); window.dispatchEvent(new PopStateEvent('popstate')); });
     expect(screen.getByRole('heading', { name: 'solo connect-four' })).toHaveFocus();
     expect(scrollTo).toHaveBeenCalledOnce();
+  });
+
+  it('从搜索与策略筛选进入推箱子后，返回和前进保留目录上下文并把旧入口滚入视野', () => {
+    const scrollTo = vi.fn();
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => undefined);
+    vi.stubGlobal('scrollTo', scrollTo);
+    vi.spyOn(window.history, 'back').mockImplementation(() => {
+      window.history.replaceState({ previous: 7 }, '', '/?room=ABC234&theme=dark#board');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    try {
+      window.history.replaceState({ previous: 7 }, '', '/?room=ABC234&theme=dark#board');
+      mocks.useClient.mockReturnValue({ loading: false, room: null } as unknown as GameHallClient);
+      render(<App />);
+      fireEvent.change(screen.getByPlaceholderText('搜索游戏名称或玩法'), { target: { value: '推箱子' } });
+      fireEvent.click(screen.getByRole('button', { name: '策略棋盘' }));
+      fireEvent.click(screen.getByRole('button', { name: '进入推箱子' }));
+      expect(screen.getByRole('heading', { name: 'sokoban' })).toHaveFocus();
+      expect(window.location.search).toBe('?room=ABC234&theme=dark&practice=sokoban');
+      expect(window.location.hash).toBe('#board');
+      fireEvent.click(screen.getByRole('button', { name: 'exit sokoban' }));
+      expect(screen.getByPlaceholderText('搜索游戏名称或玩法')).toHaveValue('推箱子');
+      expect(screen.getByRole('button', { name: '策略棋盘' })).toHaveAttribute('aria-pressed', 'true');
+      const entry = screen.getByRole('button', { name: '进入推箱子' });
+      expect(entry).toHaveFocus();
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+      expect(scrollTo).toHaveBeenCalledTimes(1);
+      act(() => { window.history.replaceState(null, '', '/?room=ABC234&theme=dark&practice=sokoban#board'); window.dispatchEvent(new PopStateEvent('popstate')); });
+      expect(screen.getByRole('heading', { name: 'sokoban' })).toHaveFocus();
+      act(() => { window.history.replaceState(null, '', '/?room=ABC234&theme=dark#board'); window.dispatchEvent(new PopStateEvent('popstate')); });
+      expect(screen.getByPlaceholderText('搜索游戏名称或玩法')).toHaveValue('推箱子');
+      expect(screen.getByRole('button', { name: '进入推箱子' })).toHaveFocus();
+      expect(scrollIntoView).toHaveBeenCalledTimes(2);
+      expect(scrollTo).toHaveBeenCalledTimes(1);
+      fireEvent.change(screen.getByPlaceholderText('搜索游戏名称或玩法'), { target: { value: '' } });
+      expect(screen.getByPlaceholderText('搜索游戏名称或玩法')).toHaveValue('');
+    } finally {
+      scrollIntoView.mockRestore();
+    }
   });
 
   it('返回大厅时原练习入口已被筛掉则聚焦标题，普通刷新不抢焦点', () => {

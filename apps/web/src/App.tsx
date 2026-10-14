@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { HomePage } from './HomePage';
+import { HomePage, type HomeCatalogState } from './HomePage';
 import { RoomPage } from './RoomPage';
 import { SoloPracticePage } from './SoloPracticePage';
 import { TwentyFourPracticePage } from './TwentyFourPracticePage';
@@ -16,6 +16,8 @@ export function App() {
   const view = practiceGame ? `practice:${practiceGame}` : client.room ? `room:${client.room.roomId}` : 'home';
   const previousView = useRef(view);
   const previousRouteRevision = useRef(practiceRoute.revision);
+  const [homeCatalog, setHomeCatalog] = useState<HomeCatalogState>({ search: '', filter: 'all' });
+  const homePracticeEntry = useRef<PracticeGameId | null>(null);
 
   useEffect(() => {
     const onPopState = () => setPracticeRoute((current) => ({ gameId: practiceFromSearch(window.location.search), source: 'pop', revision: current.revision + 1 }));
@@ -37,15 +39,20 @@ export function App() {
     const fromView = previousView.current;
     previousView.current = view;
     const popped = routeChanged && practiceRoute.source === 'pop';
-    if (!popped) window.scrollTo({ top: 0, behavior: 'instant' });
     if (view === 'home') {
       const gameId = fromView.startsWith('practice:') ? fromView.slice('practice:'.length) : null;
-      const returnButton = popped && gameId ? document.querySelector<HTMLElement>(`button[data-practice-game="${gameId}"]`) : null;
+      const returnButton = gameId && homePracticeEntry.current === gameId ? document.querySelector<HTMLElement>(`button[data-practice-game="${gameId}"]`) : null;
+      if (!popped && !returnButton) window.scrollTo({ top: 0, behavior: 'instant' });
       (returnButton ?? document.querySelector<HTMLElement>('main h1'))?.focus({ preventScroll: true });
-    } else if (view.startsWith('practice:')) document.querySelector<HTMLElement>('main h1')?.focus({ preventScroll: true });
+      returnButton?.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+    } else {
+      if (!popped) window.scrollTo({ top: 0, behavior: 'instant' });
+      if (view.startsWith('practice:')) document.querySelector<HTMLElement>('main h1')?.focus({ preventScroll: true });
+    }
   }, [view, practiceRoute]);
 
   function enterPractice(gameId: PracticeGameId) {
+    homePracticeEntry.current = gameId;
     pushPracticeAddress(gameId);
     setPracticeRoute((current) => ({ gameId, source: 'push', revision: current.revision + 1 }));
   }
@@ -58,5 +65,5 @@ export function App() {
   if (practiceGame === 'connect-four-puzzles') return <ConnectFourPuzzlePage recoveredRoom={!!client.room} onExit={exitPractice} />;
   if (practiceGame === 'sokoban') return <SokobanPracticePage recoveredRoom={!!client.room} onExit={exitPractice} />;
   if (practiceGame) return <SoloPracticePage key={practiceGame} gameId={practiceGame} recoveredRoom={!!client.room} onExit={exitPractice} />;
-  return client.room ? <RoomPage client={client} /> : <HomePage client={client} onPractice={enterPractice} />;
+  return client.room ? <RoomPage client={client} /> : <HomePage client={client} onPractice={enterPractice} initialCatalog={homeCatalog} onCatalogChange={setHomeCatalog} />;
 }
