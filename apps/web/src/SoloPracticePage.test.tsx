@@ -741,8 +741,11 @@ describe('local computer practice', () => {
     await screen.findByText(/已保存：5 步/);
     await saveShared(latest);
     expect(screen.getByText(/已保存：5 步/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '接着已保存的练习' }));
+    const firstAdopt = screen.getByRole('button', { name: '接着已保存的练习' });
+    firstAdopt.focus();
+    fireEvent.click(firstAdopt);
     expect(await screen.findByText('另一窗口又更新了，请按新预览选择。')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: '接着已保存的练习' })).toHaveFocus());
     expect(screen.getByText(/已保存：6 步/)).toBeInTheDocument();
     expect(screen.getByText(/当前棋盘：4 步/)).toBeInTheDocument();
     expect(readSoloDraft(gameId)?.progress).toEqual(local);
@@ -798,6 +801,33 @@ describe('local computer practice', () => {
     await act(async () => { release(latest); await delayed; });
     await waitFor(() => expect(screen.queryByText('另一窗口更新了这款练习')).not.toBeInTheDocument());
     expect(headerExit).toHaveFocus();
+    expect(screen.getByRole('grid', { name: /已投放 5 枚棋子/ })).toBeInTheDocument();
+  });
+
+  it.each([false, true])('共享读取失败后等按钮重新启用才回焦，等待中主动移焦=%s 不抢回', async (moved) => {
+    const local = conflictPractice('connect-four', 4);
+    const shown = conflictPractice('connect-four', 5);
+    expect(writeSoloDraft({ progress: local, baseToken: null })).toBe(true);
+    await saveShared(shown);
+    render(<SoloPracticePage gameId="connect-four" recoveredRoom={false} onExit={vi.fn()} />);
+    await screen.findByText(/已保存：5 步/);
+    let release!: (value: SoloSnapshot) => void;
+    const delayed = new Promise<SoloSnapshot>((resolve) => { release = resolve; });
+    vi.spyOn(sharedStore, 'readSharedSoloSnapshot').mockImplementationOnce(() => delayed);
+    const adopt = screen.getByRole('button', { name: '接着已保存的练习' });
+    adopt.focus();
+    fireEvent.click(adopt);
+    expect(adopt).toBeDisabled();
+    const headerExit = document.querySelector<HTMLButtonElement>('.solo-header .solo-back')!;
+    if (moved) headerExit.focus();
+    await act(async () => { release({ read: { kind: 'unavailable' }, token: null }); await delayed; });
+    expect(screen.getByText('共享进度暂不可读取，请稍后重试。')).toBeInTheDocument();
+    await waitFor(() => expect(adopt).toBeEnabled());
+    if (moved) { expect(headerExit).toHaveFocus(); return; }
+    await waitFor(() => expect(adopt).toHaveFocus());
+    fireEvent.click(adopt);
+    await waitFor(() => expect(screen.queryByText('另一窗口更新了这款练习')).not.toBeInTheDocument());
+    await waitFor(() => expect(document.querySelector('.solo-toolbar strong')).toHaveFocus());
     expect(screen.getByRole('grid', { name: /已投放 5 枚棋子/ })).toBeInTheDocument();
   });
 

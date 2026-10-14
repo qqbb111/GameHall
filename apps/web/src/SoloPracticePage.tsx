@@ -254,7 +254,14 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
 
   useLayoutEffect(() => {
     const pending = focusHandoff.current;
-    if (!pending?.settled || pending.kind === 'adopt') return;
+    if (!pending?.settled) return;
+    if (pending.kind === 'adopt') {
+      if (!resolvingConflict) {
+        const button = conflictAdoptButton.current ?? conflictSaveButton.current;
+        finishHandoff(pending, button && !button.disabled ? button : playStatus.current);
+      }
+      return;
+    }
     if (pending.kind === 'computer') { finishHandoff(pending, playStatus.current); return; }
     if (pending.kind === 'save' && conflict) {
       finishHandoff(pending, conflictAdoptButton.current ?? conflictSaveButton.current);
@@ -263,7 +270,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     const button = pending.kind === 'save' ? retrySaveButton.current : conflictSaveButton.current;
     if (button) { finishHandoff(pending, button); return; }
     finishHandoff(pending, playStatus.current);
-  }, [focusTick, shareLimited, localOnly, unsaved, conflict, error, finishHandoff]);
+  }, [focusTick, shareLimited, localOnly, unsaved, conflict, error, resolvingConflict, finishHandoff]);
 
   function retrySaving(event: MouseEvent<HTMLButtonElement>) {
     const pending = beginHandoff(event.currentTarget, 'save');
@@ -287,9 +294,9 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
   function requestResumeShared(event: MouseEvent<HTMLButtonElement>) {
     const pending = beginHandoff(event.currentTarget, 'adopt');
     void resumeShared().then((adopted) => {
-      if (!adopted && pending) finishHandoff(pending, conflictAdoptButton.current);
+      if (!adopted) settleHandoff(pending);
     }, () => {
-      if (pending) finishHandoff(pending, conflictAdoptButton.current);
+      settleHandoff(pending);
     });
   }
 
