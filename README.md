@@ -298,7 +298,7 @@ Web 测试最多并行使用 4 个 worker，测试文件彼此隔离，避免同
 
 </details>
 
-验证矩阵和失败处理流程见 [验证流程](docs/verification-workflow.md)。
+验证矩阵和失败处理流程见 [验证流程](docs/verification-workflow.md)；文档更新遵循 [README 维护约定](docs/verification-workflow.md#readme-维护约定)。
 
 ## 游戏规则范围
 

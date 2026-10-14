@@ -4,6 +4,12 @@
 
 每个逻辑完整改动使用独立 commit，并在同一 commit 中同步更新 `README.md` 里受影响的功能、接口、运行方式、验证命令或开发约定。
 
+## README 维护约定
+
+以 `27710aa` 版 README 的结构为基线：保留中文标题、目录导航和清楚的层级；新能力并入对应章节，避免重复，也不要删去真实且必要的细节。功能用短段落或分组列表说明，游戏、配置和命令优先使用表格；较长的实现说明、存档机制和定向测试命令放入 `<details>`。
+
+中文、英文和数字之间的空格、中文标点及专有名词写法遵循 [中文文案排版指北](https://github.com/sparanoid/chinese-copywriting-guidelines)。每次更新核对功能、接口、运行方式与验证命令，并检查相对链接、标题锚点、代码块和本地 Markdown 渲染结果，尤其是表格与折叠区域。
+
 ## 角色与边界
 
 - 实现 Agent 默认使用 Sol medium，负责理解需求、修改代码、更新测试和创建 commit。数据库、协议、游戏规则、事务与并发等复杂改动可升级为 Sol high。
@@ -27,7 +33,7 @@
 
 | 改动范围 | 实现过程中 | commit 前 |
 | --- | --- | --- |
-| README 等纯 Markdown 文档 | 本地渲染，检查标题、表格、折叠区域和中英文间距 | 检查锚点、相对链接及代码块，并执行 `git diff --check` |
+| README 等纯 Markdown 文档 | 本地渲染，检查标题、表格、折叠区域和中英文间距 | 检查锚点、相对链接、代码块及 `<details>` 配对，并执行 `git diff --check` |
 | 文案、纯样式 | 相关页面测试或浏览器检查 | `pnpm --filter @gamehall/web build` |
 | Web 交互 | 对应 Vitest 文件 | `pnpm verify:web` |
 | game-core 规则 | 对应规则测试 | `pnpm verify:core` |
