@@ -185,6 +185,7 @@ describe('App nickname persistence', () => {
 
   it('返回大厅时原练习入口已被筛掉则聚焦标题，普通刷新不抢焦点', () => {
     const scrollTo = vi.fn();
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => undefined);
     vi.stubGlobal('scrollTo', scrollTo);
     mocks.useClient.mockReturnValue({ loading: false, room: null } as unknown as GameHallClient);
     window.history.replaceState(null, '', '/');
@@ -193,6 +194,8 @@ describe('App nickname persistence', () => {
     mocks.hidePractice = true;
     act(() => { window.history.replaceState(null, '', '/'); window.dispatchEvent(new PopStateEvent('popstate')); });
     expect(screen.getByRole('heading', { name: 'home' })).toHaveFocus();
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+    expect(scrollIntoView.mock.contexts.at(-1)).toBe(screen.getByRole('heading', { name: 'home' }));
     mocks.hidePractice = false;
     act(() => { window.history.replaceState(null, '', '/?practice=connect-four'); window.dispatchEvent(new PopStateEvent('popstate')); });
     const heading = screen.getByRole('heading', { name: 'solo connect-four' });
@@ -200,6 +203,7 @@ describe('App nickname persistence', () => {
     rerender(<App />);
     expect(heading).toHaveFocus();
     expect(scrollTo).toHaveBeenCalledTimes(1);
+    scrollIntoView.mockRestore();
   });
 
   it('离开房间回首页只在页面切换时重置滚动和标题焦点', () => {

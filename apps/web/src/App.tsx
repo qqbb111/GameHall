@@ -47,8 +47,9 @@ export function App() {
           ?? document.querySelector<HTMLElement>(`button[data-practice-game="${gameId}"]`)
         : null;
       if (!popped && !returnButton) window.scrollTo({ top: 0, behavior: 'instant' });
-      (returnButton ?? document.querySelector<HTMLElement>('main h1'))?.focus({ preventScroll: true });
-      returnButton?.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+      const focusTarget = returnButton ?? document.querySelector<HTMLElement>('main h1');
+      focusTarget?.focus({ preventScroll: true });
+      focusTarget?.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
     } else {
       if (!popped) window.scrollTo({ top: 0, behavior: 'instant' });
       if (view.startsWith('practice:')) document.querySelector<HTMLElement>('main h1')?.focus({ preventScroll: true });
