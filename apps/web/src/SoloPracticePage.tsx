@@ -12,7 +12,7 @@ import { GomokuGame } from './game-components';
 import { openDotsEdges, type DotsEdge } from './dots-solo';
 import type { SoloAction, SoloDifficulty, SoloGameId, SoloHint, SoloState } from './solo-ai';
 import type { SoloWorkerRequest, SoloWorkerResponse } from './solo-ai.worker';
-import { canShareSoloProgress, clearSoloDraft, readSoloDraft, writeSoloDraft,
+import { canShareSoloProgress, clearSoloDraft, encodeSoloProgress, readSoloDraft, writeSoloDraft,
   readSoloSnapshot, soloProgressKey, GOMOKU_HISTORY_MAX, type SoloProgress, type SoloSnapshot, type SoloStarter } from './solo-progress';
 import { readSharedSoloSnapshot, subscribeSharedSoloProgress, writeSharedSoloProgress } from './solo-shared-store';
 import './solo-practice.css';
@@ -376,8 +376,11 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
         if (result.kind !== 'saved') {
           if (sequence !== saveSequence.current) return;
           const currentDraft = readSoloDraft(gameId);
-          const latestDraftSaved = !!currentDraft && !!latestProgressRef.current
-            && JSON.stringify(currentDraft.progress) === JSON.stringify(latestProgressRef.current);
+          let latestDraftSaved = false;
+          try {
+            latestDraftSaved = !!currentDraft && !!latestProgressRef.current
+              && encodeSoloProgress(currentDraft.progress) === encodeSoloProgress(latestProgressRef.current);
+          } catch { /* Invalid latest progress cannot be treated as a saved draft. */ }
           setUnsaved(!latestDraftSaved);
           setLocalOnly(latestDraftSaved);
           return;

@@ -1087,6 +1087,27 @@ describe('local computer practice', () => {
     expect(await shared(gameId)).toMatchObject({ kind: 'valid', progress: { state: before } });
   });
 
+  it.each(['connect-four', 'reversi', 'gomoku', 'dots-and-boxes'] as const)('%s 首次 IndexedDB 打开被拒仍承认合法本标签草稿，刷新后可重试', async (gameId) => {
+    const blocked = vi.spyOn(indexedDB, 'open').mockImplementation(() => { throw new DOMException('blocked', 'SecurityError'); });
+    const first = await start(gameId);
+    const draft = readSoloDraft(gameId);
+    expect(draft?.progress.state.kind).toBe(gameId);
+    await screen.findByRole('button', { name: '重试保存' });
+    expect(screen.getByText(/这盘仍保存在当前标签/)).toBeInTheDocument();
+    expect(screen.queryByText('当前浏览器无法保存，刷新后会重新开始。')).not.toBeInTheDocument();
+    first.unmount();
+    render(<SoloPracticePage gameId={gameId} recoveredRoom={false} onExit={vi.fn()} />);
+    expect(await screen.findByText('已恢复本标签上次练习')).toBeInTheDocument();
+    expect(readSoloDraft(gameId)?.progress.state).toEqual(draft?.progress.state);
+    blocked.mockRestore();
+    const retry = screen.getByRole('button', { name: '重试保存' });
+    retry.focus();
+    fireEvent.click(retry);
+    await waitFor(() => expect(screen.queryByRole('button', { name: '重试保存' })).not.toBeInTheDocument());
+    await waitFor(() => expect(document.querySelector('.solo-toolbar strong')).toHaveFocus());
+    expect(await shared(gameId)).toMatchObject({ kind: 'valid', progress: { state: draft?.progress.state } });
+  });
+
   it.each(['other-focus', 'blank-pointer'] as const)('共享保存仍在等待时 %s 不夺回用户焦点', async (choice) => {
     const workingIndexedDB = indexedDB;
     vi.stubGlobal('indexedDB', undefined);
