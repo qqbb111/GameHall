@@ -89,4 +89,32 @@ describe('连灯解谜独立进度存储', () => {
     expect(readLightsOutBests().bests[first.id]).toEqual(win);
     expect(window.localStorage.getItem('gamehall:sokoban:best:v1:first-push:2-2')).toBe('untouched');
   });
+
+  it('并发更优候选在第二次读取时出现，旧候选清理失败仍返回刚验证过的更优成果', () => {
+    const longKey = lightsOutBestKey(first, worse);
+    const shortKey = lightsOutBestKey(first, win);
+    window.localStorage.setItem(longKey, saved(worse));
+    const actualGet = Storage.prototype.getItem;
+    const actualSet = Storage.prototype.setItem;
+    let inserted = false;
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key) {
+      const value = actualGet.call(this, key);
+      if (key === longKey && !inserted) {
+        inserted = true;
+        actualSet.call(this, shortKey, saved(win));
+      }
+      return value;
+    });
+    const actualRemove = Storage.prototype.removeItem;
+    const remove = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(function (this: Storage, key) {
+      if (key === longKey) throw new Error('cleanup blocked');
+      actualRemove.call(this, key);
+    });
+    const result = writeLightsOutBests({ [first.id]: worse });
+    expect(inserted).toBe(true);
+    expect(remove).toHaveBeenCalledWith(longKey);
+    expect(result.bests[first.id]).toEqual(win);
+    expect(result.warning).toMatch(/无法清理/);
+    expect(window.localStorage.getItem(shortKey)).toBe(saved(win));
+  });
 });

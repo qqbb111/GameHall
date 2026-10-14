@@ -122,6 +122,8 @@ export function writeLightsOutBests(known: LightsOutBests): { bests: LightsOutBe
   const current = readLightsOutBests();
   const merged = mergeLightsOutBests(known, current.bests);
   if (!current.readable) return { bests: merged, warning: current.warning };
+  let verified = merged;
+  let cleaning = false;
   try {
     for (const level of lightsOutLevels) {
       const history = merged[level.id];
@@ -131,14 +133,18 @@ export function writeLightsOutBests(known: LightsOutBests): { bests: LightsOutBe
       }
     }
     const after = readLightsOutBests();
-    if (!after.readable) return { bests: merged, warning: after.warning };
+    verified = mergeLightsOutBests(merged, after.bests);
+    if (!after.readable) return { bests: verified, warning: after.warning };
+    cleaning = true;
     for (const key of after.keys) {
       const level = lightsOutLevels.find((item) => key.startsWith(`${LIGHTS_OUT_BEST_PREFIX}${item.id}:`));
       const history = level && after.bests[level.id];
       if (!level || !history || key !== lightsOutBestKey(level, history)) window.localStorage.removeItem(key);
     }
-    return { bests: mergeLightsOutBests(merged, after.bests), warning: null };
+    return { bests: verified, warning: null };
   } catch {
-    return { bests: merged, warning: '连灯解谜成绩暂时无法保存；本页已知成绩会保留，可稍后重试保存。' };
+    return { bests: verified, warning: cleaning
+      ? '连灯解谜旧成绩暂时无法清理；本页已知成绩会保留，可稍后重试保存。'
+      : '连灯解谜成绩暂时无法保存；本页已知成绩会保留，可稍后重试保存。' };
   }
 }
