@@ -26,6 +26,7 @@ export function LightsOutPracticePage({ recoveredRoom, onExit }: { recoveredRoom
   const bestsRef = useRef(bestLoad.bests);
   const [attemptWarning, setAttemptWarning] = useState(attemptLoad.warning);
   const [bestReadWarning, setBestReadWarning] = useState(bestLoad.warning);
+  const [bestReadable, setBestReadable] = useState(bestLoad.readable);
   const [bestWriteWarning, setBestWriteWarning] = useState<string | null>(null);
   const [feedback, setFeedback] = useState('');
   const [hintCell, setHintCell] = useState<number | null>(null);
@@ -60,6 +61,7 @@ export function LightsOutPracticePage({ recoveredRoom, onExit }: { recoveredRoom
     const saved = writeLightsOutBests(known);
     bestsRef.current = saved.bests;
     setBests(saved.bests);
+    setBestReadable(saved.readable);
     setBestWriteWarning(saved.warning);
     if (!saved.warning) setBestReadWarning(null);
   }, [attempt.history, level, solved]);
@@ -75,6 +77,7 @@ export function LightsOutPracticePage({ recoveredRoom, onExit }: { recoveredRoom
       const saved = writeLightsOutBests(known);
       bestsRef.current = saved.bests;
       setBests(saved.bests);
+      setBestReadable(saved.readable);
       setBestReadWarning(loaded.warning);
       setBestWriteWarning(saved.warning);
     };
@@ -212,6 +215,7 @@ export function LightsOutPracticePage({ recoveredRoom, onExit }: { recoveredRoom
     const saved = writeLightsOutBests(bestsRef.current);
     bestsRef.current = saved.bests;
     setBests(saved.bests);
+    setBestReadable(saved.readable);
     setBestWriteWarning(saved.warning);
     if (!saved.warning) setBestReadWarning(null);
   }
@@ -225,7 +229,7 @@ export function LightsOutPracticePage({ recoveredRoom, onExit }: { recoveredRoom
         <nav className="lights-levels" aria-label="连灯解谜关卡选择"><div><strong>十二关灯路</strong><p>从 3 × 3 走到 5 × 5，找出熄灯顺序。</p></div><div ref={trackRef} className="lights-level-track">{lightsOutLevels.map((item, index) => <button key={item.id} type="button" aria-current={item.id === level.id ? 'step' : undefined} onClick={() => requestChange({ kind: 'select', levelId: item.id })}><small>第 {index + 1} 关 · {item.size} × {item.size}</small><strong>{levelTitles[index]}</strong>{bests[item.id] && <span>已通关</span>}</button>)}</div></nav>
         <section className="lights-main" aria-labelledby="lights-level-title">
           <div className="lights-intro"><span>第 {levelIndex + 1} / 12 关</span><h2 ref={headingRef} id="lights-level-title" tabIndex={-1}>{levelTitles[levelIndex]} · 第 {levelIndex + 1} 关</h2><p>灯亮时有星芒，熄灭时留下细圆点；提示只标下一格，由你亲手翻动。</p></div>
-          <div className="lights-stats"><span>亮灯 <strong>{remaining}</strong></span><span>点击 <strong>{attempt.history.length}</strong></span><span>本关最佳 <strong>{best ? `${best.length} 次` : '尚未通关'}</strong></span></div>
+          <div className="lights-stats"><span>亮灯 <strong>{remaining}</strong></span><span>点击 <strong>{attempt.history.length}</strong></span><span>本关最佳 <strong>{best ? `${best.length} 次` : bestReadable ? '尚未通关' : '暂不可读'}</strong></span></div>
           {solved && <p className="lights-result" role="status"><strong>{levelIndex === 11 && allCompleted ? '十二关都已通关！' : '本关灯光已熄灭！'}</strong><span>你点击了 {attempt.history.length} 次。{levelIndex === 11 ? '可以重试挑战，或从第一关再玩。' : '可手动选择下一关，也可以重试。'}</span></p>}
           {feedback && <p className="lights-feedback" role="status">{feedback}</p>}
           <div className="lights-board-wrap"><div className="lights-board" role="grid" style={{ '--lights-size': level.size } as CSSProperties} aria-label={`第 ${levelIndex + 1} 关灯阵，亮灯 ${remaining} 盏，点击 ${attempt.history.length} 次`}>

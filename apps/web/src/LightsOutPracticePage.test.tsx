@@ -133,4 +133,55 @@ describe('连灯解谜单人页面', () => {
     act(() => window.dispatchEvent(new StorageEvent('storage', { key: lightsOutBestKey(first, worse) })));
     expect(screen.getByText('本关最佳').parentElement).toHaveTextContent('2 次');
   });
+
+  it('初次最佳存储不可读时不伪称未通关，恢复重试显示已验证记录；可读的空关仍显示未通关', () => {
+    window.localStorage.setItem(lightsOutBestKey(first, solution), JSON.stringify({ version: 1, levelId: first.id, history: solution }));
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'localStorage');
+    try {
+      Object.defineProperty(window, 'localStorage', { configurable: true, get() { throw new Error('storage blocked'); } });
+      render(<LightsOutPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+      expect(screen.getByText('本关最佳').parentElement).toHaveTextContent('暂不可读');
+      expect(screen.getByText(/成绩暂时无法读取/)).toBeInTheDocument();
+    } finally {
+      if (descriptor) Object.defineProperty(window, 'localStorage', descriptor);
+    }
+    const retry = screen.getByRole('button', { name: '重试保存' });
+    retry.focus();
+    fireEvent.click(retry);
+    expect(screen.getByText('本关最佳').parentElement).toHaveTextContent('2 次');
+    expect(screen.queryByRole('button', { name: '重试保存' })).not.toBeInTheDocument();
+    expect(retry).not.toBeInTheDocument();
+    choose(2);
+    expect(screen.getByText('本关最佳').parentElement).toHaveTextContent('尚未通关');
+  });
+
+  it('已有合法最佳在后续读取失败时留住次数，焦点不被刷新夺走；恢复后清除告警', () => {
+    const key = lightsOutBestKey(first, solution);
+    window.localStorage.setItem(key, JSON.stringify({ version: 1, levelId: first.id, history: solution }));
+    const localArea = window.localStorage;
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'localStorage');
+    render(<LightsOutPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    const retry = screen.getByRole('button', { name: '重新开始' });
+    retry.focus();
+    try {
+      Object.defineProperty(window, 'localStorage', { configurable: true, get() { throw new Error('storage blocked'); } });
+      act(() => window.dispatchEvent(new StorageEvent('storage', { key, storageArea: localArea })));
+      expect(screen.getByText('本关最佳').parentElement).toHaveTextContent('2 次');
+      expect(screen.getByText(/成绩暂时无法读取/)).toBeInTheDocument();
+      expect(retry).toHaveFocus();
+    } finally {
+      if (descriptor) Object.defineProperty(window, 'localStorage', descriptor);
+    }
+    act(() => window.dispatchEvent(new Event('focus')));
+    expect(screen.getByText('本关最佳').parentElement).toHaveTextContent('2 次');
+    expect(screen.queryByRole('button', { name: '重试保存' })).not.toBeInTheDocument();
+    expect(retry).toHaveFocus();
+  });
+
+  it('可读但无效的候选只显示记录警告，不能把未通关误标成不可读', () => {
+    window.localStorage.setItem('gamehall:lights-out:best:v1:corrupt', '{bad');
+    render(<LightsOutPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    expect(screen.getByText('本关最佳').parentElement).toHaveTextContent('尚未通关');
+    expect(screen.getByText(/部分连灯解谜成绩无效/)).toBeInTheDocument();
+  });
 });

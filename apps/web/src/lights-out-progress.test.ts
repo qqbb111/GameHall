@@ -81,6 +81,7 @@ describe('连灯解谜独立进度存储', () => {
     const blockRead = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked'); });
     expect(readLightsOutHomeAttempt()).toEqual({ kind: 'unavailable' });
     const unreadable = writeLightsOutBests(failed.bests);
+    expect(unreadable.readable).toBe(false);
     expect(unreadable.warning).toMatch(/无法读取/);
     expect(unreadable.bests[first.id]).toEqual(win);
     expect(readLightsOutHomeCompletedCount()).toBeNull();
@@ -114,6 +115,7 @@ describe('连灯解谜独立进度存储', () => {
     expect(inserted).toBe(true);
     expect(remove).toHaveBeenCalledWith(longKey);
     expect(result.bests[first.id]).toEqual(win);
+    expect(result.readable).toBe(true);
     expect(result.warning).toMatch(/无法清理/);
     expect(window.localStorage.getItem(shortKey)).toBe(saved(win));
   });
