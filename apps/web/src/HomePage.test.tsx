@@ -66,6 +66,7 @@ describe('HomePage', () => {
     // mounted page finish before Vitest disposes its JSDOM window.
     while (pendingReads.size) await Promise.all([...pendingReads]);
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     window.localStorage.clear();
     window.sessionStorage.clear();
     window.history.replaceState(null, '', '/');
@@ -133,6 +134,55 @@ describe('HomePage', () => {
     expect(screen.getByText('没有符合条件的游戏。')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '查看全部' }));
     expect(screen.getByRole('button', { name: '进入推箱子' })).toBeInTheDocument();
+  });
+
+  it('单人筛选和只匹配单人的搜索可推荐当前可见模式；先聚焦入口，明确再次选择才进入', () => {
+    const onPractice = vi.fn();
+    const client = clientStub({ connection: 'offline' });
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const scroll = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => undefined);
+    render(<HomePage client={client} onPractice={onPractice} />);
+    fireEvent.click(screen.getByRole('button', { name: '单人玩法' }));
+    fireEvent.change(screen.getByPlaceholderText('搜索游戏名称或玩法'), { target: { value: '24 点' } });
+    fireEvent.click(screen.getByRole('button', { name: '帮我选一款' }));
+    const entry = screen.getByRole('button', { name: '进入24 点单人练习' });
+    expect(entry).toHaveFocus();
+    expect(entry.closest('.solo-mode-card')).toHaveClass('is-suggested');
+    expect(screen.getByText(/推荐你试试 24 点单人练习/)).toBeInTheDocument();
+    expect(scroll).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' });
+    expect(onPractice).not.toHaveBeenCalled();
+    expect(client.createRoom).not.toHaveBeenCalled();
+    fireEvent.click(entry);
+    expect(onPractice).toHaveBeenCalledWith('twenty-four', 'hub:twenty-four');
+    fireEvent.click(screen.getByRole('button', { name: '全部' }));
+    fireEvent.change(screen.getByPlaceholderText('搜索游戏名称或玩法'), { target: { value: '推箱子' } });
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: true }));
+    fireEvent.click(screen.getByRole('button', { name: '帮我选一款' }));
+    expect(screen.getByRole('button', { name: '进入推箱子' })).toHaveFocus();
+    expect(document.querySelector('.sokoban-discovery')).toHaveClass('is-suggested');
+    expect(scroll).toHaveBeenLastCalledWith({ behavior: 'instant', block: 'center' });
+    expect(client.createRoom).not.toHaveBeenCalled();
+    scroll.mockRestore();
+  });
+
+  it('首屏单人 CTA 聚焦并显示游乐区，尊重用户随后移焦与减少动态效果', async () => {
+    const scroll = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => undefined);
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: true }));
+    try {
+      render(<HomePage client={clientStub({ connection: 'offline' })} />);
+      const cta = screen.getByRole('button', { name: '单人先玩一局' });
+      cta.focus();
+      fireEvent.click(cta);
+      await waitFor(() => expect(screen.getByRole('heading', { name: '一个人，也能好好玩一局' })).toHaveFocus());
+      expect(scroll).toHaveBeenCalledWith({ behavior: 'instant', block: 'start' });
+      expect(screen.getByRole('button', { name: '单人玩法' })).toHaveAttribute('aria-pressed', 'true');
+      cta.focus();
+      fireEvent.click(cta);
+      const search = screen.getByPlaceholderText('搜索游戏名称或玩法');
+      search.focus();
+      await new Promise((resolve) => window.setTimeout(resolve, 10));
+      expect(search).toHaveFocus();
+    } finally { vi.unstubAllGlobals(); scroll.mockRestore(); }
   });
 
   it('本标签合法进度和共享通关数进入首页；只响应对应存储事件，更新不抢入口焦点或写存档', () => {

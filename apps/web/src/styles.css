@@ -1525,10 +1525,12 @@ footer span { color: #a4b6ae; font-family: Georgia, serif; font-size: 15px; }
 .solo-hub { margin-top: 27px; padding: clamp(17px,2.7vw,30px); min-width: 0; border: 1px solid #668563; border-radius: 20px; background: linear-gradient(145deg,#153d31,#09271f); box-shadow: 0 18px 40px #021a1745; scroll-margin-top: 18px; }
 .solo-hub-heading span { color: #ebcb86; font-size: 12px; font-weight: 800; letter-spacing: .12em; }
 .solo-hub-heading h3 { margin: 6px 0 5px; color: #fff0cf; font: 700 clamp(25px,3vw,35px) 'Noto Serif SC',serif; }
+.solo-hub-heading h3:focus-visible { outline: 3px solid #f5d994; outline-offset: 5px; }
 .solo-hub-heading p { margin: 0; color: #bfcebf; line-height: 1.55; }
 .solo-hub .sokoban-discovery { margin-top: 22px; }
 .solo-mode-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(270px,100%),1fr)); gap: 12px; margin-top: 14px; }
 .solo-mode-card { display: grid; grid-template-columns: 48px minmax(0,1fr); align-items: start; gap: 10px 13px; min-width: 0; padding: 17px; border: 1px solid #54775b; border-radius: 13px; color: #f1ecd9; background: #204533; }
+.solo-mode-card.is-suggested, .sokoban-discovery.is-suggested { border-color: #f1d38e; box-shadow: 0 0 0 2px #eac98299, 0 18px 42px #061b1740; }
 .solo-mode-icon { width: 48px; height: 48px; display: grid; place-items: center; border: 1px solid #cfaa65; border-radius: 11px; color: #f9dc9a; background: #315b40; }
 .solo-mode-card small { color: #f3d28e; font-size: 11px; font-weight: 800; }.solo-mode-card h4 { margin: 3px 0; font: 700 19px 'Noto Serif SC',serif; }.solo-mode-card p { margin: 0; color: #c4d3c4; font-size: 13px; }.solo-mode-progress { display: block; margin-top: 8px; color: #f4d693; font-size: 12px; font-weight: 700; }
 .solo-mode-card button { grid-column: 2; justify-self: start; min-height: 44px; padding: 0 13px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid #ebc780; border-radius: 9px; color: #16382b; background: #ebc780; font-weight: 800; cursor: pointer; }

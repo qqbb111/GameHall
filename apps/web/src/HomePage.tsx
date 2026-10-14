@@ -10,7 +10,7 @@ import {
   Timer,
   Users,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import type { GameId } from '@gamehall/protocol';
 import type { SoloGameId } from './solo-ai';
@@ -166,6 +166,7 @@ const soloModes = [
   { id: 'twenty-four', title: '24 点单人练习', detail: '算式与限时挑战', quick: true, strategy: false, keywords: '24点 24 点 算式 练习' },
   { id: 'sokoban', title: '推箱子十关解谜', detail: '绕行与顺序规划', quick: false, strategy: true, keywords: '推箱子 箱子 解谜 益智 sokoban' },
 ] as const satisfies ReadonlyArray<{ id: PracticeGameId; title: string; detail: string; quick: boolean; strategy: boolean; keywords: string }>;
+type CatalogSuggestion = { kind: 'friend'; id: GameId } | { kind: 'solo'; id: PracticeGameId };
 
 function draftPracticeSummary(gameId: SoloGameId): PracticeSummary[SoloGameId] {
   const draft = readSoloDraft(gameId);
@@ -209,7 +210,7 @@ export function HomePage({ client, onPractice, initialCatalog, onCatalogChange }
   const [filter, setFilter] = useState<HomeCatalogState['filter']>(initialCatalog?.filter ?? 'all');
   const [favorites, setFavorites] = useState(readFavoriteGames);
   const [selectedRules, setSelectedRules] = useState<GameCardInfo | null>(null);
-  const [suggestedId, setSuggestedId] = useState<GameId | null>(null);
+  const [suggestion, setSuggestion] = useState<CatalogSuggestion | null>(null);
   const identityPanel = useRef<HTMLDivElement>(null);
   const nicknameInput = useRef<HTMLInputElement>(null);
   const catalogSection = useRef<HTMLElement>(null);
@@ -229,11 +230,21 @@ export function HomePage({ client, onPractice, initialCatalog, onCatalogChange }
     return matchesSearch && (filter === 'all' || filter === 'solo' || filter === 'quick' && mode.quick || filter === 'strategy' && mode.strategy);
   });
   const visibleSokoban = visibleSoloModes.some((mode) => mode.id === 'sokoban');
+  const suggestionVisible = suggestion?.kind === 'friend'
+    ? visibleGames.some((game) => game.id === suggestion.id)
+    : suggestion?.kind === 'solo' && visibleSoloModes.some((mode) => mode.id === suggestion.id);
   const updateSearch = (next: string) => { setSearch(next); onCatalogChange?.({ search: next, filter }); };
   const updateFilter = (next: HomeCatalogState['filter']) => { setFilter(next); onCatalogChange?.({ search, filter: next }); };
-  const openSoloCatalog = () => {
+  const scrollBehavior = (): ScrollBehavior => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth';
+  const openSoloCatalog = (event: MouseEvent<HTMLButtonElement>) => {
+    const trigger = event.currentTarget;
     setSearch(''); setFilter('solo'); onCatalogChange?.({ search: '', filter: 'solo' });
-    window.setTimeout(() => soloSection.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }), 0);
+    window.setTimeout(() => {
+      if (document.activeElement !== trigger && document.activeElement !== document.body) return;
+      const heading = soloSection.current?.querySelector<HTMLElement>('h3');
+      heading?.focus({ preventScroll: true });
+      soloSection.current?.scrollIntoView?.({ behavior: scrollBehavior(), block: 'start' });
+    }, 0);
   };
 
   useEffect(() => {
@@ -377,10 +388,18 @@ export function HomePage({ client, onPractice, initialCatalog, onCatalogChange }
   }
 
   function suggestGame() {
-    if (!visibleGames.length) return;
-    const next = visibleGames[Math.floor(Math.random() * visibleGames.length)]!;
-    setSuggestedId(next.id as GameId);
-    document.getElementById(`game-${next.id}`)?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+    const candidates: CatalogSuggestion[] = [
+      ...visibleGames.map((game) => ({ kind: 'friend' as const, id: game.id as GameId })),
+      ...visibleSoloModes.map((mode) => ({ kind: 'solo' as const, id: mode.id })),
+    ];
+    if (!candidates.length) return;
+    const next = candidates[Math.floor(Math.random() * candidates.length)]!;
+    setSuggestion(next);
+    const target = next.kind === 'solo'
+      ? document.querySelector<HTMLElement>(`button[data-practice-origin="hub:${next.id}"]`)
+      : document.querySelector<HTMLElement>(`#game-${next.id} button[aria-label^="查看"]`);
+    target?.focus({ preventScroll: true });
+    target?.scrollIntoView?.({ behavior: scrollBehavior(), block: 'center' });
   }
 
   function requestNickname() {
@@ -512,19 +531,19 @@ export function HomePage({ client, onPractice, initialCatalog, onCatalogChange }
             <div className="catalog-filters" role="group" aria-label="筛选游戏">
               {([['all', '全部'], ['solo', '单人玩法'], ['quick', '轻松短局'], ['strategy', '策略棋盘'], ['party', '多人桌游'], ['favorites', '收藏']] as const).map(([id, label]) => <button key={id} type="button" aria-pressed={filter === id} onClick={() => updateFilter(id)}>{label}</button>)}
             </div>
-            <button className="suggest-button" type="button" disabled={!visibleGames.length} onClick={suggestGame}><Shuffle size={16} /> 帮我选一款</button>
+            <button className="suggest-button" type="button" disabled={!visibleGames.length && !visibleSoloModes.length} onClick={suggestGame}><Shuffle size={16} /> 帮我选一款</button>
           </div>
-          {suggestedId && visibleGames.some((game) => game.id === suggestedId) && <p className="suggestion-note" role="status">推荐你试试 {games.find((game) => game.id === suggestedId)?.name}。看看规则，再决定是否创建房间。</p>}
+          {suggestionVisible && suggestion && <p className="suggestion-note" role="status">推荐你试试 {suggestion.kind === 'solo' ? soloModes.find((mode) => mode.id === suggestion.id)?.title : games.find((game) => game.id === suggestion.id)?.name}。{suggestion.kind === 'solo' ? '按入口按钮再进入单人玩法。' : '看看规则，再决定是否创建房间。'}</p>}
 
           {createError && <p className="catalog-error" role="alert">{createError}</p>}
           {visibleSoloModes.length > 0 && <section ref={soloSection} className="solo-hub" aria-labelledby="solo-hub-title">
-            <div className="solo-hub-heading"><span>SOLO CORNER · 随时开玩</span><h3 id="solo-hub-title">一个人，也能好好玩一局</h3><p>七种已开放的本地练习与解谜。无需昵称或实时连接，选择后才进入。</p></div>
-            {visibleSokoban && <div className="sokoban-discovery">
+            <div className="solo-hub-heading"><span>SOLO CORNER · 随时开玩</span><h3 id="solo-hub-title" tabIndex={-1}>一个人，也能好好玩一局</h3><p>七种已开放的本地练习与解谜。无需昵称或实时连接，选择后才进入。</p></div>
+            {visibleSokoban && <div className={`sokoban-discovery${suggestion?.kind === 'solo' && suggestion.id === 'sokoban' ? ' is-suggested' : ''}`}>
               <div className="sokoban-discovery-mark" aria-hidden="true"><i /><i /><i /></div>
               <div><span>本地单人解谜 · 不开好友房</span><h4>推箱子 · 十关挑战</h4><p>从一只箱子练到三只箱子，绕行、换位，亲手安排每一步。</p><p className="sokoban-discovery-progress">{sokobanAttempt.kind === 'saved' ? `本标签第 ${sokobanAttempt.levelNumber} 关 · ${sokobanAttempt.steps} 步 · ${sokobanAttempt.pushes} 次推箱` : sokobanAttempt.kind === 'fresh' ? '从第一关开始' : '本标签进度暂不可用'} · {sokobanBests.count === null ? '通关数暂不可读' : `已通关 ${sokobanBests.count} / 10 关`}{sokobanBests.count !== null && sokobanBests.unavailable ? ' · 更新暂不可用' : ''}</p></div>
               <button type="button" data-practice-game="sokoban" data-practice-origin="hub:sokoban" onClick={() => onPractice?.('sokoban', 'hub:sokoban')}>{sokobanAttempt.kind === 'saved' ? sokobanAttempt.solved ? `查看第 ${sokobanAttempt.levelNumber} 关结果` : `继续第 ${sokobanAttempt.levelNumber} 关` : '进入推箱子'} <ArrowRight size={17} /></button>
             </div>}
-            <div className="solo-mode-grid">{visibleSoloModes.filter((mode) => mode.id !== 'sokoban').map((mode, index) => <article className="solo-mode-card" key={mode.id}>
+            <div className="solo-mode-grid">{visibleSoloModes.filter((mode) => mode.id !== 'sokoban').map((mode, index) => <article className={`solo-mode-card${suggestion?.kind === 'solo' && suggestion.id === mode.id ? ' is-suggested' : ''}`} key={mode.id}>
               <div className="solo-mode-icon" aria-hidden="true">{mode.id === 'twenty-four' ? <Dices size={24} /> : mode.id === 'connect-four-puzzles' ? <Shuffle size={24} /> : <CircleDot size={24} />}</div>
               <div><small>0{index + 1} · {mode.id === 'twenty-four' ? '数字挑战' : mode.id === 'connect-four-puzzles' ? '残局解谜' : '电脑对练'}</small><h4>{mode.title}</h4><p>{mode.detail}</p><span className="solo-mode-progress">{mode.id === 'twenty-four' ? twentyFourSave === 'finished' ? '查看上组结果' : twentyFourSave === 'active' ? '继续上组练习' : '随时开始' : mode.id === 'connect-four-puzzles' ? '9 关可自由选' : practiceSaves[mode.id] === 'loading' ? '进度读取中' : practiceSaves[mode.id] === 'finished' ? '可查看上局' : practiceSaves[mode.id] === 'active' ? '可继续上局' : '准备好就开局'}</span></div>
               <button type="button" data-practice-game={mode.id} data-practice-origin={`hub:${mode.id}`} onClick={() => onPractice?.(mode.id, `hub:${mode.id}`)} aria-label={`进入${mode.title}`}>进入练习 <ArrowRight size={15} /></button>
@@ -535,7 +554,7 @@ export function HomePage({ client, onPractice, initialCatalog, onCatalogChange }
               <Reveal className="game-card-reveal" delayMs={Math.min(index * 35, 140)} distance={0} key={game.id}>
                 <ClickSpark className="featured-spark">
                   <SpotlightSurface className="game-card-surface" color="rgba(240, 206, 139, 0.28)" tilt>
-                    <article className={`game-card featured-card ${suggestedId === game.id ? 'is-suggested' : ''}`} id={`game-${game.id}`}>
+                    <article className={`game-card featured-card ${suggestion?.kind === 'friend' && suggestion.id === game.id ? 'is-suggested' : ''}`} id={`game-${game.id}`}>
                       <div className="game-number">0{index + 1}</div>
                       <div className={`game-art accent-${game.accent}`}><span className="game-art-orbit" aria-hidden="true" /><GameGlyph kind={game.icon} /></div>
                     <div className="game-info">
