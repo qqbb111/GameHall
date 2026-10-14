@@ -62,7 +62,8 @@ describe('self-hosted Chinese fonts', () => {
   });
 
   it('uses disjoint ranges and places current UI characters in each core font', () => {
-    const uiText = sourceText(src) + readFileSync(join(src, '..', 'index.html'), 'utf8');
+    const uiText = sourceText(src) + readFileSync(join(src, '..', 'index.html'), 'utf8')
+      + readFileSync(join(src, '..', '..', '..', 'packages', 'game-core', 'src', 'sokoban.ts'), 'utf8');
     const uiCharacters = new Set([...uiText].map((character) => character.codePointAt(0))
       .filter((point) => point >= 0x20 && point < 0x1F000 && point !== 0x2304));
     for (const family of ['Noto Sans SC', 'Noto Serif SC']) {

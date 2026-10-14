@@ -77,6 +77,24 @@ describe('HomePage', () => {
     expect(client.clearError).toHaveBeenCalledTimes(1);
   });
 
+  it('本地推箱子入口可按玩法搜索和策略筛选，离线时也无需昵称', () => {
+    const onPractice = vi.fn();
+    render(<HomePage client={clientStub({ connection: 'offline' })} onPractice={onPractice} />);
+    const entry = screen.getByRole('button', { name: '进入推箱子' });
+    expect(entry).toBeEnabled();
+    fireEvent.change(screen.getByPlaceholderText('搜索游戏名称或玩法'), { target: { value: '推箱子' } });
+    expect(screen.getByRole('button', { name: '进入推箱子' })).toBeInTheDocument();
+    expect(screen.queryByText('没有符合条件的游戏。')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '策略棋盘' }));
+    fireEvent.click(screen.getByRole('button', { name: '进入推箱子' }));
+    expect(onPractice).toHaveBeenCalledWith('sokoban');
+    fireEvent.change(screen.getByPlaceholderText('搜索游戏名称或玩法'), { target: { value: '不存在的棋' } });
+    expect(screen.queryByRole('button', { name: '进入推箱子' })).not.toBeInTheDocument();
+    expect(screen.getByText('没有符合条件的游戏。')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '清空搜索' }));
+    expect(screen.getByRole('button', { name: '进入推箱子' })).toBeInTheDocument();
+  });
+
   it('五款已确认游戏均可进入，开发中卡片不可点击', () => {
     const { container } = render(<HomePage client={clientStub()} />);
     fireEvent.click(screen.getByText('更多玩法正在准备 · 5 款'));

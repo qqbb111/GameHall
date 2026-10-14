@@ -27,6 +27,7 @@ import { parseRoomCodeInput, removeRoomQueryFromAddress } from './room-code';
 import { GemMark } from './GemMark';
 import './splendor.css';
 import './board-games.css';
+import './sokoban-practice.css';
 
 function GameGlyph({ kind }: { kind: GameCardInfo['icon'] }) {
   if (kind === 'connect-four') return <div className="home-four" aria-hidden="true">{[0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0].map((value,index)=><i key={index} className={value ? 'coral' : 'gold'} />)}</div>;
@@ -205,6 +206,8 @@ export function HomePage({ client, onPractice }: { client: GameHallClient; onPra
     const matchesFilter = filter === 'all' || filter === 'favorites' && favorites.includes(game.id) || filter !== 'favorites' && game.categories?.includes(filter);
     return matchesSearch && matchesFilter;
   });
+  const visibleSokoban = (filter === 'all' || filter === 'strategy')
+    && '推箱子 单人 解谜 十关 箱子 益智 sokoban'.includes(search.trim().toLocaleLowerCase('zh-CN'));
 
   useEffect(() => {
     let active = true;
@@ -479,7 +482,12 @@ export function HomePage({ client, onPractice }: { client: GameHallClient; onPra
               </Reveal>
             ))}
           </div>
-          {!visibleGames.length && <div className="catalog-empty"><p>没有符合条件的游戏。</p>{search && <button type="button" onClick={() => setSearch('')}>清空搜索</button>}{filter !== 'all' && <button type="button" onClick={() => setFilter('all')}>查看全部</button>}</div>}
+          {visibleSokoban && <section className="sokoban-discovery" aria-labelledby="sokoban-discovery-title">
+            <div className="sokoban-discovery-mark" aria-hidden="true"><i /><i /><i /></div>
+            <div><span>本地单人解谜 · 不开好友房</span><h3 id="sokoban-discovery-title">推箱子 · 十关挑战</h3><p>从一只箱子练到三只箱子，绕行、换位，亲手安排每一步。</p></div>
+            <button type="button" data-practice-game="sokoban" onClick={() => onPractice?.('sokoban')}>进入推箱子 <ArrowRight size={17} /></button>
+          </section>}
+          {!visibleGames.length && !visibleSokoban && <div className="catalog-empty"><p>没有符合条件的游戏。</p>{search && <button type="button" onClick={() => setSearch('')}>清空搜索</button>}{filter !== 'all' && <button type="button" onClick={() => setFilter('all')}>查看全部</button>}</div>}
 
           <Reveal className="coming-reveal" delayMs={80} distance={12}>
             <details className="coming-details">

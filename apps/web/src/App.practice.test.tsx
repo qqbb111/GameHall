@@ -5,7 +5,7 @@ import type { SoloWorkerRequest, SoloWorkerResponse } from './solo-ai.worker';
 
 const mocks = vi.hoisted(() => ({ useClient: vi.fn() }));
 vi.mock('./gamehall-client', () => ({ useGameHallClient: mocks.useClient }));
-vi.mock('./HomePage', () => ({ HomePage: ({ onPractice }: { onPractice: (game: 'connect-four' | 'twenty-four' | 'connect-four-puzzles') => void }) => <main><h1 tabIndex={-1}>home</h1><button onClick={() => onPractice('connect-four')}>practice</button><button data-practice-game="twenty-four" onClick={() => onPractice('twenty-four')}>practice 24</button><button data-practice-game="connect-four-puzzles" onClick={() => onPractice('connect-four-puzzles')}>puzzles</button></main> }));
+vi.mock('./HomePage', () => ({ HomePage: ({ onPractice }: { onPractice: (game: 'connect-four' | 'twenty-four' | 'connect-four-puzzles' | 'sokoban') => void }) => <main><h1 tabIndex={-1}>home</h1><button onClick={() => onPractice('connect-four')}>practice</button><button data-practice-game="twenty-four" onClick={() => onPractice('twenty-four')}>practice 24</button><button data-practice-game="connect-four-puzzles" onClick={() => onPractice('connect-four-puzzles')}>puzzles</button><button data-practice-game="sokoban" onClick={() => onPractice('sokoban')}>sokoban</button></main> }));
 vi.mock('./RoomPage', () => ({ RoomPage: () => <main><h1>room</h1></main> }));
 
 import { App } from './App';
@@ -32,6 +32,20 @@ describe('practice browser navigation with real board', () => {
     window.history.replaceState(null, '', '/');
     mocks.useClient.mockReset();
     vi.unstubAllGlobals();
+  });
+
+  it('推箱子离线入口、直达地址与浏览器前进后退保留原参数及入口焦点', async () => {
+    vi.stubGlobal('scrollTo', vi.fn());
+    window.history.replaceState(null, '', '/?room=ABC234#board');
+    mocks.useClient.mockReturnValue({ loading: true, room: null } as unknown as GameHallClient);
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'sokoban' }));
+    expect(screen.getByRole('heading', { name: '推箱子 · 十关挑战' })).toBeInTheDocument();
+    expect(window.location.search).toBe('?room=ABC234&practice=sokoban');
+    act(() => { window.history.replaceState(null, '', '/?room=ABC234#board'); window.dispatchEvent(new PopStateEvent('popstate')); });
+    expect(screen.getByRole('button', { name: 'sokoban' })).toHaveFocus();
+    act(() => { window.history.replaceState(null, '', '/?room=ABC234&practice=sokoban#board'); window.dispatchEvent(new PopStateEvent('popstate')); });
+    expect(screen.getByRole('heading', { name: '推箱子 · 十关挑战' })).toHaveFocus();
   });
 
   it('Back 卸载旧电脑请求，Forward 从存档继续且忽略旧回包', async () => {
