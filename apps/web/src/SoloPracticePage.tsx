@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
   applyConnectFourAction, applyDotsAndBoxesAction, applyGomokuAction, applyReversiAction, createConnectFourState, createDotsAndBoxesState, createGomokuState, createReversiState, legalReversiMoves,
@@ -19,6 +19,7 @@ import './solo-practice.css';
 
 const names: Record<SoloGameId, string> = { 'connect-four': '四子连线', reversi: '黑白棋', 'dots-and-boxes': '点格棋', gomoku: '五子棋' };
 type HintState = { kind: 'idle' | 'pending' } | { kind: 'ready'; hint: SoloHint } | { kind: 'error'; message: string };
+type FocusHandoff = { origin: HTMLButtonElement; kind: 'save' | 'computer' | 'conflict-save' | 'adopt'; moved: boolean; settled: boolean };
 
 async function bootProgress(gameId: SoloGameId) {
   const shared = await readSharedSoloSnapshot(gameId);
@@ -186,6 +187,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
   const [error, setError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
   const [round, setRound] = useState(0);
+  const roundFocusMode = useRef<'explicit' | 'adopt'>('explicit');
   const workerRef = useRef<Worker | null>(null);
   const requestGeneration = useRef(0);
   const [hintState, setHintState] = useState<HintState>({ kind: 'idle' });
@@ -198,6 +200,11 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
   const hintFocusTarget = useRef<'adopt' | 'button' | null>(null);
   const humanMoveAt = useRef(0);
   const playStatus = useRef<HTMLElement | null>(null);
+  const retrySaveButton = useRef<HTMLButtonElement | null>(null);
+  const conflictSaveButton = useRef<HTMLButtonElement | null>(null);
+  const conflictAdoptButton = useRef<HTMLButtonElement | null>(null);
+  const focusHandoff = useRef<FocusHandoff | null>(null);
+  const [focusTick, setFocusTick] = useState(0);
   const shellRef = useRef<HTMLElement | null>(null);
   const restartButtonRef = useRef<HTMLButtonElement | null>(null);
   const cancelRestartRef = useRef<HTMLButtonElement | null>(null);
@@ -205,6 +212,86 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
   const restartOpenRef = useRef(false);
   const restoreRestartFocus = useRef(false);
   const [confirmRestart, setConfirmRestart] = useState(false);
+
+  useEffect(() => {
+    const onPointer = (event: PointerEvent) => {
+      const pending = focusHandoff.current;
+      if (pending && event.target instanceof Node && !pending.origin.contains(event.target)) pending.moved = true;
+    };
+    const onFocus = (event: FocusEvent) => {
+      const pending = focusHandoff.current;
+      if (pending && event.target !== pending.origin && event.target !== document.body) pending.moved = true;
+    };
+    document.addEventListener('pointerdown', onPointer, true);
+    document.addEventListener('focusin', onFocus, true);
+    return () => {
+      document.removeEventListener('pointerdown', onPointer, true);
+      document.removeEventListener('focusin', onFocus, true);
+      focusHandoff.current = null;
+    };
+  }, []);
+
+  function beginHandoff(origin: HTMLButtonElement, kind: FocusHandoff['kind']): FocusHandoff | null {
+    const pending = document.activeElement === origin ? { origin, kind, moved: false, settled: false } : null;
+    focusHandoff.current = pending;
+    return pending;
+  }
+
+  function settleHandoff(pending: FocusHandoff | null) {
+    if (!pending || focusHandoff.current !== pending) return;
+    pending.settled = true;
+    setFocusTick((current) => current + 1);
+  }
+
+  const finishHandoff = useCallback((pending: FocusHandoff, target: HTMLElement | null) => {
+    if (focusHandoff.current !== pending) return;
+    focusHandoff.current = null;
+    if (pending.moved || restartOpenRef.current || !target
+        || (document.activeElement !== pending.origin && document.activeElement !== document.body)) return;
+    target.focus({ preventScroll: true });
+    target.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+  }, []);
+
+  useLayoutEffect(() => {
+    const pending = focusHandoff.current;
+    if (!pending?.settled || pending.kind === 'adopt') return;
+    if (pending.kind === 'computer') { finishHandoff(pending, playStatus.current); return; }
+    if (pending.kind === 'save' && conflict) {
+      finishHandoff(pending, conflictAdoptButton.current ?? conflictSaveButton.current);
+      return;
+    }
+    const button = pending.kind === 'save' ? retrySaveButton.current : conflictSaveButton.current;
+    if (button) { finishHandoff(pending, button); return; }
+    finishHandoff(pending, playStatus.current);
+  }, [focusTick, shareLimited, localOnly, unsaved, conflict, error, finishHandoff]);
+
+  function retrySaving(event: MouseEvent<HTMLButtonElement>) {
+    const pending = beginHandoff(event.currentTarget, 'save');
+    const current = stateRef.current;
+    if (!current) { focusHandoff.current = null; return; }
+    void Promise.resolve(persist(current)).then(() => settleHandoff(pending), () => settleHandoff(pending));
+  }
+
+  function retryComputer(event: MouseEvent<HTMLButtonElement>) {
+    const pending = beginHandoff(event.currentTarget, 'computer');
+    setError(null);
+    setRetry((current) => current + 1);
+    settleHandoff(pending);
+  }
+
+  function requestSaveCurrent(event: MouseEvent<HTMLButtonElement>) {
+    const pending = beginHandoff(event.currentTarget, 'conflict-save');
+    void saveCurrentOverShared().then(() => settleHandoff(pending), () => settleHandoff(pending));
+  }
+
+  function requestResumeShared(event: MouseEvent<HTMLButtonElement>) {
+    const pending = beginHandoff(event.currentTarget, 'adopt');
+    void resumeShared().then((adopted) => {
+      if (!adopted && pending) finishHandoff(pending, conflictAdoptButton.current);
+    }, () => {
+      if (pending) finishHandoff(pending, conflictAdoptButton.current);
+    });
+  }
 
   useEffect(() => {
     let active = true;
@@ -309,6 +396,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
         if (latest.read.kind !== 'unavailable' && (latest.token !== result.token || latest.read.kind === 'invalid')) showConflict(latest);
       } finally { queuedWrites.current--; }
     });
+    return saveQueue.current;
   }, [gameId, showConflict]);
 
   useEffect(() => {
@@ -500,11 +588,20 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
 
   useEffect(() => {
     if (!round) return;
+    const mode = roundFocusMode.current;
+    roundFocusMode.current = 'explicit';
+    if (mode === 'adopt') {
+      const pending = focusHandoff.current;
+      if (pending?.kind === 'adopt') finishHandoff(pending, playStatus.current);
+      return;
+    }
     playStatus.current?.focus({ preventScroll: true });
-    playStatus.current?.scrollIntoView?.({ block: 'start', behavior: 'instant' });
-  }, [round]);
+    playStatus.current?.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+  }, [round, finishHandoff]);
 
   function start() {
+    focusHandoff.current = null;
+    roundFocusMode.current = 'explicit';
     cancelComputer();
     cancelHint();
     const next = initialState(gameId, starter);
@@ -623,28 +720,28 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     void humanAction(hintState.hint.action).then((applied) => { if (applied) playStatus.current?.focus({ preventScroll: true }); });
   }
 
-  async function resumeShared() {
+  async function resumeShared(): Promise<boolean> {
     const observed = conflictRef.current;
-    if (resolvingConflict || !observed || observed.read.kind !== 'valid') return;
+    if (resolvingConflict || !observed || observed.read.kind !== 'valid') return false;
     const choice = ++conflictChoiceGeneration.current;
     const sequence = saveSequence.current;
     const epoch = saveEpoch.current;
     setResolvingConflict(true);
     const latest = await readSharedSoloSnapshot(gameId);
     if (choice !== conflictChoiceGeneration.current || epoch !== saveEpoch.current || sequence !== saveSequence.current
-        || conflictRef.current !== observed) { setResolvingConflict(false); return; }
+        || conflictRef.current !== observed) { setResolvingConflict(false); return false; }
     if (latest.read.kind === 'unavailable') {
       setConflictNotice('共享进度暂不可读取，请稍后重试。');
       setResolvingConflict(false);
-      return;
+      return false;
     }
     if (latest.token !== observed.token || latest.read.kind !== observed.read.kind) {
       showConflict(latest);
       setConflictNotice('另一窗口又更新了，请按新预览选择。');
       setResolvingConflict(false);
-      return;
+      return false;
     }
-    if (latest.read.kind !== 'valid') { setResolvingConflict(false); return; }
+    if (latest.read.kind !== 'valid') { setResolvingConflict(false); return false; }
     saveEpoch.current++;
     cancelComputer();
     cancelHint();
@@ -673,7 +770,9 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     setSaveNotice('已接着另一窗口保存的练习');
     setError(null);
     setState(progress.state);
+    roundFocusMode.current = 'adopt';
     setRound((current) => current + 1);
+    return true;
   }
 
   async function saveCurrentOverShared() {
@@ -779,8 +878,8 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
     {recoveredRoom && <div className="solo-recovered" role="status">已恢复你的好友房。<button type="button" onClick={exit}>返回对局</button></div>}
     {saveNotice && <p className="solo-save-note" role="status">{saveNotice}</p>}
     {unsaved && <p className="solo-save-note is-warning" role="status">当前浏览器无法保存，刷新后会重新开始。</p>}
-    {shareLimited && !unsaved && state && <p className="solo-save-note is-warning" role="status">此浏览器暂不能安全同步多窗口；这盘只保存在当前标签，刷新仍可继续。<button type="button" onClick={() => { if (stateRef.current) persist(stateRef.current); }}>重试保存</button></p>}
-    {localOnly && !shareLimited && !unsaved && !conflict && <p className="solo-save-note is-warning" role="status">暂时未能同步到其他窗口，这盘仍保存在当前标签。<button type="button" onClick={() => { if (stateRef.current) persist(stateRef.current); }}>重试保存</button></p>}
+    {shareLimited && !unsaved && state && <p className="solo-save-note is-warning" role="status">此浏览器暂不能安全同步多窗口；这盘只保存在当前标签，刷新仍可继续。<button ref={retrySaveButton} type="button" onClick={retrySaving}>重试保存</button></p>}
+    {localOnly && !shareLimited && !unsaved && !conflict && <p className="solo-save-note is-warning" role="status">暂时未能同步到其他窗口，这盘仍保存在当前标签。<button ref={retrySaveButton} type="button" onClick={retrySaving}>重试保存</button></p>}
     {conflict && state && <div className="solo-conflict" role="status">
       <div className="solo-conflict-intro"><strong>另一窗口更新了这款练习</strong><p>当前棋盘：{progressSummary(state, activeStarter, activeDifficulty)}</p><p>已保存：{conflict.read.kind === 'valid' ? progressSummary(conflict.read.progress.state, conflict.read.progress.starter, conflict.read.progress.difficulty) : conflict.read.kind === 'empty' ? '记录已清除' : conflict.read.kind === 'invalid' ? '记录损坏，无法预览' : '记录暂不可读取，无法预览'}</p>{conflictNotice && <p className="solo-conflict-notice" role="alert">{conflictNotice}</p>}<small>你可以继续在当前棋盘落子；选择前不会覆盖另一窗口的进度。</small></div>
       {savedConflictProgress && <div className="solo-conflict-compare">
@@ -789,7 +888,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
         <div className="solo-conflict-previews"><ConflictBoardPreview title="当前棋盘" state={state} starter={activeStarter} difficulty={activeDifficulty} differences={differentCells} /><ConflictBoardPreview title="已保存" state={savedConflictProgress.state} starter={savedConflictProgress.starter} difficulty={savedConflictProgress.difficulty} differences={differentCells} /></div>
       </div>}
       {conflict.read.kind !== 'valid' && <p className="solo-conflict-unavailable">{conflict.read.kind === 'empty' ? '共享记录已清除，没有可预览的棋盘。' : conflict.read.kind === 'invalid' ? '共享记录损坏，不能显示棋盘；请确认当前局面后再保存。' : '暂时无法读取共享记录，不能显示棋盘。'}</p>}
-      <div className="solo-conflict-actions">{conflict.read.kind === 'valid' && <button type="button" disabled={resolvingConflict} onClick={resumeShared}>{resolvingConflict ? '正在核对…' : '接着已保存的练习'}</button>}<button type="button" disabled={resolvingConflict || shareLimited} onClick={() => void saveCurrentOverShared()}>{resolvingConflict ? '正在保存…' : '保存当前棋局'}</button></div>
+      <div className="solo-conflict-actions">{conflict.read.kind === 'valid' && <button ref={conflictAdoptButton} type="button" disabled={resolvingConflict} onClick={requestResumeShared}>{resolvingConflict ? '正在核对…' : '接着已保存的练习'}</button>}<button ref={conflictSaveButton} type="button" disabled={resolvingConflict || shareLimited} onClick={requestSaveCurrent}>{resolvingConflict ? '正在保存…' : '保存当前棋局'}</button></div>
     </div>}
     {!state ? <section className="solo-setup" aria-label="练习设置">
       <h2>开始前选一下</h2>
@@ -802,7 +901,7 @@ export function SoloPracticePage({ gameId, recoveredRoom, onExit }: {
         <div><span>你 · {color}</span><span>电脑 · {opponentColor}</span><span>{activeStarter === 'human' ? '你先手' : '电脑先手'} · {activeDifficulty === 'easy' ? '轻松' : '认真'}</span></div>
         <strong ref={playStatus} tabIndex={-1} role="status" aria-live="polite">{error ? '电脑这步遇到问题' : resultText(state)}</strong>
       </div>
-      {error && <div className="solo-error" role="alert">{error}<button type="button" onClick={() => { setError(null); setRetry((current) => current + 1); }}>重试这步</button></div>}
+      {error && <div className="solo-error" role="alert">{error}<button type="button" onClick={retryComputer}>重试这步</button></div>}
       {state.phase === 'playing' && state.turn === 0 && <div className="solo-hint-bar">
         {hintState.kind === 'ready' ? <div className="solo-hint-result" role="status"><p><strong>建议：{hintSpot}</strong> · {hintState.hint.reason}</p><div><button ref={adoptButtonRef} type="button" onClick={adoptHint}>采用这步</button><button type="button" onClick={() => { cancelHint(); hintFocusTarget.current = 'button'; }}>取消提示</button></div></div>
           : <><button ref={hintButtonRef} type="button" onClick={requestHint} disabled={hintState.kind === 'pending'}>{hintState.kind === 'pending' ? '正在寻找落点…' : hintState.kind === 'error' ? '重试提示' : '提示一步'}</button>{hintState.kind === 'error' && <span role="status">{hintState.message}</span>}{hintState.kind === 'idle' && <small>建议仅供参考，你可以自行落子。</small>}</>}

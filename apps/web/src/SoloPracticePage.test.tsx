@@ -544,7 +544,11 @@ describe('local computer practice', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('无法启动');
     expect(screen.getByText('电脑这步遇到问题')).toBeInTheDocument();
     vi.stubGlobal('Worker', FakeWorker);
-    fireEvent.click(screen.getByRole('button', { name: '重试这步' }));
+    const retry = screen.getByRole('button', { name: '重试这步' });
+    retry.focus();
+    fireEvent.click(retry);
+    expect(screen.queryByText('电脑这步遇到问题')).not.toBeInTheDocument();
+    expect(screen.getByText('电脑正在思考…')).toHaveFocus();
     await waitFor(async () => expect(FakeWorker.instances).toHaveLength(1));
     act(() => FakeWorker.instances[0]!.reply({ action: { type: 'drop', col: 3 } }));
     expect(screen.getByRole('grid', { name: /已投放 1 枚棋子/ })).toBeInTheDocument();
@@ -742,8 +746,11 @@ describe('local computer practice', () => {
     expect(screen.getByText(/已保存：6 步/)).toBeInTheDocument();
     expect(screen.getByText(/当前棋盘：4 步/)).toBeInTheDocument();
     expect(readSoloDraft(gameId)?.progress).toEqual(local);
-    fireEvent.click(screen.getByRole('button', { name: '接着已保存的练习' }));
+    const adoptLatest = screen.getByRole('button', { name: '接着已保存的练习' });
+    adoptLatest.focus();
+    fireEvent.click(adoptLatest);
     await waitFor(() => expect(screen.queryByText('另一窗口更新了这款练习')).not.toBeInTheDocument());
+    await waitFor(() => expect(document.querySelector('.solo-toolbar strong')).toHaveFocus());
     if (gameId === 'connect-four') expect(screen.getByRole('grid', { name: /已投放 6 枚棋子/ })).toBeInTheDocument();
     else expect(screen.getByRole('gridcell', { name: /第 7 行第 9 列，白子，最近一步/ })).toBeInTheDocument();
     expect(readSoloDraft(gameId)).toBeNull();
@@ -770,6 +777,28 @@ describe('local computer practice', () => {
     expect(screen.getByText(/已保存：5 步/)).toBeInTheDocument();
     expect(readSoloDraft(gameId)?.progress.state).toMatchObject({ moveCount: 5 });
     expect(await shared(gameId)).toEqual({ kind: 'valid', progress: shown });
+  });
+
+  it('接着共享棋局的异步核对期间移焦后不由 round 效果抢回', async () => {
+    const local = conflictPractice('connect-four', 4);
+    const shown = conflictPractice('connect-four', 5);
+    expect(writeSoloDraft({ progress: local, baseToken: null })).toBe(true);
+    await saveShared(shown);
+    render(<SoloPracticePage gameId="connect-four" recoveredRoom={false} onExit={vi.fn()} />);
+    await screen.findByText(/已保存：5 步/);
+    const latest = await readSharedSoloSnapshot('connect-four');
+    let release!: (value: SoloSnapshot) => void;
+    const delayed = new Promise<SoloSnapshot>((resolve) => { release = resolve; });
+    vi.spyOn(sharedStore, 'readSharedSoloSnapshot').mockImplementationOnce(() => delayed);
+    const adopt = screen.getByRole('button', { name: '接着已保存的练习' });
+    adopt.focus();
+    fireEvent.click(adopt);
+    const headerExit = document.querySelector<HTMLButtonElement>('.solo-header .solo-back')!;
+    headerExit.focus();
+    await act(async () => { release(latest); await delayed; });
+    await waitFor(() => expect(screen.queryByText('另一窗口更新了这款练习')).not.toBeInTheDocument());
+    expect(headerExit).toHaveFocus();
+    expect(screen.getByRole('grid', { name: /已投放 5 枚棋子/ })).toBeInTheDocument();
   });
 
   it('四子连线相同四步和最近列仍显示两盘真实差异，预览不可操作', async () => {
@@ -868,9 +897,12 @@ describe('local computer practice', () => {
     fireEvent.click(screen.getByRole('button', { name: '保存当前棋局' }));
     await screen.findByText(/已保存：2 步/);
     expect(await shared('connect-four')).toEqual({ kind: 'valid', progress: wrap(second.state) });
-    fireEvent.click(screen.getByRole('button', { name: '保存当前棋局' }));
+    const saveCurrent = screen.getByRole('button', { name: '保存当前棋局' });
+    saveCurrent.focus();
+    fireEvent.click(saveCurrent);
     await waitFor(async () => expect(await shared('connect-four')).toEqual({ kind: 'valid', progress: wrap(initial) }));
     expect(screen.queryByText('另一窗口更新了这款练习')).not.toBeInTheDocument();
+    await waitFor(() => expect(document.querySelector('.solo-toolbar strong')).toHaveFocus());
   });
 
   it('显式覆盖写入已发生但锁结果迟到时，新的本地落子草稿仍保留并继续保存', async () => {
@@ -1036,6 +1068,48 @@ describe('local computer practice', () => {
     fireEvent.click(screen.getByRole('button', { name: '重试保存' }));
     await waitFor(async () => expect(await shared('connect-four')).toMatchObject({ kind: 'valid', progress: { state: { moveCount: 1 } } }));
     expect(screen.queryByText(/只保存在当前标签/)).not.toBeInTheDocument();
+  });
+
+  it.each(['connect-four', 'reversi', 'gomoku', 'dots-and-boxes'] as const)('%s 保存重试成功回到回合状态，失败仍在按钮且不多落子', async (gameId) => {
+    const workingIndexedDB = indexedDB;
+    vi.stubGlobal('indexedDB', undefined);
+    await start(gameId);
+    const before = readSoloDraft(gameId)?.progress.state;
+    expect(before).toBeDefined();
+    const retry = screen.getByRole('button', { name: '重试保存' });
+    retry.focus();
+    fireEvent.click(retry);
+    expect(retry).toHaveFocus();
+    vi.stubGlobal('indexedDB', workingIndexedDB);
+    fireEvent.click(retry);
+    await waitFor(() => expect(screen.queryByRole('button', { name: '重试保存' })).not.toBeInTheDocument());
+    await waitFor(() => expect(document.querySelector('.solo-toolbar strong')).toHaveFocus());
+    expect(await shared(gameId)).toMatchObject({ kind: 'valid', progress: { state: before } });
+  });
+
+  it.each(['other-focus', 'blank-pointer'] as const)('共享保存仍在等待时 %s 不夺回用户焦点', async (choice) => {
+    const workingIndexedDB = indexedDB;
+    vi.stubGlobal('indexedDB', undefined);
+    await start();
+    const before = readSoloDraft('connect-four')!.progress.state;
+    vi.stubGlobal('indexedDB', workingIndexedDB);
+    const realWrite = sharedStore.writeSharedSoloProgress;
+    let release!: () => void;
+    const write = vi.spyOn(sharedStore, 'writeSharedSoloProgress').mockImplementationOnce((...args) => new Promise((resolve) => {
+      release = () => { void realWrite(...args).then(resolve); };
+    }));
+    const retry = screen.getByRole('button', { name: '重试保存' });
+    retry.focus();
+    fireEvent.click(retry);
+    await waitFor(() => expect(write).toHaveBeenCalledOnce());
+    const headerExit = document.querySelector<HTMLButtonElement>('.solo-header .solo-back')!;
+    if (choice === 'other-focus') headerExit.focus();
+    else fireEvent.pointerDown(document.body);
+    await act(async () => { release(); });
+    await waitFor(() => expect(screen.queryByRole('button', { name: '重试保存' })).not.toBeInTheDocument());
+    if (choice === 'other-focus') expect(headerExit).toHaveFocus();
+    else expect(document.querySelector('.solo-toolbar strong')).not.toHaveFocus();
+    expect(await shared('connect-four')).toMatchObject({ kind: 'valid', progress: { state: before } });
   });
 
   it('共享存储不可读时仍可读取旧版浏览器记录，并提示本标签保存范围', async () => {
