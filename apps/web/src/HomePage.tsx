@@ -18,6 +18,7 @@ import type { PracticeGameId } from './solo-navigation';
 import { readSoloDraft, readSoloSnapshot, soloProgressKey } from './solo-progress';
 import { readSharedSoloSnapshot, subscribeSharedSoloProgress } from './solo-shared-store';
 import { readTwentyFourDraft, readTwentyFourSnapshot, subscribeTwentyFourStore } from './twenty-four-store';
+import { readSokobanHomeAttempt, readSokobanHomeCompletedCount, SOKOBAN_ATTEMPT_KEY, SOKOBAN_BEST_PREFIX, type SokobanHomeAttempt } from './sokoban-progress';
 import { readFavoriteGames, readRememberedNickname, rememberFavoriteGames } from './client-preferences';
 import type { GameHallClient } from './gamehall-client';
 import { games, type GameCardInfo } from './games';
@@ -178,6 +179,11 @@ function twentyFourButtonLabel(summary: TwentyFourSummary): string {
 export function HomePage({ client, onPractice }: { client: GameHallClient; onPractice?: (gameId: PracticeGameId) => void }) {
   const [practiceSaves, setPracticeSaves] = useState<PracticeSummary>(() => ({ 'connect-four': draftPracticeSummary('connect-four'), reversi: draftPracticeSummary('reversi'), 'dots-and-boxes': draftPracticeSummary('dots-and-boxes'), gomoku: draftPracticeSummary('gomoku') }));
   const [twentyFourSave, setTwentyFourSave] = useState<TwentyFourSummary>(twentyFourSummary);
+  const [sokobanAttempt, setSokobanAttempt] = useState<SokobanHomeAttempt | null>(readSokobanHomeAttempt);
+  const [sokobanBests, setSokobanBests] = useState(() => {
+    const count = readSokobanHomeCompletedCount();
+    return { count, unavailable: count === null };
+  });
   const [nickname, setNickname] = useState(readRememberedNickname);
   const [roomCode, setRoomCode] = useState(() => {
     const queryCode = parseRoomCodeInput(window.location.search);
@@ -208,6 +214,37 @@ export function HomePage({ client, onPractice }: { client: GameHallClient; onPra
   });
   const visibleSokoban = (filter === 'all' || filter === 'strategy')
     && '推箱子 单人 解谜 十关 箱子 益智 sokoban'.includes(search.trim().toLocaleLowerCase('zh-CN'));
+
+  useEffect(() => {
+    const refreshAttempt = () => setSokobanAttempt(readSokobanHomeAttempt());
+    const refreshBests = () => {
+      const count = readSokobanHomeCompletedCount();
+      setSokobanBests((current) => count === null
+        ? current.unavailable ? current : { ...current, unavailable: true }
+        : current.count === count && !current.unavailable ? current : { count, unavailable: false });
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === SOKOBAN_ATTEMPT_KEY && (!event.storageArea || event.storageArea === window.sessionStorage)) refreshAttempt();
+      else if (event.key?.startsWith(SOKOBAN_BEST_PREFIX) && (!event.storageArea || event.storageArea === window.localStorage)) refreshBests();
+      else if (event.key === null) {
+        if (!event.storageArea || event.storageArea === window.sessionStorage) refreshAttempt();
+        if (!event.storageArea || event.storageArea === window.localStorage) refreshBests();
+      }
+    };
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      refreshAttempt();
+      refreshBests();
+    };
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('focus', onVisible);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('focus', onVisible);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -484,8 +521,8 @@ export function HomePage({ client, onPractice }: { client: GameHallClient; onPra
           </div>
           {visibleSokoban && <section className="sokoban-discovery" aria-labelledby="sokoban-discovery-title">
             <div className="sokoban-discovery-mark" aria-hidden="true"><i /><i /><i /></div>
-            <div><span>本地单人解谜 · 不开好友房</span><h3 id="sokoban-discovery-title">推箱子 · 十关挑战</h3><p>从一只箱子练到三只箱子，绕行、换位，亲手安排每一步。</p></div>
-            <button type="button" data-practice-game="sokoban" onClick={() => onPractice?.('sokoban')}>进入推箱子 <ArrowRight size={17} /></button>
+            <div><span>本地单人解谜 · 不开好友房</span><h3 id="sokoban-discovery-title">推箱子 · 十关挑战</h3><p>从一只箱子练到三只箱子，绕行、换位，亲手安排每一步。</p><p className="sokoban-discovery-progress">{sokobanAttempt ? `本标签第 ${sokobanAttempt.levelNumber} 关 · ${sokobanAttempt.steps} 步 · ${sokobanAttempt.pushes} 次推箱` : '从第一关开始'} · {sokobanBests.count === null ? '通关数暂不可读' : `已通关 ${sokobanBests.count} / 10 关`}{sokobanBests.count !== null && sokobanBests.unavailable ? ' · 更新暂不可用' : ''}</p></div>
+            <button type="button" data-practice-game="sokoban" onClick={() => onPractice?.('sokoban')}>{sokobanAttempt ? sokobanAttempt.solved ? `查看第 ${sokobanAttempt.levelNumber} 关结果` : `继续第 ${sokobanAttempt.levelNumber} 关` : '进入推箱子'} <ArrowRight size={17} /></button>
           </section>}
           {!visibleGames.length && !visibleSokoban && <div className="catalog-empty"><p>没有符合条件的游戏。</p>{search && <button type="button" onClick={() => setSearch('')}>清空搜索</button>}{filter !== 'all' && <button type="button" onClick={() => setFilter('all')}>查看全部</button>}</div>}
 

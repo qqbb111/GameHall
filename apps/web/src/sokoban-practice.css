@@ -3,6 +3,7 @@
 .sokoban-discovery span, .sokoban-eyebrow { color: #e9c784; font-size: 12px; font-weight: 800; letter-spacing: .06em; }
 .sokoban-discovery h3 { margin: 5px 0; font: 700 clamp(23px,3vw,31px) 'Noto Serif SC', serif; }
 .sokoban-discovery p { margin: 0; color: #cbd8ce; line-height: 1.6; }
+.sokoban-discovery .sokoban-discovery-progress { margin-top: 7px; color: #f0d493; font-size: 13px; font-weight: 700; }
 .sokoban-discovery button { min-height: 46px; padding: 0 19px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 10px; color: #173a2f; background: #eac982; font-weight: 800; white-space: nowrap; cursor: pointer; }
 .sokoban-discovery-mark { width: 78px; height: 78px; flex: 0 0 78px; position: relative; border: 3px solid #638d6e; border-radius: 14px; background: repeating-linear-gradient(90deg,#193f31 0 24px,#24513d 24px 26px); box-shadow: inset 0 0 0 5px #0e2d23; }
 .sokoban-discovery-mark i { position: absolute; width: 23px; height: 23px; border-radius: 5px; background: #c7964f; box-shadow: inset 0 0 0 3px #edc47c, 0 2px 4px #0006; }

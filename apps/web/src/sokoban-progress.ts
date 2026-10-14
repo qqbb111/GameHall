@@ -44,16 +44,34 @@ export function sokobanBestKey(level: SokobanLevel, history: string): string {
 }
 
 /** Invalid data never enters game state. Browser storage may throw even on read. */
-export function readSokobanAttempt(): { attempt: SokobanAttempt; warning: string | null } {
+export function readSokobanAttempt(): { attempt: SokobanAttempt; warning: string | null; stored: boolean } {
   try {
     const raw = window.sessionStorage.getItem(SOKOBAN_ATTEMPT_KEY);
-    if (raw === null) return { attempt: freshAttempt, warning: null };
+    if (raw === null) return { attempt: freshAttempt, warning: null, stored: false };
     const attempt = parsedAttempt(JSON.parse(raw) as unknown);
-    return attempt ? { attempt, warning: null }
-      : { attempt: freshAttempt, warning: '本标签的推箱子尝试记录无效，已从第一关重新开始。' };
+    return attempt ? { attempt, warning: null, stored: true }
+      : { attempt: freshAttempt, warning: '本标签的推箱子尝试记录无效，已从第一关重新开始。', stored: false };
   } catch {
-    return { attempt: freshAttempt, warning: '本标签的推箱子尝试记录无法读取；本次仍可继续玩，刷新后可能需要重做。' };
+    return { attempt: freshAttempt, warning: '本标签的推箱子尝试记录无法读取；本次仍可继续玩，刷新后可能需要重做。', stored: false };
   }
+}
+
+export type SokobanHomeAttempt = { levelNumber: number; steps: number; pushes: number; solved: boolean };
+
+/** Home only reports a validated, stored attempt; the fallback first level is not a resume. */
+export function readSokobanHomeAttempt(): SokobanHomeAttempt | null {
+  const loaded = readSokobanAttempt();
+  if (!loaded.stored) return null;
+  const levelNumber = sokobanLevels.findIndex((level) => level.id === loaded.attempt.levelId) + 1;
+  const level = sokobanLevels[levelNumber - 1]!;
+  const state = replaySokobanHistory(level, loaded.attempt.history);
+  return { levelNumber, steps: state.steps, pushes: state.pushes, solved: isSokobanSolved(level, state) };
+}
+
+/** Null means localStorage could not be read, not that no levels were completed. */
+export function readSokobanHomeCompletedCount(): number | null {
+  const loaded = readSokobanBests();
+  return loaded.readable ? Object.keys(loaded.bests).length : null;
 }
 
 export function writeSokobanAttempt(attempt: SokobanAttempt): string | null {

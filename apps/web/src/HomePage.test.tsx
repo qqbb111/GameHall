@@ -13,6 +13,8 @@ import { fixturePack } from './twenty-four-fixture';
 import { newTwentyFourProgress } from './twenty-four-practice';
 import { readTwentyFourSnapshot, writeTwentyFourDraft, writeTwentyFourProgress } from './twenty-four-store';
 import * as twentyFourStore from './twenty-four-store';
+import { SOKOBAN_ATTEMPT_KEY, sokobanBestKey } from './sokoban-progress';
+import { sokobanLevels } from '@gamehall/game-core';
 
 async function saveShared(progress: SoloProgress) {
   const before = await readSharedSoloSnapshot(progress.gameId);
@@ -82,6 +84,7 @@ describe('HomePage', () => {
     render(<HomePage client={clientStub({ connection: 'offline' })} onPractice={onPractice} />);
     const entry = screen.getByRole('button', { name: '进入推箱子' });
     expect(entry).toBeEnabled();
+    expect(screen.getByText(/从第一关开始 · 已通关 0 \/ 10 关/)).toBeInTheDocument();
     fireEvent.change(screen.getByPlaceholderText('搜索游戏名称或玩法'), { target: { value: '推箱子' } });
     expect(screen.getByRole('button', { name: '进入推箱子' })).toBeInTheDocument();
     expect(screen.queryByText('没有符合条件的游戏。')).not.toBeInTheDocument();
@@ -93,6 +96,77 @@ describe('HomePage', () => {
     expect(screen.getByText('没有符合条件的游戏。')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '清空搜索' }));
     expect(screen.getByRole('button', { name: '进入推箱子' })).toBeInTheDocument();
+  });
+
+  it('本标签合法进度和共享通关数进入首页；只响应对应存储事件，更新不抢入口焦点或写存档', () => {
+    const first = sokobanLevels[0]!;
+    const second = sokobanLevels[1]!;
+    const save = (levelId: string, history: string) => JSON.stringify({ version: 1, levelId, history });
+    window.sessionStorage.setItem(SOKOBAN_ATTEMPT_KEY, save(first.id, 'R'));
+    const firstKey = sokobanBestKey(first, 'RR');
+    window.localStorage.setItem(firstKey, save(first.id, 'RR'));
+    const writes = vi.spyOn(Storage.prototype, 'setItem');
+    const client = clientStub({ connection: 'offline' });
+    const onPractice = vi.fn();
+    render(<HomePage client={client} onPractice={onPractice} />);
+    const entry = screen.getByRole('button', { name: '继续第 1 关' });
+    entry.focus();
+    expect(screen.getByText(/本标签第 1 关 · 1 步 · 1 次推箱 · 已通关 1 \/ 10 关/)).toBeInTheDocument();
+    expect(writes).not.toHaveBeenCalled();
+
+    window.sessionStorage.setItem(SOKOBAN_ATTEMPT_KEY, save(first.id, 'RR'));
+    const secondKey = sokobanBestKey(second, 'RRURD');
+    window.localStorage.setItem(secondKey, save(second.id, 'RRURD'));
+    writes.mockClear();
+    fireEvent(window, new StorageEvent('storage', { key: 'unrelated-preference', storageArea: window.localStorage }));
+    expect(screen.getByRole('button', { name: '继续第 1 关' })).toBe(entry);
+    expect(screen.getByText(/已通关 1 \/ 10 关/)).toBeInTheDocument();
+    fireEvent(window, new StorageEvent('storage', { key: secondKey, storageArea: window.localStorage }));
+    expect(screen.getByText(/已通关 2 \/ 10 关/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '继续第 1 关' })).toHaveFocus();
+    const actualGet = Storage.prototype.getItem;
+    const blocked = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key: string) {
+      if (key === secondKey) throw new Error('storage blocked');
+      return actualGet.call(this, key);
+    });
+    fireEvent(window, new StorageEvent('storage', { key: secondKey, storageArea: window.localStorage }));
+    expect(screen.getByText(/已通关 2 \/ 10 关 · 更新暂不可用/)).toBeInTheDocument();
+    blocked.mockRestore();
+    fireEvent.focus(window);
+    expect(screen.queryByText(/更新暂不可用/)).not.toBeInTheDocument();
+    fireEvent(window, new StorageEvent('storage', { key: SOKOBAN_ATTEMPT_KEY, storageArea: window.sessionStorage }));
+    expect(screen.getByRole('button', { name: '查看第 1 关结果' })).toHaveFocus();
+    expect(screen.getByText(/本标签第 1 关 · 2 步 · 2 次推箱/)).toBeInTheDocument();
+    expect(writes).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '查看第 1 关结果' }));
+    expect(onPractice).toHaveBeenCalledWith('sokoban');
+    expect(client.createRoom).not.toHaveBeenCalled();
+  });
+
+  it('焦点和可见性恢复首页摘要；坏记录或不可读存储不伪造进度，入口仍可用', () => {
+    const first = sokobanLevels[0]!;
+    window.sessionStorage.setItem(SOKOBAN_ATTEMPT_KEY, '{bad');
+    const bestKey = sokobanBestKey(first, 'RR');
+    window.localStorage.setItem(bestKey, JSON.stringify({ version: 1, levelId: first.id, history: '' }));
+    const onPractice = vi.fn();
+    const client = clientStub({ connection: 'offline' });
+    const actualGet = Storage.prototype.getItem;
+    const blocked = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key: string) {
+      if (key === SOKOBAN_ATTEMPT_KEY || key === bestKey) throw new Error('storage blocked');
+      return actualGet.call(this, key);
+    });
+    render(<HomePage client={client} onPractice={onPractice} />);
+    expect(screen.getByText(/从第一关开始 · 通关数暂不可读/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '进入推箱子' })).toBeEnabled();
+    blocked.mockRestore();
+    fireEvent.focus(window);
+    expect(screen.getByText(/从第一关开始 · 已通关 0 \/ 10 关/)).toBeInTheDocument();
+    window.sessionStorage.setItem(SOKOBAN_ATTEMPT_KEY, JSON.stringify({ version: 1, levelId: first.id, history: 'R' }));
+    fireEvent(document, new Event('visibilitychange'));
+    expect(screen.getByRole('button', { name: '继续第 1 关' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: '继续第 1 关' }));
+    expect(onPractice).toHaveBeenCalledWith('sokoban');
+    expect(client.createRoom).not.toHaveBeenCalled();
   });
 
   it('五款已确认游戏均可进入，开发中卡片不可点击', () => {
