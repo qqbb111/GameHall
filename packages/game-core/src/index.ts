@@ -7,3 +7,4 @@ export * from './quoridor';
 export * from './twenty-four';
 export * from './splendor';
 export * from './texas-holdem';
+export * from './sokoban';
