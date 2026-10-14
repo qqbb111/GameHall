@@ -121,4 +121,16 @@ describe('推箱子单人界面', () => {
     expect(screen.getByText('本关最佳：2 步 · 2 次推箱')).toBeInTheDocument();
     expect(window.localStorage.getItem(sokobanBestKey(sokobanLevels[0]!, 'UDRR'))).toBeNull();
   });
+
+  it('同分不同路径的 storage 通知收敛后不触发无效回写', () => {
+    render(<SokobanPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    for (const label of ['向上移动', '向下移动', '向右移动', '向右移动']) fireEvent.click(screen.getByRole('button', { name: label }));
+    const key = sokobanBestKey(sokobanLevels[0]!, 'UDRR');
+    window.localStorage.setItem(key, JSON.stringify({ version: 1, levelId: 'first-push', history: 'DURR' }));
+    const writes = vi.spyOn(Storage.prototype, 'setItem');
+    for (let repeat = 0; repeat < 5; repeat++) act(() => window.dispatchEvent(new StorageEvent('storage', { key })));
+    expect(writes).not.toHaveBeenCalled();
+    expect(JSON.parse(window.localStorage.getItem(key)!)).toMatchObject({ history: 'DURR' });
+    expect(screen.getByText('本关最佳：4 步 · 2 次推箱')).toBeInTheDocument();
+  });
 });

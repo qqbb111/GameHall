@@ -58,6 +58,28 @@ describe('推箱子独立进度存储', () => {
     expect(readSokobanBests().bests[first.id]).toBe('RR');
   });
 
+  it('两个合法同分路径以固定顺序交换、重复合并，storage 同步后不再写入', () => {
+    const upper = 'UDRR';
+    const lower = 'DURR';
+    expect(sokobanBestKey(first, upper)).toBe(sokobanBestKey(first, lower));
+    expect(betterSokobanHistory(first, upper, lower)).toBe(lower);
+    expect(betterSokobanHistory(first, lower, upper)).toBe(lower);
+    expect(mergeSokobanBests({ [first.id]: upper }, { [first.id]: lower })).toEqual({ [first.id]: lower });
+    expect(mergeSokobanBests({ [first.id]: lower }, { [first.id]: upper })).toEqual({ [first.id]: lower });
+    expect(mergeSokobanBests({ [first.id]: lower }, { [first.id]: lower })).toEqual({ [first.id]: lower });
+
+    const writes = vi.spyOn(Storage.prototype, 'setItem');
+    expect(writeSokobanBests({ [first.id]: upper }).bests[first.id]).toBe(upper);
+    expect(writeSokobanBests({ [first.id]: lower }).bests[first.id]).toBe(lower);
+    expect(window.localStorage.getItem(sokobanBestKey(first, lower))).toBe(saved(lower));
+    writes.mockClear();
+    for (let turn = 0; turn < 4; turn++) {
+      expect(writeSokobanBests({ [first.id]: upper }).bests[first.id]).toBe(lower);
+      expect(writeSokobanBests({ [first.id]: lower }).bests[first.id]).toBe(lower);
+    }
+    expect(writes).not.toHaveBeenCalled();
+  });
+
   it('存储写入或读取失败时保留已知通关轨迹，恢复后可重试保存且不降级', () => {
     const blockWrite = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota'); });
     expect(writeSokobanAttempt({ levelId: first.id, history: 'R' })).toMatch(/无法保存/);

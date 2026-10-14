@@ -91,11 +91,12 @@ export function readSokobanBests(): { bests: SokobanBests; warning: string | nul
   }
 }
 
-/** Fewer steps wins; equal steps use fewer pushes. Both are derived from a solved history. */
+/** A total order keeps merges independent of tab order, including equal-score routes. */
 export function betterSokobanHistory(level: SokobanLevel, left: string, right: string): string {
   const a = score(level, left);
   const b = score(level, right);
-  return a.steps < b.steps || a.steps === b.steps && a.pushes <= b.pushes ? left : right;
+  return a.steps < b.steps || a.steps === b.steps && (a.pushes < b.pushes || a.pushes === b.pushes && left <= right)
+    ? left : right;
 }
 
 export function mergeSokobanBests(known: SokobanBests, incoming: SokobanBests): SokobanBests {
