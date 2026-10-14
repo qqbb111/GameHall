@@ -27,6 +27,7 @@
 
 | 改动范围 | 实现过程中 | commit 前 |
 | --- | --- | --- |
+| README 等纯 Markdown 文档 | 本地渲染，检查标题、表格、折叠区域和中英文间距 | 检查锚点、相对链接及代码块，并执行 `git diff --check` |
 | 文案、纯样式 | 相关页面测试或浏览器检查 | `pnpm --filter @gamehall/web build` |
 | Web 交互 | 对应 Vitest 文件 | `pnpm verify:web` |
 | game-core 规则 | 对应规则测试 | `pnpm verify:core` |
