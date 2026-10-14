@@ -68,6 +68,7 @@ export function SokobanPracticePage({ recoveredRoom, onExit }: { recoveredRoom: 
   const solved = isSokobanSolved(level, state);
   const cornerTrap = !solved && hasSokobanCornerTrap(level, state);
   const best = bests[level.id] ? replaySokobanHistory(level, bests[level.id]) : null;
+  const allLevelsCompleted = sokobanLevels.every((entry) => bests[entry.id] !== undefined);
 
   useEffect(() => {
     const board = boardRef.current;
@@ -271,7 +272,7 @@ export function SokobanPracticePage({ recoveredRoom, onExit }: { recoveredRoom: 
           <div className="sokoban-intro"><span className="sokoban-eyebrow">第 {levelIndex + 1} / {sokobanLevels.length} 关</span><h2 ref={headingRef} id="sokoban-level-title" tabIndex={-1}>{level.title}</h2><p>{level.description}</p></div>
           <div className="sokoban-toolbar"><span>步数 <strong>{state.steps}</strong></span><span>推箱 <strong>{state.pushes}</strong></span><span>到位 <strong>{state.boxes.filter((box) => level.goals.has(box)).length}/{level.goals.size}</strong></span></div>
           {best && <p className="sokoban-best">本关最佳：{best.steps} 步 · {best.pushes} 次推箱</p>}
-          {solved && <div className="sokoban-result" role="status"><strong>本关完成！</strong><span>你走了 {state.steps} 步、推动 {state.pushes} 次。可以重试挑战，也可以手动进入下一关。</span></div>}
+          {solved && <div className="sokoban-result" role="status"><strong>{levelIndex === sokobanLevels.length - 1 && allLevelsCompleted ? '十关都已通关！' : '本关完成！'}</strong><span>你走了 {state.steps} 步、推动 {state.pushes} 次。{levelIndex === sokobanLevels.length - 1 ? '可以重试挑战，或从第一关再练。' : '可以重试挑战，也可以手动进入下一关。'}</span></div>}
           {cornerTrap && <p className="sokoban-corner" role="status">有箱子卡在非目标墙角。可以悔棋，重新安排推送顺序。</p>}
           {feedback && <p className="sokoban-feedback" role="status">{feedback}</p>}
           <div ref={boardWrapRef} className="sokoban-board-wrap">

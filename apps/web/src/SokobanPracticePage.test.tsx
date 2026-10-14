@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SokobanPracticePage } from './SokobanPracticePage';
-import { SOKOBAN_ATTEMPT_KEY, SOKOBAN_BEST_PREFIX, sokobanBestKey } from './sokoban-progress';
+import { SOKOBAN_ATTEMPT_KEY, SOKOBAN_BEST_PREFIX, sokobanBestKey, writeSokobanBests } from './sokoban-progress';
 import { sokobanLevels } from '@gamehall/game-core';
 
 function choose(index: number) {
@@ -111,6 +111,27 @@ describe('推箱子单人界面', () => {
     fireEvent.click(screen.getByRole('button', { name: '下一关' }));
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '绕到背后' })).toHaveFocus();
+  });
+
+  it('末关通关有缺关时只提示本关完成；十关都有合法最佳记录才祝贺全部通关', () => {
+    const final = sokobanLevels[9]!;
+    const finalPath = 'UUULURRDRRDDLDLLLLLUUULUR';
+    window.sessionStorage.setItem(SOKOBAN_ATTEMPT_KEY, JSON.stringify({ version: 1, levelId: final.id, history: finalPath }));
+    const first = render(<SokobanPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    expect(screen.getByText('本关完成！')).toBeInTheDocument();
+    expect(screen.queryByText('十关都已通关！')).not.toBeInTheDocument();
+    expect(screen.getByText(/可以重试挑战，或从第一关再练。/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '从第一关再练' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '下一关' })).not.toBeInTheDocument();
+    first.unmount();
+
+    const paths = ['RR', 'RRURD', 'RDRU', 'RRUUDDLLLLUU', 'RDRUURULDDDLLLLLUU',
+      'RRDRUURULRDDRDLL', 'RRRUUDDDLLLLULLUU', 'UDLUURDRUDRDRUU', 'UUURDRLDDRRUUUDRDRUU'];
+    writeSokobanBests(Object.fromEntries(sokobanLevels.slice(0, 9).map((level, index) => [level.id, paths[index]!])));
+    render(<SokobanPracticePage recoveredRoom={false} onExit={vi.fn()} />);
+    expect(screen.getByText('十关都已通关！')).toBeInTheDocument();
+    expect(screen.queryByText('本关完成！')).not.toBeInTheDocument();
+    expect(screen.queryByText(/手动进入下一关/)).not.toBeInTheDocument();
   });
 
   it('空局可直接选到后段关卡，选中关卡留在轨道视野内', () => {
