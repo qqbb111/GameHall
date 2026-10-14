@@ -45,6 +45,7 @@
 一个 commit 只运行受影响范围的验证。一个交付批次全部完成后，再运行一次：
 
 Web Vitest 以 `min(4, availableParallelism())` 限制并行 worker 数。若全量 Web 测试出现超时，先单跑失败文件，再用 `pnpm verify:web` 复核；不要降低断言或延长测试超时来掩盖资源竞争。
+异步刷新的首页卡片应在所属卡片范围内查询精确可访问名称，并确认测试结束前相关存储读取已清理；不要依靠全页查询超时推断运行时入口缺失。
 
 Server 集成测试在 Windows 使用 Vitest `forks` 进程隔离，其他平台保持 `threads`；两者均为单 worker、测试文件串行。Windows runner 出现进程异常退出时先记录退出码、首个未完成测试和运行器日志，再用默认与 verbose 报告器定向复核；不要因进程硬退修改断言或放宽超时。
 

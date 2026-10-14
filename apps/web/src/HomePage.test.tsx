@@ -306,11 +306,16 @@ describe('HomePage', () => {
     render(<HomePage client={client} onPractice={onPractice} />);
     expect(screen.getByRole('button', { name: '创建四子连线房间' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '创建黑白棋房间' })).toBeDisabled();
-    fireEvent.click(await screen.findByRole('button', { name: '和电脑练习四子连线' }));
-    fireEvent.click(await screen.findByRole('button', { name: '和电脑练习黑白棋' }));
-    fireEvent.click(await screen.findByRole('button', { name: '和电脑练习点格棋' }));
-    fireEvent.click(await screen.findByRole('button', { name: '和电脑练习五子棋' }));
-    fireEvent.click(screen.getByRole('button', { name: '四子连线残局闯关' }));
+    const card = (gameId: string) => {
+      const element = document.getElementById(`game-${gameId}`);
+      expect(element).not.toBeNull();
+      return within(element!);
+    };
+    fireEvent.click(await card('connect-four').findByRole('button', { name: '和电脑练习四子连线' }));
+    fireEvent.click(await card('reversi').findByRole('button', { name: '和电脑练习黑白棋' }));
+    fireEvent.click(await card('dots-and-boxes').findByRole('button', { name: '和电脑练习点格棋' }));
+    fireEvent.click(await card('gomoku').findByRole('button', { name: '和电脑练习五子棋' }));
+    fireEvent.click(card('connect-four').getByRole('button', { name: '四子连线残局闯关' }));
     expect(onPractice.mock.calls).toEqual([['connect-four'], ['reversi'], ['dots-and-boxes'], ['gomoku'], ['connect-four-puzzles']]);
     expect(client.createRoom).not.toHaveBeenCalled();
   });
