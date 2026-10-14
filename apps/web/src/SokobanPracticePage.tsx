@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { hasSokobanCornerTrap, isSokobanSolved, MAX_SOKOBAN_HISTORY, moveSokoban, replaySokobanHistory, sokobanLevels, type SokobanDirection, type SokobanLevel } from '@gamehall/game-core';
 import { mergeSokobanBests, readSokobanAttempt, readSokobanBests, SOKOBAN_BEST_PREFIX, writeSokobanAttempt, writeSokobanBests, type SokobanAttempt, type SokobanBests } from './sokoban-progress';
@@ -61,6 +61,7 @@ export function SokobanPracticePage({ recoveredRoom, onExit }: { recoveredRoom: 
   const changeOrigin = useRef<HTMLElement | null>(null);
   const restoreOrigin = useRef(false);
   const focusAfterChange = useRef<'board' | 'heading' | null>(null);
+  const retryFocus = useRef<HTMLButtonElement | null>(null);
   const level = sokobanLevels.find((entry) => entry.id === attempt.levelId)!;
   const levelIndex = sokobanLevels.indexOf(level);
   const state = useMemo(() => replaySokobanHistory(level, attempt.history), [level, attempt.history]);
@@ -133,14 +134,27 @@ export function SokobanPracticePage({ recoveredRoom, onExit }: { recoveredRoom: 
     setAttemptWarning(writeSokobanAttempt(next));
   }
 
-  function retrySave() {
-    setAttemptWarning(writeSokobanAttempt(attempt));
+  function retrySave(event: MouseEvent<HTMLButtonElement>) {
+    const origin = document.activeElement === event.currentTarget ? event.currentTarget : null;
+    const attemptIssue = writeSokobanAttempt(attempt);
+    setAttemptWarning(attemptIssue);
     const saved = writeSokobanBests(bestsRef.current);
+    retryFocus.current = origin && !attemptIssue && !saved.warning ? origin : null;
     bestsRef.current = saved.bests;
     setBests(saved.bests);
     setBestWriteWarning(saved.warning);
     if (!saved.warning) setBestReadWarning(null);
   }
+
+  useLayoutEffect(() => {
+    const origin = retryFocus.current;
+    if (!origin) return;
+    retryFocus.current = null;
+    if (attemptWarning || bestReadWarning || bestWriteWarning) return;
+    if (document.activeElement !== origin && document.activeElement !== document.body) return;
+    boardRef.current?.focus({ preventScroll: true });
+    boardRef.current?.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+  }, [attemptWarning, bestReadWarning, bestWriteWarning]);
 
   useLayoutEffect(() => {
     const revealCurrent = () => {

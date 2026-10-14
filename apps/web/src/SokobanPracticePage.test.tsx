@@ -179,9 +179,14 @@ describe('推箱子单人界面', () => {
     fireEvent.click(screen.getByRole('button', { name: '向右移动' }));
     expect(screen.getByText('本关最佳：2 步 · 2 次推箱')).toBeInTheDocument();
     expect(screen.getByText(/最佳成绩暂时无法保存/)).toBeInTheDocument();
+    const retry = screen.getByRole('button', { name: '重试保存' });
+    retry.focus();
+    fireEvent.click(retry);
+    expect(retry).toHaveFocus();
     blocked.mockRestore();
-    fireEvent.click(screen.getByRole('button', { name: '重试保存' }));
+    fireEvent.click(retry);
     expect(screen.queryByRole('button', { name: '重试保存' })).not.toBeInTheDocument();
+    expect(screen.getByRole('grid', { name: /2步，2次推箱/ })).toHaveFocus();
     expect(JSON.parse(window.localStorage.getItem(sokobanBestKey(sokobanLevels[0]!, 'RR'))!)).toMatchObject({ history: 'RR' });
   });
 

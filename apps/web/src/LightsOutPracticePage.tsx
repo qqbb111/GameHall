@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { clickLightsOut, lightsOutLevels, MAX_LIGHTS_OUT_HISTORY, replayLightsOutHistory, solveLightsOut } from '@gamehall/game-core';
 import { LIGHTS_OUT_BEST_PREFIX, mergeLightsOutBests, readLightsOutAttempt, readLightsOutBests, writeLightsOutAttempt, writeLightsOutBests, type LightsOutAttempt, type LightsOutBests } from './lights-out-progress';
@@ -41,6 +41,7 @@ export function LightsOutPracticePage({ recoveredRoom, onExit }: { recoveredRoom
   const changeOrigin = useRef<HTMLElement | null>(null);
   const restoreOrigin = useRef(false);
   const focusAfterChange = useRef<'heading' | 'board' | null>(null);
+  const retryFocus = useRef<{ origin: HTMLButtonElement; cell: number } | null>(null);
   const level = lightsOutLevels.find((item) => item.id === attempt.levelId)!;
   const levelIndex = lightsOutLevels.indexOf(level);
   const state = useMemo(() => replayLightsOutHistory(level, attempt.history), [level, attempt.history]);
@@ -118,6 +119,17 @@ export function LightsOutPracticePage({ recoveredRoom, onExit }: { recoveredRoom
     element?.focus({ preventScroll: true });
     element?.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
   }, [attempt, pendingChange]);
+
+  useLayoutEffect(() => {
+    const request = retryFocus.current;
+    if (!request) return;
+    retryFocus.current = null;
+    if (attemptWarning || bestReadWarning || bestWriteWarning) return;
+    if (document.activeElement !== request.origin && document.activeElement !== document.body) return;
+    const cell = cellsRef.current[request.cell];
+    cell?.focus({ preventScroll: true });
+    cell?.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+  }, [attemptWarning, bestReadWarning, bestWriteWarning]);
 
   useEffect(() => {
     if (!pendingChange) return;
@@ -210,9 +222,12 @@ export function LightsOutPracticePage({ recoveredRoom, onExit }: { recoveredRoom
     setPendingChange(next);
   }
 
-  function retrySave() {
-    setAttemptWarning(writeLightsOutAttempt(attemptRef.current));
+  function retrySave(event: MouseEvent<HTMLButtonElement>) {
+    const origin = document.activeElement === event.currentTarget ? event.currentTarget : null;
+    const attemptIssue = writeLightsOutAttempt(attemptRef.current);
+    setAttemptWarning(attemptIssue);
     const saved = writeLightsOutBests(bestsRef.current);
+    retryFocus.current = origin && !attemptIssue && !saved.warning ? { origin, cell: selectedCell } : null;
     bestsRef.current = saved.bests;
     setBests(saved.bests);
     setBestReadable(saved.readable);

@@ -124,10 +124,17 @@ describe('连灯解谜单人页面', () => {
     for (const index of solution) fireEvent.click(cells()[index]!);
     expect(screen.getByText('本关最佳').parentElement).toHaveTextContent('2 次');
     expect(screen.getByText(/成绩暂时无法保存/)).toBeInTheDocument();
+    cells()[solution.at(-1)!]!.focus();
+    const retry = screen.getByRole('button', { name: '重试保存' });
+    retry.focus();
+    fireEvent.click(retry);
+    expect(retry).toHaveFocus();
     blocked.mockRestore();
-    fireEvent.click(screen.getByRole('button', { name: '重试保存' }));
+    fireEvent.click(retry);
     expect(window.localStorage.getItem(lightsOutBestKey(first, solution))).not.toBeNull();
     expect(screen.queryByRole('button', { name: '重试保存' })).not.toBeInTheDocument();
+    expect(cells()[solution.at(-1)!]).toHaveFocus();
+    expect(screen.getByText('点击').parentElement).toHaveTextContent('2');
     const worse = [0, 0, ...solution];
     window.localStorage.setItem(lightsOutBestKey(first, worse), JSON.stringify({ version: 1, levelId: first.id, history: worse }));
     act(() => window.dispatchEvent(new StorageEvent('storage', { key: lightsOutBestKey(first, worse) })));
@@ -151,6 +158,7 @@ describe('连灯解谜单人页面', () => {
     expect(screen.getByText('本关最佳').parentElement).toHaveTextContent('2 次');
     expect(screen.queryByRole('button', { name: '重试保存' })).not.toBeInTheDocument();
     expect(retry).not.toBeInTheDocument();
+    expect(cells()[0]).toHaveFocus();
     choose(2);
     expect(screen.getByText('本关最佳').parentElement).toHaveTextContent('尚未通关');
   });
