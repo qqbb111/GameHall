@@ -1,0 +1,42 @@
+.lights-shell { width: min(1120px,calc(100% - 24px)); margin: 0 auto; padding: 30px 0 72px; color: #f6efdd; }
+.lights-shell *, .lights-confirm * { box-sizing: border-box; }
+.lights-shell button, .lights-confirm button { font: inherit; cursor: pointer; }
+.lights-shell button:focus-visible, .lights-shell h2:focus-visible, .lights-confirm button:focus-visible { outline: 3px solid #f4d589; outline-offset: 3px; }
+.lights-header { display: flex; justify-content: space-between; align-items: start; gap: 20px; margin-bottom: 24px; }
+.lights-header span, .lights-intro > span { color: #e8c77e; font-size: 12px; font-weight: 800; letter-spacing: .07em; }
+.lights-header h1 { margin: 5px 0; font: 700 clamp(30px,4vw,47px) 'Noto Serif SC',serif; }
+.lights-header p, .lights-intro p { margin: 0; color: #c3d2c5; line-height: 1.6; }
+.lights-header > button { min-height: 44px; padding: 0 16px; border: 1px solid #bda773; border-radius: 10px; color: #f6d68f; background: #173d30; white-space: nowrap; }
+.lights-layout { display: grid; grid-template-columns: minmax(220px,265px) minmax(0,1fr); align-items: start; gap: 22px; }
+.lights-levels, .lights-main { min-width: 0; border: 1px solid #54745a; border-radius: 18px; background: linear-gradient(150deg,#12372e,#0b2923); box-shadow: 0 15px 38px #041b174d; }
+.lights-levels { padding: 19px; }
+.lights-levels strong { color: #f6d99b; }.lights-levels p { margin: 4px 0 0; color: #b7cbb8; font-size: 13px; line-height: 1.5; }
+.lights-level-track { display: grid; gap: 7px; max-height: 640px; overflow: auto; padding: 2px; margin-top: 16px; }
+.lights-level-track button { display: grid; justify-items: start; gap: 2px; min-height: 57px; padding: 9px 12px; border: 1px solid #517459; border-radius: 9px; color: #eef2dd; background: #1a4133; text-align: left; }
+.lights-level-track button:hover, .lights-level-track button[aria-current] { border-color: #f2d38a; background: #2c573f; }
+.lights-level-track button small { color: #c6d5bc; }.lights-level-track button span { color: #f5d692; font-size: 11px; }
+.lights-main { padding: clamp(14px,2.5vw,28px); }
+.lights-intro h2 { margin: 5px 0; font: 700 clamp(25px,3vw,35px) 'Noto Serif SC',serif; }
+.lights-stats { display: flex; flex-wrap: wrap; gap: 8px; margin: 17px 0; }.lights-stats span { padding: 8px 11px; border: 1px solid #577861; border-radius: 9px; background: #214736; color: #d2dfcd; }.lights-stats strong { color: #f6d589; }
+.lights-notice, .lights-feedback, .lights-result, .lights-storage { margin: 0 0 16px; padding: 12px 15px; border: 1px solid #957b50; border-radius: 10px; color: #f7d99d; background: #364a32; line-height: 1.55; }
+.lights-result { display: grid; gap: 3px; }.lights-result span { color: #e5e6cd; }
+.lights-storage { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; background: #554527; }
+.lights-storage button { min-height: 44px; padding: 0 13px; border: 1px solid #f1d397; border-radius: 8px; color: #1c392c; background: #f1d397; font-weight: 800; }
+.lights-board-wrap { display: flex; justify-content: center; width: 100%; min-width: 0; padding: 10px; border: 1px solid #5b765b; border-radius: 15px; background: radial-gradient(circle at 50% 35%,#3b6345,#12372e 73%); }
+.lights-board { width: min(100%,360px); display: grid; gap: 4px; padding: 6px; border: 3px solid #bd965a; border-radius: 13px; background: #17372d; box-shadow: 0 8px 0 #70502e, 0 18px 28px #04181288; }
+.lights-row { display: grid; grid-template-columns: repeat(var(--lights-size), minmax(0,1fr)); gap: 4px; }
+.lights-cell { position: relative; display: grid; place-items: center; min-width: 0; min-height: 44px; aspect-ratio: 1; border: 1px solid #719377; border-radius: 10px; color: #acc6a8; background: linear-gradient(145deg,#264d3d,#193b31); box-shadow: inset 0 2px 7px #071c1680; touch-action: manipulation; transition: background .2s, box-shadow .2s, transform .2s; }
+.lights-cell span { font-size: clamp(28px,5vw,43px); line-height: 1; }
+.lights-cell.is-lit { border-color: #ffdb83; color: #fff0b5; background: radial-gradient(circle,#e5a747 0%,#b87431 42%,#634925 100%); box-shadow: inset 0 0 0 3px #ffe9a44d, 0 0 18px #f6c26977, 0 0 3px #fff3b6; }
+.lights-cell.is-hint { outline: 3px dashed #fff9c7; outline-offset: -7px; }
+.lights-cell:hover { transform: translateY(-2px); }
+.lights-key-help { margin: 18px 0 13px; color: #c8d5c3; line-height: 1.6; }
+.lights-actions { display: flex; flex-wrap: wrap; gap: 9px; }.lights-actions button { min-height: 44px; padding: 0 15px; border: 1px solid #c8aa6f; border-radius: 9px; color: #f1d18d; background: #214839; font-weight: 800; }.lights-actions button.is-primary { color: #193b2e; background: #f1d18d; }
+.lights-actions button:disabled { opacity: .55; cursor: not-allowed; }
+.lights-confirm-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 16px; background: #061811b8; }
+.lights-confirm { width: min(430px,100%); padding: 24px; border: 1px solid #d4b675; border-radius: 16px; color: #f6efdb; background: #173a2f; box-shadow: 0 24px 60px #0009; }
+.lights-confirm h2 { margin: 0 0 8px; font: 700 27px 'Noto Serif SC',serif; }.lights-confirm p { color: #cbd7c7; line-height: 1.6; }.lights-confirm > div { display: flex; flex-wrap: wrap; justify-content: end; gap: 9px; }
+.lights-confirm button { min-height: 44px; padding: 0 14px; border: 1px solid #d6bc80; border-radius: 9px; color: #f7dfa5; background: #2a5140; }.lights-confirm button.is-primary { color: #17382a; background: #f1d38e; }
+@media (max-width: 760px) { .lights-layout { grid-template-columns: minmax(0,1fr); }.lights-levels { padding: 14px; }.lights-level-track { display: flex; overflow-x: auto; max-height: none; }.lights-level-track button { flex: 0 0 130px; }.lights-header { flex-wrap: wrap; }.lights-main { padding: 14px; } }
+@media (max-width: 360px) { .lights-shell { width: calc(100% - 16px); }.lights-main { padding: 12px; }.lights-board-wrap { padding: 7px; }.lights-board { padding: 4px; }.lights-cell { min-height: 44px; } }
+@media (prefers-reduced-motion: reduce) { .lights-cell { transition: none; }.lights-cell:hover { transform: none; } }

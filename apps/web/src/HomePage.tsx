@@ -19,6 +19,7 @@ import { readSoloDraft, readSoloSnapshot, soloProgressKey } from './solo-progres
 import { readSharedSoloSnapshot, subscribeSharedSoloProgress } from './solo-shared-store';
 import { readTwentyFourDraft, readTwentyFourSnapshot, subscribeTwentyFourStore } from './twenty-four-store';
 import { readSokobanHomeAttempt, readSokobanHomeCompletedCount, SOKOBAN_ATTEMPT_KEY, SOKOBAN_BEST_PREFIX, type SokobanHomeAttempt } from './sokoban-progress';
+import { LIGHTS_OUT_ATTEMPT_KEY, LIGHTS_OUT_BEST_PREFIX, readLightsOutHomeAttempt, readLightsOutHomeCompletedCount } from './lights-out-progress';
 import { readFavoriteGames, readRememberedNickname, rememberFavoriteGames } from './client-preferences';
 import type { GameHallClient } from './gamehall-client';
 import { games, type GameCardInfo } from './games';
@@ -165,6 +166,7 @@ const soloModes = [
   { id: 'connect-four-puzzles', title: '四子连线残局闯关', detail: '9 关定向练习', quick: false, strategy: true, keywords: '四子连线 残局 闯关' },
   { id: 'twenty-four', title: '24 点单人练习', detail: '算式与限时挑战', quick: true, strategy: false, keywords: '24点 24 点 算式 练习' },
   { id: 'sokoban', title: '推箱子十关解谜', detail: '绕行与顺序规划', quick: false, strategy: true, keywords: '推箱子 箱子 解谜 益智 sokoban' },
+  { id: 'lights-out', title: '连灯解谜十二关', detail: '翻转灯阵，直到全灭', quick: false, strategy: true, keywords: '连灯 解谜 翻灯 亮灯 lights out' },
 ] as const satisfies ReadonlyArray<{ id: PracticeGameId; title: string; detail: string; quick: boolean; strategy: boolean; keywords: string }>;
 type CatalogSuggestion = { kind: 'friend'; id: GameId } | { kind: 'solo'; id: PracticeGameId };
 
@@ -194,6 +196,11 @@ export function HomePage({ client, onPractice, initialCatalog, onCatalogChange }
   const [sokobanAttempt, setSokobanAttempt] = useState<SokobanHomeAttempt>(readSokobanHomeAttempt);
   const [sokobanBests, setSokobanBests] = useState(() => {
     const count = readSokobanHomeCompletedCount();
+    return { count, unavailable: count === null };
+  });
+  const [lightsAttempt, setLightsAttempt] = useState(readLightsOutHomeAttempt);
+  const [lightsBests, setLightsBests] = useState(() => {
+    const count = readLightsOutHomeCompletedCount();
     return { count, unavailable: count === null };
   });
   const [nickname, setNickname] = useState(readRememberedNickname);
@@ -258,24 +265,37 @@ export function HomePage({ client, onPractice, initialCatalog, onCatalogChange }
       return event.storageArea === (availableArea(kind) ?? (kind === 'localStorage' ? localArea : sessionArea));
     };
     const refreshAttempt = () => setSokobanAttempt(readSokobanHomeAttempt());
+    const refreshLightsAttempt = () => setLightsAttempt(readLightsOutHomeAttempt());
     const refreshBests = () => {
       const count = readSokobanHomeCompletedCount();
       setSokobanBests((current) => count === null
         ? current.unavailable ? current : { ...current, unavailable: true }
         : current.count === count && !current.unavailable ? current : { count, unavailable: false });
     };
+    const refreshLightsBests = () => {
+      const count = readLightsOutHomeCompletedCount();
+      setLightsBests((current) => count === null
+        ? current.unavailable ? current : { ...current, unavailable: true }
+        : current.count === count && !current.unavailable ? current : { count, unavailable: false });
+    };
     const onStorage = (event: StorageEvent) => {
       if (event.key === SOKOBAN_ATTEMPT_KEY && matchesArea(event, 'sessionStorage')) refreshAttempt();
       else if (event.key?.startsWith(SOKOBAN_BEST_PREFIX) && matchesArea(event, 'localStorage')) refreshBests();
+      else if (event.key === LIGHTS_OUT_ATTEMPT_KEY && matchesArea(event, 'sessionStorage')) refreshLightsAttempt();
+      else if (event.key?.startsWith(LIGHTS_OUT_BEST_PREFIX) && matchesArea(event, 'localStorage')) refreshLightsBests();
       else if (event.key === null) {
         if (matchesArea(event, 'sessionStorage')) refreshAttempt();
         if (matchesArea(event, 'localStorage')) refreshBests();
+        if (matchesArea(event, 'sessionStorage')) refreshLightsAttempt();
+        if (matchesArea(event, 'localStorage')) refreshLightsBests();
       }
     };
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return;
       refreshAttempt();
       refreshBests();
+      refreshLightsAttempt();
+      refreshLightsBests();
     };
     window.addEventListener('storage', onStorage);
     window.addEventListener('focus', onVisible);
@@ -537,7 +557,7 @@ export function HomePage({ client, onPractice, initialCatalog, onCatalogChange }
 
           {createError && <p className="catalog-error" role="alert">{createError}</p>}
           {visibleSoloModes.length > 0 && <section ref={soloSection} className="solo-hub" aria-labelledby="solo-hub-title">
-            <div className="solo-hub-heading"><span>SOLO CORNER · 随时开玩</span><h3 id="solo-hub-title" tabIndex={-1}>一个人，也能好好玩一局</h3><p>七种已开放的本地练习与解谜。无需昵称或实时连接，选择后才进入。</p></div>
+            <div className="solo-hub-heading"><span>SOLO CORNER · 随时开玩</span><h3 id="solo-hub-title" tabIndex={-1}>一个人，也能好好玩一局</h3><p>八种已开放的本地练习与解谜。无需昵称或实时连接，选择后才进入。</p></div>
             {visibleSokoban && <div className={`sokoban-discovery${suggestion?.kind === 'solo' && suggestion.id === 'sokoban' ? ' is-suggested' : ''}`}>
               <div className="sokoban-discovery-mark" aria-hidden="true"><i /><i /><i /></div>
               <div><span>本地单人解谜 · 不开好友房</span><h4>推箱子 · 十关挑战</h4><p>从一只箱子练到三只箱子，绕行、换位，亲手安排每一步。</p><p className="sokoban-discovery-progress">{sokobanAttempt.kind === 'saved' ? `本标签第 ${sokobanAttempt.levelNumber} 关 · ${sokobanAttempt.steps} 步 · ${sokobanAttempt.pushes} 次推箱` : sokobanAttempt.kind === 'fresh' ? '从第一关开始' : '本标签进度暂不可用'} · {sokobanBests.count === null ? '通关数暂不可读' : `已通关 ${sokobanBests.count} / 10 关`}{sokobanBests.count !== null && sokobanBests.unavailable ? ' · 更新暂不可用' : ''}</p></div>
@@ -545,7 +565,7 @@ export function HomePage({ client, onPractice, initialCatalog, onCatalogChange }
             </div>}
             <div className="solo-mode-grid">{visibleSoloModes.filter((mode) => mode.id !== 'sokoban').map((mode, index) => <article className={`solo-mode-card${suggestion?.kind === 'solo' && suggestion.id === mode.id ? ' is-suggested' : ''}`} key={mode.id}>
               <div className="solo-mode-icon" aria-hidden="true">{mode.id === 'twenty-four' ? <Dices size={24} /> : mode.id === 'connect-four-puzzles' ? <Shuffle size={24} /> : <CircleDot size={24} />}</div>
-              <div><small>0{index + 1} · {mode.id === 'twenty-four' ? '数字挑战' : mode.id === 'connect-four-puzzles' ? '残局解谜' : '电脑对练'}</small><h4>{mode.title}</h4><p>{mode.detail}</p><span className="solo-mode-progress">{mode.id === 'twenty-four' ? twentyFourSave === 'finished' ? '查看上组结果' : twentyFourSave === 'active' ? '继续上组练习' : '随时开始' : mode.id === 'connect-four-puzzles' ? '9 关可自由选' : practiceSaves[mode.id] === 'loading' ? '进度读取中' : practiceSaves[mode.id] === 'finished' ? '可查看上局' : practiceSaves[mode.id] === 'active' ? '可继续上局' : '准备好就开局'}</span></div>
+              <div><small>0{index + 1} · {mode.id === 'twenty-four' ? '数字挑战' : mode.id === 'connect-four-puzzles' || mode.id === 'lights-out' ? '关卡解谜' : '电脑对练'}</small><h4>{mode.title}</h4><p>{mode.detail}</p><span className="solo-mode-progress">{mode.id === 'twenty-four' ? twentyFourSave === 'finished' ? '查看上组结果' : twentyFourSave === 'active' ? '继续上组练习' : '随时开始' : mode.id === 'connect-four-puzzles' ? '9 关可自由选' : mode.id === 'lights-out' ? `${lightsAttempt.kind === 'saved' ? `本标签第 ${lightsAttempt.levelNumber} 关 · ${lightsAttempt.moves} 次点击` : lightsAttempt.kind === 'fresh' ? '从第一关开始' : '本标签进度暂不可用'} · ${lightsBests.count === null ? '通关数暂不可读' : `已通关 ${lightsBests.count} / 12 关`}${lightsBests.count !== null && lightsBests.unavailable ? ' · 更新暂不可用' : ''}` : practiceSaves[mode.id] === 'loading' ? '进度读取中' : practiceSaves[mode.id] === 'finished' ? '可查看上局' : practiceSaves[mode.id] === 'active' ? '可继续上局' : '准备好就开局'}</span></div>
               <button type="button" data-practice-game={mode.id} data-practice-origin={`hub:${mode.id}`} onClick={() => onPractice?.(mode.id, `hub:${mode.id}`)} aria-label={`进入${mode.title}`}>进入练习 <ArrowRight size={15} /></button>
             </article>)}</div>
           </section>}

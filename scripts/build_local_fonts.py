@@ -31,7 +31,7 @@ def git_blob_sha1(data: bytes) -> str:
 
 
 def static_web_characters() -> set[int]:
-    """Current Web UI and displayed Sokoban level text plus printable ASCII."""
+    """Current Web UI and displayed local puzzle text plus printable ASCII."""
     chars = set(range(0x20, 0x7F))
     for path in WEB.rglob("*"):
         if path.suffix not in {".ts", ".tsx", ".css", ".html", ".json"}:
@@ -41,9 +41,10 @@ def static_web_characters() -> set[int]:
         if ".test." in path.name or path == CSS:
             continue
         chars.update(ord(char) for char in path.read_text(encoding="utf-8") if char.isprintable())
-    # Level titles and descriptions are authored in game-core but rendered by Web.
-    level_text = (ROOT / "packages" / "game-core" / "src" / "sokoban.ts").read_text(encoding="utf-8")
-    chars.update(ord(char) for char in level_text if char.isprintable())
+    # Local puzzle definitions are authored in game-core and displayed by Web.
+    for module in ("sokoban.ts", "lights-out.ts"):
+        level_text = (ROOT / "packages" / "game-core" / "src" / module).read_text(encoding="utf-8")
+        chars.update(ord(char) for char in level_text if char.isprintable())
     # Emoji are rendered by the system emoji font; do not claim them in CSS.
     return {cp for cp in chars - SYSTEM_FALLBACK if cp < 0x1F000}
 

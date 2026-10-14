@@ -7,7 +7,7 @@ import { useState } from 'react';
 const mocks = vi.hoisted(() => ({ useClient: vi.fn(), hidePractice: false, hideHub: false, hideCard: false }));
 
 vi.mock('./gamehall-client', () => ({ useGameHallClient: mocks.useClient }));
-vi.mock('./HomePage', () => ({ HomePage: ({ onPractice, initialCatalog, onCatalogChange }: { onPractice: (game: 'connect-four' | 'sokoban', origin: string) => void; initialCatalog: { search: string; filter: 'all' | 'strategy' }; onCatalogChange: (state: { search: string; filter: 'all' | 'strategy' }) => void }) => {
+vi.mock('./HomePage', () => ({ HomePage: ({ onPractice, initialCatalog, onCatalogChange }: { onPractice: (game: 'connect-four' | 'sokoban' | 'lights-out', origin: string) => void; initialCatalog: { search: string; filter: 'all' | 'strategy' }; onCatalogChange: (state: { search: string; filter: 'all' | 'strategy' }) => void }) => {
   const [search, setSearch] = useState(initialCatalog.search);
   const [filter, setFilter] = useState(initialCatalog.filter);
   return <main><h1 tabIndex={-1}>home</h1>
@@ -16,11 +16,13 @@ vi.mock('./HomePage', () => ({ HomePage: ({ onPractice, initialCatalog, onCatalo
     {!mocks.hidePractice && !mocks.hideHub && <button data-practice-game="connect-four" data-practice-origin="hub:connect-four" onClick={() => onPractice('connect-four', 'hub:connect-four')}>hub practice</button>}
     {!mocks.hidePractice && !mocks.hideCard && <button data-practice-game="connect-four" data-practice-origin="card:connect-four" onClick={() => onPractice('connect-four', 'card:connect-four')}>practice</button>}
     {!mocks.hidePractice && (filter === 'all' || filter === 'strategy') && (search === '' || search === '推箱子') && <button data-practice-game="sokoban" data-practice-origin="hub:sokoban" onClick={() => onPractice('sokoban', 'hub:sokoban')}>进入推箱子</button>}
+    {!mocks.hidePractice && (filter === 'all' || filter === 'strategy') && (search === '' || search === '连灯') && <button data-practice-game="lights-out" data-practice-origin="hub:lights-out" onClick={() => onPractice('lights-out', 'hub:lights-out')}>进入连灯</button>}
   </main>;
 } }));
 vi.mock('./RoomPage', () => ({ RoomPage: () => <main><h1>room</h1></main> }));
 vi.mock('./SoloPracticePage', () => ({ SoloPracticePage: ({ gameId, recoveredRoom, onExit }: { gameId: string; recoveredRoom: boolean; onExit: () => void }) => <main><h1 tabIndex={-1}>solo {gameId}</h1>{recoveredRoom && <p>recovered</p>}<button onClick={onExit}>exit</button></main> }));
 vi.mock('./SokobanPracticePage', () => ({ SokobanPracticePage: ({ onExit }: { onExit: () => void }) => <main><h1 tabIndex={-1}>sokoban</h1><button onClick={onExit}>exit sokoban</button></main> }));
+vi.mock('./LightsOutPracticePage', () => ({ LightsOutPracticePage: ({ onExit }: { onExit: () => void }) => <main><h1 tabIndex={-1}>lights-out</h1><button onClick={onExit}>exit lights-out</button></main> }));
 
 import { App } from './App';
 
@@ -158,6 +160,34 @@ describe('App nickname persistence', () => {
     } finally {
       scrollIntoView.mockRestore();
     }
+  });
+
+  it('连灯入口保留搜索、来源、房间参数和 hash；浏览器返回前进仍回到准确入口', () => {
+    vi.stubGlobal('scrollTo', vi.fn());
+    const scroll = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => undefined);
+    vi.spyOn(window.history, 'back').mockImplementation(() => {
+      window.history.replaceState(null, '', '/?room=ABC234&theme=dark#board');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    window.history.replaceState(null, '', '/?room=ABC234&theme=dark#board');
+    mocks.useClient.mockReturnValue({ loading: false, room: null } as unknown as GameHallClient);
+    render(<App />);
+    fireEvent.change(screen.getByPlaceholderText('搜索游戏名称或玩法'), { target: { value: '连灯' } });
+    fireEvent.click(screen.getByRole('button', { name: '策略棋盘' }));
+    fireEvent.click(screen.getByRole('button', { name: '进入连灯' }));
+    expect(screen.getByRole('heading', { name: 'lights-out' })).toHaveFocus();
+    expect(window.location.search).toBe('?room=ABC234&theme=dark&practice=lights-out');
+    expect(window.location.hash).toBe('#board');
+    fireEvent.click(screen.getByRole('button', { name: 'exit lights-out' }));
+    expect(screen.getByPlaceholderText('搜索游戏名称或玩法')).toHaveValue('连灯');
+    expect(screen.getByRole('button', { name: '策略棋盘' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '进入连灯' })).toHaveFocus();
+    expect(scroll).toHaveBeenCalledWith({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
+    act(() => { window.history.replaceState(null, '', '/?room=ABC234&theme=dark&practice=lights-out#board'); window.dispatchEvent(new PopStateEvent('popstate')); });
+    expect(screen.getByRole('heading', { name: 'lights-out' })).toHaveFocus();
+    act(() => { window.history.replaceState(null, '', '/?room=ABC234&theme=dark#board'); window.dispatchEvent(new PopStateEvent('popstate')); });
+    expect(screen.getByRole('button', { name: '进入连灯' })).toHaveFocus();
+    scroll.mockRestore();
   });
 
   it('同一玩法的游乐区和好友卡入口分别返回原按钮；原按钮消失时聚焦仍可见的同玩法入口', () => {

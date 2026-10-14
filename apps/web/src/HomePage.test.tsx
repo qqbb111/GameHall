@@ -15,6 +15,8 @@ import { readTwentyFourSnapshot, writeTwentyFourDraft, writeTwentyFourProgress }
 import * as twentyFourStore from './twenty-four-store';
 import { SOKOBAN_ATTEMPT_KEY, sokobanBestKey } from './sokoban-progress';
 import { sokobanLevels } from '@gamehall/game-core';
+import { lightsOutLevels, solveLightsOut } from '@gamehall/game-core';
+import { LIGHTS_OUT_ATTEMPT_KEY, lightsOutBestKey } from './lights-out-progress';
 
 async function saveShared(progress: SoloProgress) {
   const before = await readSharedSoloSnapshot(progress.gameId);
@@ -99,7 +101,7 @@ describe('HomePage', () => {
     expect(screen.getByRole('button', { name: '进入推箱子' })).toBeInTheDocument();
   });
 
-  it('单人游乐区把七种现有模式放在好友卡前，离线免昵称逐项可进且不创建好友房', () => {
+  it('单人游乐区把八种现有模式放在好友卡前，离线免昵称逐项可进且不创建好友房', () => {
     const onPractice = vi.fn();
     const client = clientStub({ connection: 'offline' });
     const { container } = render(<HomePage client={client} onPractice={onPractice} />);
@@ -108,11 +110,11 @@ describe('HomePage', () => {
     expect(screen.queryByRole('button', { name: '创建五子棋房间' })).not.toBeInTheDocument();
     const hub = screen.getByRole('region', { name: '一个人，也能好好玩一局' });
     expect(container.querySelector('.solo-hub')!.compareDocumentPosition(container.querySelector('.featured-grid')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    for (const name of ['四子连线电脑练习', '黑白棋电脑练习', '点格棋电脑练习', '五子棋电脑练习', '四子连线残局闯关', '24 点单人练习']) {
+    for (const name of ['四子连线电脑练习', '黑白棋电脑练习', '点格棋电脑练习', '五子棋电脑练习', '四子连线残局闯关', '24 点单人练习', '连灯解谜十二关']) {
       fireEvent.click(within(hub).getByRole('button', { name: `进入${name}` }));
     }
     fireEvent.click(within(hub).getByRole('button', { name: '进入推箱子' }));
-    expect(onPractice.mock.calls).toEqual([['connect-four', 'hub:connect-four'], ['reversi', 'hub:reversi'], ['dots-and-boxes', 'hub:dots-and-boxes'], ['gomoku', 'hub:gomoku'], ['connect-four-puzzles', 'hub:connect-four-puzzles'], ['twenty-four', 'hub:twenty-four'], ['sokoban', 'hub:sokoban']]);
+    expect(onPractice.mock.calls).toEqual([['connect-four', 'hub:connect-four'], ['reversi', 'hub:reversi'], ['dots-and-boxes', 'hub:dots-and-boxes'], ['gomoku', 'hub:gomoku'], ['connect-four-puzzles', 'hub:connect-four-puzzles'], ['twenty-four', 'hub:twenty-four'], ['lights-out', 'hub:lights-out'], ['sokoban', 'hub:sokoban']]);
     expect(client.createRoom).not.toHaveBeenCalled();
   });
 
@@ -134,6 +136,68 @@ describe('HomePage', () => {
     expect(screen.getByText('没有符合条件的游戏。')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '查看全部' }));
     expect(screen.getByRole('button', { name: '进入推箱子' })).toBeInTheDocument();
+  });
+
+  it('连灯搜索/策略只显示本地入口，合法尝试与best只读展示，坏记录不伪造续关', () => {
+    const level = lightsOutLevels[0]!;
+    const history = solveLightsOut(level, level.initial)!;
+    window.sessionStorage.setItem(LIGHTS_OUT_ATTEMPT_KEY, JSON.stringify({ version: 1, levelId: level.id, history: [history[0]!] }));
+    window.localStorage.setItem(lightsOutBestKey(level, history), JSON.stringify({ version: 1, levelId: level.id, history }));
+    const writes = vi.spyOn(Storage.prototype, 'setItem');
+    const client = clientStub({ connection: 'offline' });
+    const onPractice = vi.fn();
+    const mounted = render(<HomePage client={client} onPractice={onPractice} />);
+    const search = screen.getByPlaceholderText('搜索游戏名称或玩法');
+    fireEvent.change(search, { target: { value: '连灯' } });
+    fireEvent.click(screen.getByRole('button', { name: '策略棋盘' }));
+    expect(screen.getByRole('button', { name: '进入连灯解谜十二关' })).toBeInTheDocument();
+    expect(screen.getByText(/本标签第 1 关 · 1 次点击 · 已通关 1 \/ 12 关/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /创建.*房间/ })).not.toBeInTheDocument();
+    expect(writes).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '帮我选一款' }));
+    expect(screen.getByRole('button', { name: '进入连灯解谜十二关' })).toHaveFocus();
+    expect(onPractice).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '进入连灯解谜十二关' }));
+    expect(onPractice).toHaveBeenCalledWith('lights-out', 'hub:lights-out');
+    expect(client.createRoom).not.toHaveBeenCalled();
+    mounted.unmount();
+    window.sessionStorage.setItem(LIGHTS_OUT_ATTEMPT_KEY, '{bad');
+    render(<HomePage client={client} onPractice={onPractice} />);
+    expect(screen.getByText(/本标签进度暂不可用/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '进入连灯解谜十二关' })).toBeEnabled();
+  });
+
+  it('连灯只响应自身存储键，跨标签best更新不抢焦点；访问器失败保留已知通关数', () => {
+    const first = lightsOutLevels[0]!;
+    const second = lightsOutLevels[1]!;
+    const firstWin = solveLightsOut(first, first.initial)!;
+    const secondWin = solveLightsOut(second, second.initial)!;
+    window.localStorage.setItem(lightsOutBestKey(first, firstWin), JSON.stringify({ version: 1, levelId: first.id, history: firstWin }));
+    const localArea = window.localStorage;
+    const sessionArea = window.sessionStorage;
+    const writes = vi.spyOn(Storage.prototype, 'setItem');
+    render(<HomePage client={clientStub({ connection: 'offline' })} />);
+    const entry = screen.getByRole('button', { name: '进入连灯解谜十二关' });
+    entry.focus();
+    expect(screen.getByText(/已通关 1 \/ 12 关/)).toBeInTheDocument();
+    const secondKey = lightsOutBestKey(second, secondWin);
+    window.localStorage.setItem(secondKey, JSON.stringify({ version: 1, levelId: second.id, history: secondWin }));
+    writes.mockClear();
+    fireEvent(window, new StorageEvent('storage', { key: secondKey, storageArea: localArea }));
+    expect(screen.getByText(/已通关 2 \/ 12 关/)).toBeInTheDocument();
+    expect(entry).toHaveFocus();
+    expect(writes).not.toHaveBeenCalled();
+    fireEvent(window, new StorageEvent('storage', { key: SOKOBAN_ATTEMPT_KEY, storageArea: sessionArea }));
+    expect(entry).toHaveFocus();
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'localStorage');
+    try {
+      Object.defineProperty(window, 'localStorage', { configurable: true, get() { throw new Error('storage getter blocked'); } });
+      fireEvent(window, new StorageEvent('storage', { key: secondKey, storageArea: localArea }));
+      expect(screen.getByText(/已通关 2 \/ 12 关 · 更新暂不可用/)).toBeInTheDocument();
+      expect(entry).toHaveFocus();
+    } finally {
+      if (descriptor) Object.defineProperty(window, 'localStorage', descriptor);
+    }
   });
 
   it('单人筛选和只匹配单人的搜索可推荐当前可见模式；先聚焦入口，明确再次选择才进入', () => {

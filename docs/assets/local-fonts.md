@@ -1,15 +1,15 @@
 # 本地中文字体
 
-Web 使用同站提供的 Noto Sans SC 与 Noto Serif SC 可变 WOFF2 字体。每套字体按字符分成 `core` 与 `common` 两份：`core` 包含当前 Web 源码和推箱子关卡文案中 Noto 支持的文字、标点和 ASCII；`common` 补齐 GB2312 一级 3755 个常用汉字中尚未进入 `core` 的字符。两组字符互不重叠，合并后共 3886 个字符。生成的 [`font-faces.css`](../../apps/web/src/font-faces.css) 以精确 `unicode-range` 按需选择字库；页面使用 `font-display: swap` 和系统字体回退，字体下载期间仍可显示界面。
+Web 使用同站提供的 Noto Sans SC 与 Noto Serif SC 可变 WOFF2 字体。每套字体按字符分成 `core` 与 `common` 两份：`core` 包含当前 Web 源码和本地解谜规则模块中 Noto 支持的文字、标点和 ASCII；`common` 补齐 GB2312 一级 3755 个常用汉字中尚未进入 `core` 的字符。两组字符互不重叠，合并后共 3887 个字符。生成的 [`font-faces.css`](../../apps/web/src/font-faces.css) 以精确 `unicode-range` 按需选择字库；页面使用 `font-display: swap` 和系统字体回退，字体下载期间仍可显示界面。
 
 | 字库 | 字符数 | WOFF2 大小 | 用途 |
 | --- | ---: | ---: | --- |
-| Sans `core` | 822 | 240,124 B | 当前界面文字 |
-| Serif `core` | 822 | 315,284 B | 当前界面标题与装饰文字 |
-| Sans `common` | 3064 | 851,484 B | 其他常用汉字 |
-| Serif `common` | 3064 | 1,121,608 B | 其他常用汉字 |
+| Sans `core` | 839 | 244,844 B | 当前界面文字 |
+| Serif `core` | 839 | 321,512 B | 当前界面标题与装饰文字 |
+| Sans `common` | 3048 | 847,436 B | 其他常用汉字 |
+| Serif `common` | 3048 | 1,115,660 B | 其他常用汉字 |
 
-首次显示当前界面只需两份 `core`，合计 555,408 B；遇到 `common` 字符时浏览器再请求对应字库。四份字体由 Vite 当作 `src/assets` 资源处理，构建后文件名含内容哈希。源字体没有的 `⌄`（U+2304）、表情和其他字集外的用户输入字符由系统字体回退。
+首次显示当前界面只需两份 `core`，合计 566,356 B；遇到 `common` 字符时浏览器再请求对应字库。四份字体由 Vite 当作 `src/assets` 资源处理，构建后文件名含内容哈希。源字体没有的 `⌄`（U+2304）、表情和其他字集外的用户输入字符由系统字体回退。
 
 两套子集字库分别由 Google Fonts 仓库固定提交 `66928797f271fed5ee428544e7229685e2d90127` 的可变 TTF 生成：
 
