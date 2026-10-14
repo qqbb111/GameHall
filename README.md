@@ -262,6 +262,7 @@ pnpm verify:full
 ```
 
 完整门禁依次覆盖 lint、typecheck、单元测试、真实 HTTP / Socket.IO 集成测试、生产构建和负载冒烟。
+CI 在 Ubuntu 与 Windows 各自运行同一条 `pnpm verify:full`，均使用 Node 24.15.0 与 pnpm 11.19.0；一个平台失败时，另一平台继续完成以保留诊断结果。
 
 - **集成测试**：八款游戏、房间边界、重复与过期动作、断线与重启恢复、房间消息、房主交接、多人对局和房间重开。
 - **Windows 集成测试运行器**：在 Windows 使用 Vitest 进程隔离；其他平台沿用线程。集成测试仍以单 worker 串行运行，避免共享服务和数据库相互干扰。

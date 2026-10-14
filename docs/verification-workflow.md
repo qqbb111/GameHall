@@ -54,6 +54,7 @@ pnpm verify:full
 ```
 
 该命令依次运行 lint、typecheck、单元测试、集成测试、production build 和负载冒烟，并与 CI 使用同一入口。
+CI 使用 Ubuntu/Windows 矩阵；两个系统固定 Node 24.15.0、pnpm 11.19.0，各自执行原样 `pnpm verify:full`。矩阵关闭 fail-fast，保留两个平台的完整结果，单个 job 超时仍为 15 分钟。工作流变更需静态检查 YAML 结构、矩阵值及运行命令；发布后再确认两个 runner 的实际结果。
 
 ## 失败交接
 
