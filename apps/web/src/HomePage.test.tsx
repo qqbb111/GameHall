@@ -90,7 +90,7 @@ describe('HomePage', () => {
     expect(screen.queryByText('没有符合条件的游戏。')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '策略棋盘' }));
     fireEvent.click(screen.getByRole('button', { name: '进入推箱子' }));
-    expect(onPractice).toHaveBeenCalledWith('sokoban');
+    expect(onPractice).toHaveBeenCalledWith('sokoban', 'hub:sokoban');
     fireEvent.change(screen.getByPlaceholderText('搜索游戏名称或玩法'), { target: { value: '不存在的棋' } });
     expect(screen.queryByRole('button', { name: '进入推箱子' })).not.toBeInTheDocument();
     expect(screen.getByText('没有符合条件的游戏。')).toBeInTheDocument();
@@ -111,7 +111,7 @@ describe('HomePage', () => {
       fireEvent.click(within(hub).getByRole('button', { name: `进入${name}` }));
     }
     fireEvent.click(within(hub).getByRole('button', { name: '进入推箱子' }));
-    expect(onPractice.mock.calls).toEqual([['connect-four'], ['reversi'], ['dots-and-boxes'], ['gomoku'], ['connect-four-puzzles'], ['twenty-four'], ['sokoban']]);
+    expect(onPractice.mock.calls).toEqual([['connect-four', 'hub:connect-four'], ['reversi', 'hub:reversi'], ['dots-and-boxes', 'hub:dots-and-boxes'], ['gomoku', 'hub:gomoku'], ['connect-four-puzzles', 'hub:connect-four-puzzles'], ['twenty-four', 'hub:twenty-four'], ['sokoban', 'hub:sokoban']]);
     expect(client.createRoom).not.toHaveBeenCalled();
   });
 
@@ -187,7 +187,7 @@ describe('HomePage', () => {
     expect(screen.getByRole('button', { name: '查看第 1 关结果' })).toHaveFocus();
     expect(writes).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '查看第 1 关结果' }));
-    expect(onPractice).toHaveBeenCalledWith('sokoban');
+    expect(onPractice).toHaveBeenCalledWith('sokoban', 'hub:sokoban');
     expect(client.createRoom).not.toHaveBeenCalled();
   });
 
@@ -213,7 +213,7 @@ describe('HomePage', () => {
     fireEvent(document, new Event('visibilitychange'));
     expect(screen.getByRole('button', { name: '继续第 1 关' })).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: '继续第 1 关' }));
-    expect(onPractice).toHaveBeenCalledWith('sokoban');
+    expect(onPractice).toHaveBeenCalledWith('sokoban', 'hub:sokoban');
     expect(client.createRoom).not.toHaveBeenCalled();
   });
 
@@ -355,7 +355,7 @@ describe('HomePage', () => {
     render(<HomePage client={{ ...client, connection: 'offline' }} onPractice={onPractice} />);
     expect(screen.getByRole('button', { name: '创建24 点速度对决房间' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '单人练习24点' }));
-    expect(onPractice).toHaveBeenCalledWith('twenty-four');
+    expect(onPractice).toHaveBeenCalledWith('twenty-four', 'card:twenty-four');
     expect(client.createRoom).not.toHaveBeenCalled();
   });
 
@@ -366,7 +366,7 @@ describe('HomePage', () => {
     const onPractice = vi.fn();
     render(<HomePage client={clientStub()} onPractice={onPractice} />);
     fireEvent.click(await screen.findByRole('button', { name: '继续练习24点' }));
-    expect(onPractice).toHaveBeenCalledWith('twenty-four');
+    expect(onPractice).toHaveBeenCalledWith('twenty-four', 'card:twenty-four');
     expect((await readTwentyFourSnapshot()).token).toBe(saved.token);
 
     const finished = { ...newTwentyFourProgress('challenge', fixturePack()), phase: 'finished' as const, finishReason: 'time' as const, remainingMs: 0 };
@@ -474,7 +474,7 @@ describe('HomePage', () => {
     fireEvent.click(await card('dots-and-boxes').findByRole('button', { name: '和电脑练习点格棋' }));
     fireEvent.click(await card('gomoku').findByRole('button', { name: '和电脑练习五子棋' }));
     fireEvent.click(card('connect-four').getByRole('button', { name: '四子连线残局闯关' }));
-    expect(onPractice.mock.calls).toEqual([['connect-four'], ['reversi'], ['dots-and-boxes'], ['gomoku'], ['connect-four-puzzles']]);
+    expect(onPractice.mock.calls).toEqual([['connect-four', 'card:connect-four'], ['reversi', 'card:reversi'], ['dots-and-boxes', 'card:dots-and-boxes'], ['gomoku', 'card:gomoku'], ['connect-four-puzzles', 'card:connect-four-puzzles']]);
     expect(client.createRoom).not.toHaveBeenCalled();
   });
 
@@ -496,7 +496,7 @@ describe('HomePage', () => {
     fireEvent.click(await screen.findByRole('button', { name: '查看上局练习黑白棋' }));
     fireEvent.click(await screen.findByRole('button', { name: '继续练习点格棋' }));
     fireEvent.click(await screen.findByRole('button', { name: '继续练习五子棋' }));
-    expect(onPractice.mock.calls).toEqual([['connect-four'], ['reversi'], ['dots-and-boxes'], ['gomoku']]);
+    expect(onPractice.mock.calls).toEqual([['connect-four', 'card:connect-four'], ['reversi', 'card:reversi'], ['dots-and-boxes', 'card:dots-and-boxes'], ['gomoku', 'card:gomoku']]);
   });
 
   it('旧大厅在共享存档变化后更新摘要，损坏的旧缓存不能盖掉已迁移棋局', async () => {

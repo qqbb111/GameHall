@@ -17,7 +17,7 @@ export function App() {
   const previousView = useRef(view);
   const previousRouteRevision = useRef(practiceRoute.revision);
   const [homeCatalog, setHomeCatalog] = useState<HomeCatalogState>({ search: '', filter: 'all' });
-  const homePracticeEntry = useRef<PracticeGameId | null>(null);
+  const homePracticeEntry = useRef<{ gameId: PracticeGameId; origin: string | undefined } | null>(null);
 
   useEffect(() => {
     const onPopState = () => setPracticeRoute((current) => ({ gameId: practiceFromSearch(window.location.search), source: 'pop', revision: current.revision + 1 }));
@@ -41,7 +41,11 @@ export function App() {
     const popped = routeChanged && practiceRoute.source === 'pop';
     if (view === 'home') {
       const gameId = fromView.startsWith('practice:') ? fromView.slice('practice:'.length) : null;
-      const returnButton = gameId && homePracticeEntry.current === gameId ? document.querySelector<HTMLElement>(`button[data-practice-game="${gameId}"]`) : null;
+      const entry = homePracticeEntry.current;
+      const returnButton = gameId && entry?.gameId === gameId
+        ? (entry.origin ? document.querySelector<HTMLElement>(`button[data-practice-origin="${entry.origin}"]`) : null)
+          ?? document.querySelector<HTMLElement>(`button[data-practice-game="${gameId}"]`)
+        : null;
       if (!popped && !returnButton) window.scrollTo({ top: 0, behavior: 'instant' });
       (returnButton ?? document.querySelector<HTMLElement>('main h1'))?.focus({ preventScroll: true });
       returnButton?.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
@@ -51,8 +55,8 @@ export function App() {
     }
   }, [view, practiceRoute]);
 
-  function enterPractice(gameId: PracticeGameId) {
-    homePracticeEntry.current = gameId;
+  function enterPractice(gameId: PracticeGameId, origin?: string) {
+    homePracticeEntry.current = { gameId, origin };
     pushPracticeAddress(gameId);
     setPracticeRoute((current) => ({ gameId, source: 'push', revision: current.revision + 1 }));
   }

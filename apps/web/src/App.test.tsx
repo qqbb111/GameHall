@@ -4,17 +4,18 @@ import type { GameHallClient } from './gamehall-client';
 import { NICKNAME_STORAGE_KEY } from './client-preferences';
 import { useState } from 'react';
 
-const mocks = vi.hoisted(() => ({ useClient: vi.fn(), hidePractice: false }));
+const mocks = vi.hoisted(() => ({ useClient: vi.fn(), hidePractice: false, hideHub: false, hideCard: false }));
 
 vi.mock('./gamehall-client', () => ({ useGameHallClient: mocks.useClient }));
-vi.mock('./HomePage', () => ({ HomePage: ({ onPractice, initialCatalog, onCatalogChange }: { onPractice: (game: 'connect-four' | 'sokoban') => void; initialCatalog: { search: string; filter: 'all' | 'strategy' }; onCatalogChange: (state: { search: string; filter: 'all' | 'strategy' }) => void }) => {
+vi.mock('./HomePage', () => ({ HomePage: ({ onPractice, initialCatalog, onCatalogChange }: { onPractice: (game: 'connect-four' | 'sokoban', origin: string) => void; initialCatalog: { search: string; filter: 'all' | 'strategy' }; onCatalogChange: (state: { search: string; filter: 'all' | 'strategy' }) => void }) => {
   const [search, setSearch] = useState(initialCatalog.search);
   const [filter, setFilter] = useState(initialCatalog.filter);
   return <main><h1 tabIndex={-1}>home</h1>
     <input placeholder="搜索游戏名称或玩法" value={search} onChange={(event) => { setSearch(event.target.value); onCatalogChange({ search: event.target.value, filter }); }} />
     <button aria-pressed={filter === 'strategy'} onClick={() => { setFilter('strategy'); onCatalogChange({ search, filter: 'strategy' }); }}>策略棋盘</button>
-    {!mocks.hidePractice && <button data-practice-game="connect-four" onClick={() => onPractice('connect-four')}>practice</button>}
-    {!mocks.hidePractice && (filter === 'all' || filter === 'strategy') && (search === '' || search === '推箱子') && <button data-practice-game="sokoban" onClick={() => onPractice('sokoban')}>进入推箱子</button>}
+    {!mocks.hidePractice && !mocks.hideHub && <button data-practice-game="connect-four" data-practice-origin="hub:connect-four" onClick={() => onPractice('connect-four', 'hub:connect-four')}>hub practice</button>}
+    {!mocks.hidePractice && !mocks.hideCard && <button data-practice-game="connect-four" data-practice-origin="card:connect-four" onClick={() => onPractice('connect-four', 'card:connect-four')}>practice</button>}
+    {!mocks.hidePractice && (filter === 'all' || filter === 'strategy') && (search === '' || search === '推箱子') && <button data-practice-game="sokoban" data-practice-origin="hub:sokoban" onClick={() => onPractice('sokoban', 'hub:sokoban')}>进入推箱子</button>}
   </main>;
 } }));
 vi.mock('./RoomPage', () => ({ RoomPage: () => <main><h1>room</h1></main> }));
@@ -28,6 +29,8 @@ describe('App nickname persistence', () => {
     window.localStorage.clear();
     mocks.useClient.mockReset();
     mocks.hidePractice = false;
+    mocks.hideHub = false;
+    mocks.hideCard = false;
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     window.history.replaceState(null, '', '/');
@@ -155,6 +158,29 @@ describe('App nickname persistence', () => {
     } finally {
       scrollIntoView.mockRestore();
     }
+  });
+
+  it('同一玩法的游乐区和好友卡入口分别返回原按钮；原按钮消失时聚焦仍可见的同玩法入口', () => {
+    vi.stubGlobal('scrollTo', vi.fn());
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => undefined);
+    vi.spyOn(window.history, 'back').mockImplementation(() => {
+      window.history.replaceState(null, '', '/');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+    mocks.useClient.mockReturnValue({ loading: false, room: null } as unknown as GameHallClient);
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'hub practice' }));
+    fireEvent.click(screen.getByRole('button', { name: 'exit' }));
+    expect(screen.getByRole('button', { name: 'hub practice' })).toHaveFocus();
+    fireEvent.click(screen.getByRole('button', { name: 'practice' }));
+    fireEvent.click(screen.getByRole('button', { name: 'exit' }));
+    expect(screen.getByRole('button', { name: 'practice' })).toHaveFocus();
+    fireEvent.click(screen.getByRole('button', { name: 'hub practice' }));
+    mocks.hideHub = true;
+    fireEvent.click(screen.getByRole('button', { name: 'exit' }));
+    expect(screen.getByRole('button', { name: 'practice' })).toHaveFocus();
+    expect(scrollIntoView).toHaveBeenCalledTimes(3);
+    scrollIntoView.mockRestore();
   });
 
   it('返回大厅时原练习入口已被筛掉则聚焦标题，普通刷新不抢焦点', () => {

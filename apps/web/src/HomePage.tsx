@@ -187,7 +187,7 @@ function twentyFourButtonLabel(summary: TwentyFourSummary): string {
   return summary === 'active' ? '继续练习' : summary === 'finished' ? '查看上组结果' : '单人练习';
 }
 
-export function HomePage({ client, onPractice, initialCatalog, onCatalogChange }: { client: GameHallClient; onPractice?: (gameId: PracticeGameId) => void; initialCatalog?: HomeCatalogState; onCatalogChange?: (state: HomeCatalogState) => void }) {
+export function HomePage({ client, onPractice, initialCatalog, onCatalogChange }: { client: GameHallClient; onPractice?: (gameId: PracticeGameId, origin?: string) => void; initialCatalog?: HomeCatalogState; onCatalogChange?: (state: HomeCatalogState) => void }) {
   const [practiceSaves, setPracticeSaves] = useState<PracticeSummary>(() => ({ 'connect-four': draftPracticeSummary('connect-four'), reversi: draftPracticeSummary('reversi'), 'dots-and-boxes': draftPracticeSummary('dots-and-boxes'), gomoku: draftPracticeSummary('gomoku') }));
   const [twentyFourSave, setTwentyFourSave] = useState<TwentyFourSummary>(twentyFourSummary);
   const [sokobanAttempt, setSokobanAttempt] = useState<SokobanHomeAttempt>(readSokobanHomeAttempt);
@@ -522,12 +522,12 @@ export function HomePage({ client, onPractice, initialCatalog, onCatalogChange }
             {visibleSokoban && <div className="sokoban-discovery">
               <div className="sokoban-discovery-mark" aria-hidden="true"><i /><i /><i /></div>
               <div><span>本地单人解谜 · 不开好友房</span><h4>推箱子 · 十关挑战</h4><p>从一只箱子练到三只箱子，绕行、换位，亲手安排每一步。</p><p className="sokoban-discovery-progress">{sokobanAttempt.kind === 'saved' ? `本标签第 ${sokobanAttempt.levelNumber} 关 · ${sokobanAttempt.steps} 步 · ${sokobanAttempt.pushes} 次推箱` : sokobanAttempt.kind === 'fresh' ? '从第一关开始' : '本标签进度暂不可用'} · {sokobanBests.count === null ? '通关数暂不可读' : `已通关 ${sokobanBests.count} / 10 关`}{sokobanBests.count !== null && sokobanBests.unavailable ? ' · 更新暂不可用' : ''}</p></div>
-              <button type="button" data-practice-game="sokoban" onClick={() => onPractice?.('sokoban')}>{sokobanAttempt.kind === 'saved' ? sokobanAttempt.solved ? `查看第 ${sokobanAttempt.levelNumber} 关结果` : `继续第 ${sokobanAttempt.levelNumber} 关` : '进入推箱子'} <ArrowRight size={17} /></button>
+              <button type="button" data-practice-game="sokoban" data-practice-origin="hub:sokoban" onClick={() => onPractice?.('sokoban', 'hub:sokoban')}>{sokobanAttempt.kind === 'saved' ? sokobanAttempt.solved ? `查看第 ${sokobanAttempt.levelNumber} 关结果` : `继续第 ${sokobanAttempt.levelNumber} 关` : '进入推箱子'} <ArrowRight size={17} /></button>
             </div>}
             <div className="solo-mode-grid">{visibleSoloModes.filter((mode) => mode.id !== 'sokoban').map((mode, index) => <article className="solo-mode-card" key={mode.id}>
               <div className="solo-mode-icon" aria-hidden="true">{mode.id === 'twenty-four' ? <Dices size={24} /> : mode.id === 'connect-four-puzzles' ? <Shuffle size={24} /> : <CircleDot size={24} />}</div>
               <div><small>0{index + 1} · {mode.id === 'twenty-four' ? '数字挑战' : mode.id === 'connect-four-puzzles' ? '残局解谜' : '电脑对练'}</small><h4>{mode.title}</h4><p>{mode.detail}</p><span className="solo-mode-progress">{mode.id === 'twenty-four' ? twentyFourSave === 'finished' ? '查看上组结果' : twentyFourSave === 'active' ? '继续上组练习' : '随时开始' : mode.id === 'connect-four-puzzles' ? '9 关可自由选' : practiceSaves[mode.id] === 'loading' ? '进度读取中' : practiceSaves[mode.id] === 'finished' ? '可查看上局' : practiceSaves[mode.id] === 'active' ? '可继续上局' : '准备好就开局'}</span></div>
-              <button type="button" data-practice-game={mode.id} onClick={() => onPractice?.(mode.id)} aria-label={`进入${mode.title}`}>进入练习 <ArrowRight size={15} /></button>
+              <button type="button" data-practice-game={mode.id} data-practice-origin={`hub:${mode.id}`} onClick={() => onPractice?.(mode.id, `hub:${mode.id}`)} aria-label={`进入${mode.title}`}>进入练习 <ArrowRight size={15} /></button>
             </article>)}</div>
           </section>}
           <div className="featured-grid">
@@ -549,11 +549,11 @@ export function HomePage({ client, onPractice, initialCatalog, onCatalogChange }
                     </div>
                     {game.id === 'connect-four' || game.id === 'reversi' || game.id === 'dots-and-boxes' || game.id === 'gomoku' ? <div className={`card-actions ${game.id === 'connect-four' ? 'has-puzzles' : ''}`}>
                       <button type="button" className="card-create" aria-label={`创建${game.name}房间`} disabled={pendingGameId !== null || joinPending || client.connection !== 'online'} onClick={() => void createRoom(game.id as GameId)}>创建房间 <ArrowRight size={16} /></button>
-                      <button type="button" className="card-practice" data-practice-game={game.id} aria-label={`${practiceButtonLabel(practiceSaves[game.id as SoloGameId])}${game.name}`} onClick={() => onPractice?.(game.id as SoloGameId)}>{practiceButtonLabel(practiceSaves[game.id as SoloGameId])}</button>
-                      {game.id === 'connect-four' && <button type="button" className="card-puzzles" data-practice-game="connect-four-puzzles" aria-label="四子连线残局闯关" onClick={() => onPractice?.('connect-four-puzzles')}>残局闯关</button>}
+                      <button type="button" className="card-practice" data-practice-game={game.id} data-practice-origin={`card:${game.id}`} aria-label={`${practiceButtonLabel(practiceSaves[game.id as SoloGameId])}${game.name}`} onClick={() => onPractice?.(game.id as SoloGameId, `card:${game.id}`)}>{practiceButtonLabel(practiceSaves[game.id as SoloGameId])}</button>
+                      {game.id === 'connect-four' && <button type="button" className="card-puzzles" data-practice-game="connect-four-puzzles" data-practice-origin="card:connect-four-puzzles" aria-label="四子连线残局闯关" onClick={() => onPractice?.('connect-four-puzzles', 'card:connect-four-puzzles')}>残局闯关</button>}
                     </div> : game.id === 'twenty-four' ? <div className="card-actions">
                       <button type="button" className="card-create" aria-label={`创建${game.name}房间`} disabled={pendingGameId !== null || joinPending || client.connection !== 'online'} onClick={() => void createRoom(game.id as GameId)}>创建房间 <ArrowRight size={16} /></button>
-                      <button type="button" className="card-practice" data-practice-game="twenty-four" aria-label={`${twentyFourButtonLabel(twentyFourSave)}24点`} onClick={() => onPractice?.('twenty-four')}>{twentyFourButtonLabel(twentyFourSave)}</button>
+                      <button type="button" className="card-practice" data-practice-game="twenty-four" data-practice-origin="card:twenty-four" aria-label={`${twentyFourButtonLabel(twentyFourSave)}24点`} onClick={() => onPractice?.('twenty-four', 'card:twenty-four')}>{twentyFourButtonLabel(twentyFourSave)}</button>
                     </div> : <button type="button" aria-label={`创建${game.name}房间`} disabled={pendingGameId !== null || joinPending || client.connection !== 'online'} onClick={() => void createRoom(game.id as GameId)}>
                       <span>{pendingGameId === game.id ? '正在创建' : '创建房间'}</span><ArrowRight size={18} />
                     </button>}
