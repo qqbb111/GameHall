@@ -50,6 +50,7 @@ GameHall 是一个面向好友局的实时多人棋盘游戏平台。输入昵�
 - **游戏发现**：八款游戏可搜索，支持短局、策略、多人和收藏筛选；卡片提供规则与大致时长，房间侧栏展示当前玩法规则。
 - **本地收藏**：保存在当前浏览器；存储不可用时仍可临时使用。动画遵从系统减少动态效果设置。
 - **键盘可用**：规则弹窗支持键盘操作；落子后轮到自己时可继续操作棋盘，Tab 离开后不会抢回焦点。
+- **字体稳定加载**：界面使用同站 Noto Sans SC / Noto Serif SC 可变字体；字体下载期间先显示系统字体，避免外部字体样式请求阻塞首屏。字库、许可和再生成方式见 [本地中文字体](docs/assets/local-fonts.md)。
 
 | 棋盘 | 选择位置 | 确认动作 |
 | --- | --- | --- |
@@ -231,6 +232,7 @@ Express / Socket.IO 服务
 | 命令 | 范围 |
 | --- | --- |
 | `pnpm verify:web` | 前端 lint、类型检查、测试和构建 |
+| `python scripts/verify_local_fonts.py` | 检查本地 WOFF2、可变字重、界面字集与字体许可；需要 [字体工具](docs/assets/local-fonts.md) |
 | `pnpm verify:core` | 游戏规则核心 lint、类型检查、测试和构建 |
 | `pnpm verify:server` | 服务端、数据库、Socket.IO、集成测试和构建 |
 | `pnpm verify:full` | 完整交付门禁，与 CI 使用同一入口 |
