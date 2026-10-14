@@ -219,6 +219,15 @@ export function HomePage({ client, onPractice, initialCatalog, onCatalogChange }
   const updateFilter = (next: HomeCatalogState['filter']) => { setFilter(next); onCatalogChange?.({ search, filter: next }); };
 
   useEffect(() => {
+    const availableArea = (kind: 'localStorage' | 'sessionStorage'): Storage | null => {
+      try { return window[kind]; } catch { return null; }
+    };
+    const localArea = availableArea('localStorage');
+    const sessionArea = availableArea('sessionStorage');
+    const matchesArea = (event: StorageEvent, kind: 'localStorage' | 'sessionStorage') => {
+      if (!event.storageArea) return true;
+      return event.storageArea === (availableArea(kind) ?? (kind === 'localStorage' ? localArea : sessionArea));
+    };
     const refreshAttempt = () => setSokobanAttempt(readSokobanHomeAttempt());
     const refreshBests = () => {
       const count = readSokobanHomeCompletedCount();
@@ -227,11 +236,11 @@ export function HomePage({ client, onPractice, initialCatalog, onCatalogChange }
         : current.count === count && !current.unavailable ? current : { count, unavailable: false });
     };
     const onStorage = (event: StorageEvent) => {
-      if (event.key === SOKOBAN_ATTEMPT_KEY && (!event.storageArea || event.storageArea === window.sessionStorage)) refreshAttempt();
-      else if (event.key?.startsWith(SOKOBAN_BEST_PREFIX) && (!event.storageArea || event.storageArea === window.localStorage)) refreshBests();
+      if (event.key === SOKOBAN_ATTEMPT_KEY && matchesArea(event, 'sessionStorage')) refreshAttempt();
+      else if (event.key?.startsWith(SOKOBAN_BEST_PREFIX) && matchesArea(event, 'localStorage')) refreshBests();
       else if (event.key === null) {
-        if (!event.storageArea || event.storageArea === window.sessionStorage) refreshAttempt();
-        if (!event.storageArea || event.storageArea === window.localStorage) refreshBests();
+        if (matchesArea(event, 'sessionStorage')) refreshAttempt();
+        if (matchesArea(event, 'localStorage')) refreshBests();
       }
     };
     const onVisible = () => {

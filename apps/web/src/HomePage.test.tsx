@@ -180,6 +180,42 @@ describe('HomePage', () => {
     expect(client.createRoom).not.toHaveBeenCalled();
   });
 
+  it('存储访问器抛错时对应 storage 事件只标记该来源未知，不抛出也不串到另一来源', () => {
+    const first = sokobanLevels[0]!;
+    const bestKey = sokobanBestKey(first, 'RR');
+    window.localStorage.setItem(bestKey, JSON.stringify({ version: 1, levelId: first.id, history: 'RR' }));
+    window.sessionStorage.setItem(SOKOBAN_ATTEMPT_KEY, JSON.stringify({ version: 1, levelId: first.id, history: 'R' }));
+    const localArea = window.localStorage;
+    const sessionArea = window.sessionStorage;
+    const localDescriptor = Object.getOwnPropertyDescriptor(window, 'localStorage')!;
+    const sessionDescriptor = Object.getOwnPropertyDescriptor(window, 'sessionStorage')!;
+    const writes = vi.spyOn(Storage.prototype, 'setItem');
+    render(<HomePage client={clientStub({ connection: 'offline' })} />);
+    expect(screen.getByRole('button', { name: '继续第 1 关' })).toBeInTheDocument();
+    expect(screen.getByText(/已通关 1 \/ 10 关/)).toBeInTheDocument();
+    try {
+      Object.defineProperty(window, 'localStorage', { configurable: true, get() { throw new DOMException('local blocked', 'SecurityError'); } });
+      fireEvent(window, new StorageEvent('storage', { key: bestKey, storageArea: sessionArea }));
+      expect(screen.queryByText(/更新暂不可用/)).not.toBeInTheDocument();
+      fireEvent(window, new StorageEvent('storage', { key: bestKey, storageArea: localArea }));
+      expect(screen.getByText(/已通关 1 \/ 10 关 · 更新暂不可用/)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '继续第 1 关' })).toBeInTheDocument();
+    } finally { Object.defineProperty(window, 'localStorage', localDescriptor); }
+    fireEvent.focus(window);
+    expect(screen.queryByText(/更新暂不可用/)).not.toBeInTheDocument();
+    try {
+      Object.defineProperty(window, 'sessionStorage', { configurable: true, get() { throw new DOMException('session blocked', 'SecurityError'); } });
+      fireEvent(window, new StorageEvent('storage', { key: SOKOBAN_ATTEMPT_KEY, storageArea: localArea }));
+      expect(screen.getByRole('button', { name: '继续第 1 关' })).toBeInTheDocument();
+      fireEvent(window, new StorageEvent('storage', { key: SOKOBAN_ATTEMPT_KEY, storageArea: sessionArea }));
+      expect(screen.getByText(/本标签进度暂不可用 · 已通关 1 \/ 10 关/)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '进入推箱子' })).toBeEnabled();
+    } finally { Object.defineProperty(window, 'sessionStorage', sessionDescriptor); }
+    fireEvent.focus(window);
+    expect(screen.getByRole('button', { name: '继续第 1 关' })).toBeInTheDocument();
+    expect(writes).not.toHaveBeenCalled();
+  });
+
   it('五款已确认游戏均可进入，开发中卡片不可点击', () => {
     const { container } = render(<HomePage client={clientStub()} />);
     fireEvent.click(screen.getByText('更多玩法正在准备 · 5 款'));
