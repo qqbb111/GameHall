@@ -155,7 +155,17 @@ function validNickname(value: string): boolean {
 }
 
 type PracticeSummary = Record<SoloGameId, 'loading' | 'none' | 'active' | 'finished'>;
-export type HomeCatalogState = { search: string; filter: 'all' | 'quick' | 'strategy' | 'party' | 'favorites' };
+export type HomeCatalogState = { search: string; filter: 'all' | 'solo' | 'quick' | 'strategy' | 'party' | 'favorites' };
+
+const soloModes = [
+  { id: 'connect-four', title: '四子连线电脑练习', detail: '练落点与攻防', quick: true, strategy: true, keywords: '四子连线 电脑 AI' },
+  { id: 'reversi', title: '黑白棋电脑练习', detail: '争角与翻转', quick: true, strategy: true, keywords: '黑白棋 电脑 AI' },
+  { id: 'dots-and-boxes', title: '点格棋电脑练习', detail: '画边与封格', quick: true, strategy: true, keywords: '点格棋 电脑 AI' },
+  { id: 'gomoku', title: '五子棋电脑练习', detail: '连珠与防守', quick: true, strategy: true, keywords: '五子棋 电脑 AI' },
+  { id: 'connect-four-puzzles', title: '四子连线残局闯关', detail: '9 关定向练习', quick: false, strategy: true, keywords: '四子连线 残局 闯关' },
+  { id: 'twenty-four', title: '24 点单人练习', detail: '算式与限时挑战', quick: true, strategy: false, keywords: '24点 24 点 算式 练习' },
+  { id: 'sokoban', title: '推箱子十关解谜', detail: '绕行与顺序规划', quick: false, strategy: true, keywords: '推箱子 箱子 解谜 益智 sokoban' },
+] as const satisfies ReadonlyArray<{ id: PracticeGameId; title: string; detail: string; quick: boolean; strategy: boolean; keywords: string }>;
 
 function draftPracticeSummary(gameId: SoloGameId): PracticeSummary[SoloGameId] {
   const draft = readSoloDraft(gameId);
@@ -203,6 +213,7 @@ export function HomePage({ client, onPractice, initialCatalog, onCatalogChange }
   const identityPanel = useRef<HTMLDivElement>(null);
   const nicknameInput = useRef<HTMLInputElement>(null);
   const catalogSection = useRef<HTMLElement>(null);
+  const soloSection = useRef<HTMLElement>(null);
   const ruleDialog = useRef<HTMLDivElement>(null);
   const ruleTrigger = useRef<HTMLElement | null>(null);
   const restoreRuleFocus = useRef(true);
@@ -210,13 +221,20 @@ export function HomePage({ client, onPractice, initialCatalog, onCatalogChange }
   const comingGames = useMemo(() => games.filter((game) => game.status === 'soon'), []);
   const visibleGames = onlineGames.filter((game) => {
     const matchesSearch = `${game.name} ${game.subtitle}`.toLocaleLowerCase('zh-CN').includes(search.trim().toLocaleLowerCase('zh-CN'));
-    const matchesFilter = filter === 'all' || filter === 'favorites' && favorites.includes(game.id) || filter !== 'favorites' && game.categories?.includes(filter);
+    const matchesFilter = filter === 'all' || filter === 'favorites' && favorites.includes(game.id) || (filter === 'quick' || filter === 'strategy' || filter === 'party') && game.categories?.includes(filter);
     return matchesSearch && matchesFilter;
   });
-  const visibleSokoban = (filter === 'all' || filter === 'strategy')
-    && '推箱子 单人 解谜 十关 箱子 益智 sokoban'.includes(search.trim().toLocaleLowerCase('zh-CN'));
+  const visibleSoloModes = soloModes.filter((mode) => {
+    const matchesSearch = `${mode.title} ${mode.detail} ${mode.keywords}`.toLocaleLowerCase('zh-CN').includes(search.trim().toLocaleLowerCase('zh-CN'));
+    return matchesSearch && (filter === 'all' || filter === 'solo' || filter === 'quick' && mode.quick || filter === 'strategy' && mode.strategy);
+  });
+  const visibleSokoban = visibleSoloModes.some((mode) => mode.id === 'sokoban');
   const updateSearch = (next: string) => { setSearch(next); onCatalogChange?.({ search: next, filter }); };
   const updateFilter = (next: HomeCatalogState['filter']) => { setFilter(next); onCatalogChange?.({ search, filter: next }); };
+  const openSoloCatalog = () => {
+    setSearch(''); setFilter('solo'); onCatalogChange?.({ search: '', filter: 'solo' });
+    window.setTimeout(() => soloSection.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }), 0);
+  };
 
   useEffect(() => {
     const availableArea = (kind: 'localStorage' | 'sessionStorage'): Storage | null => {
@@ -439,6 +457,7 @@ export function HomePage({ client, onPractice, initialCatalog, onCatalogChange }
               </div>
             </Reveal>
             <button className="hero-catalog-link" type="button" onClick={scrollToCatalog}>看看有什么游戏 <ArrowRight size={16} /></button>
+            <button className="hero-solo-link" type="button" onClick={openSoloCatalog}>单人先玩一局 <ArrowRight size={16} /></button>
           </div>
 
           <Reveal className="hero-editorial-reveal" delayMs={60} distance={16}>
@@ -491,13 +510,26 @@ export function HomePage({ client, onPractice, initialCatalog, onCatalogChange }
           <div className="catalog-tools">
             <label className="catalog-search"><Search size={18} aria-hidden="true" /><span className="sr-only">搜索游戏</span><input value={search} onChange={(event) => updateSearch(event.target.value)} placeholder="搜索游戏名称或玩法" /></label>
             <div className="catalog-filters" role="group" aria-label="筛选游戏">
-              {([['all', '全部'], ['quick', '轻松短局'], ['strategy', '策略棋盘'], ['party', '多人桌游'], ['favorites', '收藏']] as const).map(([id, label]) => <button key={id} type="button" aria-pressed={filter === id} onClick={() => updateFilter(id)}>{label}</button>)}
+              {([['all', '全部'], ['solo', '单人玩法'], ['quick', '轻松短局'], ['strategy', '策略棋盘'], ['party', '多人桌游'], ['favorites', '收藏']] as const).map(([id, label]) => <button key={id} type="button" aria-pressed={filter === id} onClick={() => updateFilter(id)}>{label}</button>)}
             </div>
             <button className="suggest-button" type="button" disabled={!visibleGames.length} onClick={suggestGame}><Shuffle size={16} /> 帮我选一款</button>
           </div>
           {suggestedId && visibleGames.some((game) => game.id === suggestedId) && <p className="suggestion-note" role="status">推荐你试试 {games.find((game) => game.id === suggestedId)?.name}。看看规则，再决定是否创建房间。</p>}
 
           {createError && <p className="catalog-error" role="alert">{createError}</p>}
+          {visibleSoloModes.length > 0 && <section ref={soloSection} className="solo-hub" aria-labelledby="solo-hub-title">
+            <div className="solo-hub-heading"><span>SOLO CORNER · 随时开玩</span><h3 id="solo-hub-title">一个人，也能好好玩一局</h3><p>七种已开放的本地练习与解谜。无需昵称或实时连接，选择后才进入。</p></div>
+            {visibleSokoban && <div className="sokoban-discovery">
+              <div className="sokoban-discovery-mark" aria-hidden="true"><i /><i /><i /></div>
+              <div><span>本地单人解谜 · 不开好友房</span><h4>推箱子 · 十关挑战</h4><p>从一只箱子练到三只箱子，绕行、换位，亲手安排每一步。</p><p className="sokoban-discovery-progress">{sokobanAttempt.kind === 'saved' ? `本标签第 ${sokobanAttempt.levelNumber} 关 · ${sokobanAttempt.steps} 步 · ${sokobanAttempt.pushes} 次推箱` : sokobanAttempt.kind === 'fresh' ? '从第一关开始' : '本标签进度暂不可用'} · {sokobanBests.count === null ? '通关数暂不可读' : `已通关 ${sokobanBests.count} / 10 关`}{sokobanBests.count !== null && sokobanBests.unavailable ? ' · 更新暂不可用' : ''}</p></div>
+              <button type="button" data-practice-game="sokoban" onClick={() => onPractice?.('sokoban')}>{sokobanAttempt.kind === 'saved' ? sokobanAttempt.solved ? `查看第 ${sokobanAttempt.levelNumber} 关结果` : `继续第 ${sokobanAttempt.levelNumber} 关` : '进入推箱子'} <ArrowRight size={17} /></button>
+            </div>}
+            <div className="solo-mode-grid">{visibleSoloModes.filter((mode) => mode.id !== 'sokoban').map((mode, index) => <article className="solo-mode-card" key={mode.id}>
+              <div className="solo-mode-icon" aria-hidden="true">{mode.id === 'twenty-four' ? <Dices size={24} /> : mode.id === 'connect-four-puzzles' ? <Shuffle size={24} /> : <CircleDot size={24} />}</div>
+              <div><small>0{index + 1} · {mode.id === 'twenty-four' ? '数字挑战' : mode.id === 'connect-four-puzzles' ? '残局解谜' : '电脑对练'}</small><h4>{mode.title}</h4><p>{mode.detail}</p><span className="solo-mode-progress">{mode.id === 'twenty-four' ? twentyFourSave === 'finished' ? '查看上组结果' : twentyFourSave === 'active' ? '继续上组练习' : '随时开始' : mode.id === 'connect-four-puzzles' ? '9 关可自由选' : practiceSaves[mode.id] === 'loading' ? '进度读取中' : practiceSaves[mode.id] === 'finished' ? '可查看上局' : practiceSaves[mode.id] === 'active' ? '可继续上局' : '准备好就开局'}</span></div>
+              <button type="button" data-practice-game={mode.id} onClick={() => onPractice?.(mode.id)} aria-label={`进入${mode.title}`}>进入练习 <ArrowRight size={15} /></button>
+            </article>)}</div>
+          </section>}
           <div className="featured-grid">
             {visibleGames.map((game, index) => (
               <Reveal className="game-card-reveal" delayMs={Math.min(index * 35, 140)} distance={0} key={game.id}>
@@ -531,12 +563,7 @@ export function HomePage({ client, onPractice, initialCatalog, onCatalogChange }
               </Reveal>
             ))}
           </div>
-          {visibleSokoban && <section className="sokoban-discovery" aria-labelledby="sokoban-discovery-title">
-            <div className="sokoban-discovery-mark" aria-hidden="true"><i /><i /><i /></div>
-            <div><span>本地单人解谜 · 不开好友房</span><h3 id="sokoban-discovery-title">推箱子 · 十关挑战</h3><p>从一只箱子练到三只箱子，绕行、换位，亲手安排每一步。</p><p className="sokoban-discovery-progress">{sokobanAttempt.kind === 'saved' ? `本标签第 ${sokobanAttempt.levelNumber} 关 · ${sokobanAttempt.steps} 步 · ${sokobanAttempt.pushes} 次推箱` : sokobanAttempt.kind === 'fresh' ? '从第一关开始' : '本标签进度暂不可用'} · {sokobanBests.count === null ? '通关数暂不可读' : `已通关 ${sokobanBests.count} / 10 关`}{sokobanBests.count !== null && sokobanBests.unavailable ? ' · 更新暂不可用' : ''}</p></div>
-            <button type="button" data-practice-game="sokoban" onClick={() => onPractice?.('sokoban')}>{sokobanAttempt.kind === 'saved' ? sokobanAttempt.solved ? `查看第 ${sokobanAttempt.levelNumber} 关结果` : `继续第 ${sokobanAttempt.levelNumber} 关` : '进入推箱子'} <ArrowRight size={17} /></button>
-          </section>}
-          {!visibleGames.length && !visibleSokoban && <div className="catalog-empty"><p>没有符合条件的游戏。</p>{search && <button type="button" onClick={() => updateSearch('')}>清空搜索</button>}{filter !== 'all' && <button type="button" onClick={() => updateFilter('all')}>查看全部</button>}</div>}
+          {!visibleGames.length && !visibleSoloModes.length && <div className="catalog-empty"><p>没有符合条件的游戏。</p>{search && <button type="button" onClick={() => updateSearch('')}>清空搜索</button>}{filter !== 'all' && <button type="button" onClick={() => updateFilter('all')}>查看全部</button>}</div>}
 
           <Reveal className="coming-reveal" delayMs={80} distance={12}>
             <details className="coming-details">

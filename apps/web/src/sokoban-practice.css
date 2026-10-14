@@ -1,7 +1,7 @@
 .sokoban-discovery { margin-top: 24px; padding: 22px 26px; display: flex; align-items: center; gap: 24px; border: 1px solid rgba(232,194,118,.35); border-radius: 18px; color: #f8efdf; background: linear-gradient(120deg,#123e31,#08241e 72%); box-shadow: 0 18px 42px #061b1740; }
 .sokoban-discovery > div:nth-child(2) { flex: 1; min-width: 0; }
 .sokoban-discovery span, .sokoban-eyebrow { color: #e9c784; font-size: 12px; font-weight: 800; letter-spacing: .06em; }
-.sokoban-discovery h3 { margin: 5px 0; font: 700 clamp(23px,3vw,31px) 'Noto Serif SC', serif; }
+.sokoban-discovery h4 { margin: 5px 0; font: 700 clamp(23px,3vw,31px) 'Noto Serif SC', serif; }
 .sokoban-discovery p { margin: 0; color: #cbd8ce; line-height: 1.6; }
 .sokoban-discovery .sokoban-discovery-progress { margin-top: 7px; color: #f0d493; font-size: 13px; font-weight: 700; }
 .sokoban-discovery button { min-height: 46px; padding: 0 19px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 10px; color: #173a2f; background: #eac982; font-weight: 800; white-space: nowrap; cursor: pointer; }

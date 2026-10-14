@@ -98,6 +98,43 @@ describe('HomePage', () => {
     expect(screen.getByRole('button', { name: '进入推箱子' })).toBeInTheDocument();
   });
 
+  it('单人游乐区把七种现有模式放在好友卡前，离线免昵称逐项可进且不创建好友房', () => {
+    const onPractice = vi.fn();
+    const client = clientStub({ connection: 'offline' });
+    const { container } = render(<HomePage client={client} onPractice={onPractice} />);
+    fireEvent.click(screen.getByRole('button', { name: '单人先玩一局' }));
+    expect(screen.getByRole('button', { name: '单人玩法' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('button', { name: '创建五子棋房间' })).not.toBeInTheDocument();
+    const hub = screen.getByRole('region', { name: '一个人，也能好好玩一局' });
+    expect(container.querySelector('.solo-hub')!.compareDocumentPosition(container.querySelector('.featured-grid')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    for (const name of ['四子连线电脑练习', '黑白棋电脑练习', '点格棋电脑练习', '五子棋电脑练习', '四子连线残局闯关', '24 点单人练习']) {
+      fireEvent.click(within(hub).getByRole('button', { name: `进入${name}` }));
+    }
+    fireEvent.click(within(hub).getByRole('button', { name: '进入推箱子' }));
+    expect(onPractice.mock.calls).toEqual([['connect-four'], ['reversi'], ['dots-and-boxes'], ['gomoku'], ['connect-four-puzzles'], ['twenty-four'], ['sokoban']]);
+    expect(client.createRoom).not.toHaveBeenCalled();
+  });
+
+  it('单人与好友目录共用搜索；短局、策略、收藏和空结果各只展示符合语义的入口', () => {
+    render(<HomePage client={clientStub({ connection: 'offline' })} onPractice={vi.fn()} />);
+    const search = screen.getByPlaceholderText('搜索游戏名称或玩法');
+    fireEvent.click(screen.getByRole('button', { name: '单人玩法' }));
+    fireEvent.change(search, { target: { value: '24 点' } });
+    expect(screen.getByRole('button', { name: '进入24 点单人练习' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '进入推箱子' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '创建24 点速度对决房间' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '轻松短局' }));
+    expect(screen.getByRole('button', { name: '进入24 点单人练习' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '策略棋盘' }));
+    expect(screen.getByText('没有符合条件的游戏。')).toBeInTheDocument();
+    fireEvent.change(search, { target: { value: '推箱子' } });
+    expect(screen.getByRole('button', { name: '进入推箱子' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '收藏' }));
+    expect(screen.getByText('没有符合条件的游戏。')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '查看全部' }));
+    expect(screen.getByRole('button', { name: '进入推箱子' })).toBeInTheDocument();
+  });
+
   it('本标签合法进度和共享通关数进入首页；只响应对应存储事件，更新不抢入口焦点或写存档', () => {
     const first = sokobanLevels[0]!;
     const second = sokobanLevels[1]!;
